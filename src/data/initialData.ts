@@ -1,0 +1,483 @@
+import { Meal, PantryItem, HouseholdMember, TakeawayOption, ReelComboItem, UserProfile } from '../types';
+
+export const INITIAL_MEALS: Meal[] = [
+  {
+    id: 'meal_1',
+    title: 'Rigatoni Arrabbiata',
+    description: 'Fiery garlic, San Marzano tomato sauce, fresh basil, and shaved parmesan tossed with al-dente rigatoni.',
+    cuisine: 'Italian',
+    timeStake: '20m',
+    effort: 'one-pot',
+    ingredients: ['Rigatoni Pasta', 'Tinned Plum Tomatoes', 'Garlic', 'Chilli Flakes', 'Olive Oil', 'Parmesan', 'Fresh Basil'],
+    prepSteps: [
+      'Boil salted kettle water for pasta (-18m)',
+      'Sauté sliced garlic and red chilli flakes in olive oil (-14m)',
+      'Pour in crushed tomatoes and simmer gently (-10m)',
+      'Drop rigatoni into salted boiling water (-8m)',
+      'Toss pasta into spicy sauce with pasta water & basil (-2m)',
+      'Plate with fresh grated parmesan (-0m)',
+    ],
+    rating: 5,
+    isFavorite: true,
+    lastCookedDate: new Date(Date.now() - 6 * 86400000).toISOString(),
+    cookCount: 14,
+    tags: ['Quick Midweek', 'Comfort Food', 'Vegetarian'],
+  },
+  {
+    id: 'meal_2',
+    title: 'Chicken Dopiaza with Pilau Rice',
+    description: 'Fragrant British curry house classic cooked with two stages of sweet caramelized onions, cumin, and coriander.',
+    cuisine: 'Indian',
+    timeStake: '30m',
+    effort: 'standard',
+    ingredients: ['Free-Range Chicken Thighs', 'Brown Onions', 'Garlic', 'Ginger', 'Garam Masala', 'Turmeric', 'Cumin Seeds', 'Basmati Rice'],
+    prepSteps: [
+      'Chop one onion finely and slice the other into chunky petals (-28m)',
+      'Rinse basmati rice and put on low simmer (-22m)',
+      'Brown chicken cubes in oil with whole cumin seeds (-18m)',
+      'Stir in garlic, ginger, and curry spices until fragrant (-12m)',
+      'Add onion petals and simmer in spiced tomato sauce (-6m)',
+      'Rest for 3 minutes, garnish with fresh coriander and serve (-0m)',
+    ],
+    rating: 5,
+    isFavorite: true,
+    lastCookedDate: new Date(Date.now() - 8 * 86400000).toISOString(),
+    cookCount: 19,
+    tags: ['Curry Night', 'Crowd Pleaser', 'High Protein'],
+  },
+  {
+    id: 'meal_3',
+    title: 'Quick Chicken Chow Mein',
+    description: 'Tender chicken strips, shredded pak choi, spring onions, and egg noodles tossed in a savoury soy & sesame glaze.',
+    cuisine: 'Chinese',
+    timeStake: '20m',
+    effort: 'one-pot',
+    ingredients: ['Chicken Breast', 'Egg Noodles', 'Pak Choi', 'Spring Onions', 'Soy Sauce', 'Toasted Sesame Oil', 'Garlic'],
+    prepSteps: [
+      'Soak medium egg noodles in boiling water (-15m)',
+      'Slice chicken thinly into bite-sized strips (-12m)',
+      'Whisk soy sauce, sesame oil, and pinch of sugar for wok sauce (-10m)',
+      'High-heat stir fry chicken and minced garlic in wok (-7m)',
+      'Toss in shredded greens, drained noodles, and sauce (-3m)',
+      'Scatter spring onions and serve piping hot (-0m)',
+    ],
+    rating: 4,
+    isFavorite: false,
+    lastCookedDate: new Date(Date.now() - 2 * 86400000).toISOString(), // Cooked 2 days ago (cooling off)
+    cookCount: 9,
+    tags: ['Fakeaway', 'High Speed', 'One-Wok'],
+  },
+  {
+    id: 'meal_4',
+    title: 'Cumberland Sausages & Cheddar Mash',
+    description: 'Peppery British butcher sausages atop rich buttery Maris Piper mash with a slow-reduced sweet onion gravy.',
+    cuisine: 'British',
+    timeStake: '30m',
+    effort: 'standard',
+    ingredients: ['Cumberland Sausages', 'Maris Piper Potatoes', 'Red Onions', 'Beef Stock', 'Butter', 'Mature Cheddar', 'English Mustard'],
+    prepSteps: [
+      'Peel and dice Maris Pipers, bring to rolling boil in salted water (-26m)',
+      'Prick sausages and pan-fry on medium-low until golden brown (-22m)',
+      'Caramelize sliced red onions in sausage drippings (-16m)',
+      'Sprinkle flour and pour rich beef stock for gravy reduction (-10m)',
+      'Drain potatoes and mash with butter, mature cheddar, and splash of milk (-5m)',
+      'Spoon deep wells of mash, top with bangers, and drown in onion gravy (-0m)',
+    ],
+    rating: 5,
+    isFavorite: true,
+    lastCookedDate: new Date(Date.now() - 11 * 86400000).toISOString(),
+    cookCount: 22,
+    tags: ['Pub Classic', 'Ultimate Comfort', 'Family Favourite'],
+  },
+  {
+    id: 'meal_5',
+    title: 'Crispy Salmon & Tenderstem Traybake',
+    description: 'Scottish salmon fillets roasted with lemon, garlic herb butter, baby new potatoes, and charred tenderstem broccoli.',
+    cuisine: 'British',
+    timeStake: '30m',
+    effort: 'one-pot',
+    ingredients: ['Scottish Salmon Fillets', 'Baby New Potatoes', 'Tenderstem Broccoli', 'Lemon', 'Garlic', 'Dill', 'Olive Oil'],
+    prepSteps: [
+      'Preheat oven to 200°C fan / Gas Mark 6 (-28m)',
+      'Halve new potatoes, toss in olive oil and roast first (-25m)',
+      'Nestle salmon fillets and tenderstem broccoli onto baking tray (-14m)',
+      'Drizzle melted butter, crushed garlic, and lemon slices over salmon (-12m)',
+      'Roast until salmon skin is blistered and greens are charred (-3m)',
+      'Scatter fresh chopped dill and serve directly from tray (-0m)',
+    ],
+    rating: 4,
+    isFavorite: true,
+    lastCookedDate: new Date(Date.now() - 15 * 86400000).toISOString(),
+    cookCount: 8,
+    tags: ['Healthy', 'Low Washing-Up', 'Omega 3'],
+  },
+  {
+    id: 'meal_6',
+    title: 'Smoky Beef Shin Chilli Con Carne',
+    description: 'Slow-simmered rich diced beef shin with dark chocolate, smoked chipotle, kidney beans, and pickled jalapeños.',
+    cuisine: 'Mexican',
+    timeStake: '60m',
+    effort: 'one-pot',
+    ingredients: ['Diced Beef Shin', 'Kidney Beans', 'Smoked Chipotle Paste', 'Dark Chocolate (70%)', 'Tinned Chopped Tomatoes', 'Ground Cumin', 'Coriander', 'Sour Cream'],
+    prepSteps: [
+      'Hard sear diced beef in heavy cast-iron casserole (-55m)',
+      'Sweat chopped onions, garlic, cumin, and chipotle paste (-45m)',
+      'Add tinned tomatoes, beef stock, and bay leaf; lid on low simmer (-40m)',
+      'Simmer gently until meat is pull-apart tender (-15m)',
+      'Stir in drained kidney beans and snap of dark chocolate (-10m)',
+      'Rest 5 mins and serve with sour cream and warm tortilla chips (-0m)',
+    ],
+    rating: 5,
+    isFavorite: true,
+    lastCookedDate: new Date(Date.now() - 18 * 86400000).toISOString(),
+    cookCount: 16,
+    tags: ['Weekend Batch', 'Bold Spice', 'Freezer Friendly'],
+  },
+  {
+    id: 'meal_7',
+    title: 'Traditional Shepherd’s Pie with Cheddar Crust',
+    description: 'Minced lamb simmered with Worcestershire sauce, rosemary, peas, and carrots, crowned with piped golden mashed potato.',
+    cuisine: 'British',
+    timeStake: '60m',
+    effort: 'chef-mode',
+    ingredients: ['Minced Lamb', 'Maris Piper Potatoes', 'Frozen Garden Peas', 'Carrots', 'Worcestershire Sauce', 'Tomato Purée', 'Fresh Rosemary', 'Egg Yolk'],
+    prepSteps: [
+      'Brown minced lamb in dutch oven, draining excess fat (-55m)',
+      'Add diced carrots, onions, tomato purée, and rosemary (-48m)',
+      'Deglaze with splash of red wine and Worcestershire sauce (-40m)',
+      'Boil and mash potatoes with butter, cheddar, and 1 egg yolk (-30m)',
+      'Transfer lamb to ceramic pie dish, spread mash and fluff with fork (-20m)',
+      'Bake at 200°C until mountain peaks are deeply bronzed and bubbling (-0m)',
+    ],
+    rating: 5,
+    isFavorite: true,
+    lastCookedDate: new Date(Date.now() - 25 * 86400000).toISOString(),
+    cookCount: 12,
+    tags: ['Sunday Soul Food', 'Traditional', 'Casserole'],
+  },
+  {
+    id: 'meal_8',
+    title: 'Halloumi & Roasted Pepper Fajita Bowls',
+    description: 'Sizzled Cypriot halloumi sticks, charred peppers, spiced black beans, avocado, and lime coriander rice.',
+    cuisine: 'Mexican',
+    timeStake: '20m',
+    effort: 'one-pot',
+    ingredients: ['Halloumi Cheese', 'Bell Peppers', 'Black Beans', 'Avocado', 'Microwave Rice', 'Smoked Paprika', 'Limes'],
+    prepSteps: [
+      'Slice peppers and onions into long fajita ribbons (-18m)',
+      'Sear peppers on roaring hot skillet with smoked paprika (-14m)',
+      'Slice halloumi into chunky batons and fry until crisp and golden (-9m)',
+      'Warm spiced black beans and heat rice pouch (-5m)',
+      'Assemble bowls with avocado fans, halloumi, and fresh lime squeeze (-0m)',
+    ],
+    rating: 4,
+    isFavorite: false,
+    lastCookedDate: new Date(Date.now() - 3 * 86400000).toISOString(), // Cooked 3 days ago (cooling off)
+    cookCount: 6,
+    tags: ['Vegetarian', 'Quick Midweek', 'Colourful'],
+  },
+  {
+    id: 'meal_9',
+    title: 'Thai Green Prawn Curry',
+    description: 'King prawns poached in aromatic coconut milk, Thai basil, bamboo shoots, and fragrant lemongrass paste.',
+    cuisine: 'Thai',
+    timeStake: '30m',
+    effort: 'standard',
+    ingredients: ['Raw King Prawns', 'Coconut Milk', 'Thai Green Curry Paste', 'Sugar Snap Peas', 'Jasmine Rice', 'Fish Sauce', 'Thai Basil', 'Kaffir Lime Leaves'],
+    prepSteps: [
+      'Steam fragrant jasmine rice (-25m)',
+      'Fry 2 tbsp green curry paste in coconut cream until oil splits (-20m)',
+      'Pour in remainder of coconut milk and torn kaffir lime leaves (-16m)',
+      'Add sugar snap peas and simmer gently (-10m)',
+      'Drop raw king prawns into simmering broth until pink and curled (-4m)',
+      'Season with fish sauce, lime juice, and handful of Thai basil (-0m)',
+    ],
+    rating: 4,
+    isFavorite: false,
+    lastCookedDate: new Date(Date.now() - 12 * 86400000).toISOString(),
+    cookCount: 7,
+    tags: ['Seafood', 'Aromatic', 'Midweek Luxury'],
+  },
+  {
+    id: 'meal_10',
+    title: 'Roast Sirloin of Beef & Giant Yorkshire Puddings',
+    description: 'Grand British Sunday feast: aged British beef, goose-fat roasties, honey parsnips, and proper red wine pan gravy.',
+    cuisine: 'British',
+    timeStake: 'all-day',
+    effort: 'chef-mode',
+    ingredients: ['Dry-Aged Beef Sirloin Joint', 'Plain Flour', 'Eggs', 'Milk', 'Beef Dripping / Goose Fat', 'Maris Piper Potatoes', 'Parsnips', 'Red Wine'],
+    prepSteps: [
+      'Whisk Yorkshire pudding batter (equal parts egg, flour, milk); rest in fridge (-180m)',
+      'Bring beef joint to room temperature and heavily salt (-120m)',
+      'Parboil Maris Pipers, rough up edges in colander (-100m)',
+      'Roast beef at 220°C for 20m, then drop to 170°C for remaining cook (-85m)',
+      'Toss potatoes in smoking hot goose fat and roast alongside parsnips (-60m)',
+      'Rest beef on warm wooden carving board under foil (-35m)',
+      'Heat muffin tin with beef fat until smoking; pour batter and bake Yorkies (-25m)',
+      'Deglaze roasting tin with red wine, beef stock, and juices for gravy (-15m)',
+      'Carve thin ribbons of rosy beef, plate towering Yorkies, and serve (-0m)',
+    ],
+    rating: 5,
+    isFavorite: true,
+    lastCookedDate: new Date(Date.now() - 14 * 86400000).toISOString(),
+    cookCount: 26,
+    tags: ['Sunday Jackpot', 'The Ultimate Roast', 'British Heritage'],
+  },
+  {
+    id: 'meal_11',
+    title: 'Crispy Pork Belly with Crackling & Cider Gravy',
+    description: 'Slow-braised pork belly with glass-like blistered crackling, creamy mashed celeriac, and Bramley apple reduction.',
+    cuisine: 'British',
+    timeStake: 'all-day',
+    effort: 'chef-mode',
+    ingredients: ['Free-Range Pork Belly Slab', 'Dry Cider', 'Bramley Apples', 'Sea Salt Flakes', 'Sage Leaves', 'Celeriac', 'Double Cream'],
+    prepSteps: [
+      'Score pork rind with craft razor and dry out thoroughly with kitchen paper (-240m)',
+      'Rub deep sea salt into rind and place meat-side down in cider bath (-210m)',
+      'Slow roast at 150°C for 3 hours until tender as butter (-180m)',
+      'Stew Bramley apples with sugar and a knob of butter (-45m)',
+      'Crank oven to 240°C for final 25 mins until crackling violently puffs (-30m)',
+      'Rest for 20 minutes before carving into crisp square slabs (-15m)',
+      'Serve with reduced cider gravy and dollop of apple sauce (-0m)',
+    ],
+    rating: 5,
+    isFavorite: true,
+    lastCookedDate: new Date(Date.now() - 21 * 86400000).toISOString(),
+    cookCount: 11,
+    tags: ['Sunday Jackpot', 'Pork Crackling', 'Showstopper'],
+  },
+  {
+    id: 'meal_12',
+    title: 'Wild Mushroom & Chestnut Wellington',
+    description: 'Portobello and chestnut mushrooms sauteed with shallots, thyme, and roasted chestnuts encased in flaky butter puff pastry.',
+    cuisine: 'British',
+    timeStake: 'all-day',
+    effort: 'chef-mode',
+    ingredients: ['Puff Pastry Roll', 'Chestnut Mushrooms', 'Portobello Mushrooms', 'Cooked Chestnuts', 'Shallots', 'Fresh Thyme', 'Dijon Mustard', 'Egg Wash'],
+    prepSteps: [
+      'Finely pulse mushrooms and shallots in food processor (-90m)',
+      'Cook mushroom duxelles in dry pan until moisture completely evaporates (-75m)',
+      'Stir in crumbled chestnuts, thyme leaves, and Dijon mustard; cool completely (-60m)',
+      'Roll out puff pastry sheet and spread filling along center (-45m)',
+      'Wrap tightly, crimp edges, score decorative herringbone, brush egg wash (-35m)',
+      'Bake at 200°C until pastry is deep golden and impossibly crisp (-0m)',
+    ],
+    rating: 4,
+    isFavorite: false,
+    lastCookedDate: new Date(Date.now() - 30 * 86400000).toISOString(),
+    cookCount: 5,
+    tags: ['Sunday Jackpot', 'Vegetarian Centerpiece', 'Autumnal'],
+  },
+];
+
+// 3-Reel Builder Component Sets
+export const REEL_CARBS: ReelComboItem[] = [
+  { id: 'c1', label: 'Rigatoni Pasta', category: 'Carb', icon: '🍝' },
+  { id: 'c2', label: 'Basmati Rice', category: 'Carb', icon: '🍚' },
+  { id: 'c3', label: 'Egg Noodles', category: 'Carb', icon: '🥢' },
+  { id: 'c4', label: 'Roast Maris Pipers', category: 'Carb', icon: '🥔' },
+  { id: 'c5', label: 'Warm Tortilla Wraps', category: 'Carb', icon: '🌯' },
+  { id: 'c6', label: 'Creamy Garlic Mash', category: 'Carb', icon: '🧈' },
+  { id: 'c7', label: 'Crusty Sourdough', category: 'Carb', icon: '🥖' },
+];
+
+export const REEL_PROTEINS: ReelComboItem[] = [
+  { id: 'p1', label: 'Free-Range Chicken', category: 'Hero', icon: '🍗' },
+  { id: 'p2', label: 'Scottish Salmon', category: 'Hero', icon: '🐟' },
+  { id: 'p3', label: 'British Minced Beef', category: 'Hero', icon: '🥩' },
+  { id: 'p4', label: 'Golden Halloumi', category: 'Hero', icon: '🧀' },
+  { id: 'p5', label: 'Cumberland Sausages', category: 'Hero', icon: '🌭' },
+  { id: 'p6', label: 'King Prawns', category: 'Hero', icon: '🦐' },
+  { id: 'p7', label: 'Wild Mushrooms & Tofu', category: 'Hero', icon: '🍄' },
+];
+
+export const REEL_SAUCES: ReelComboItem[] = [
+  { id: 's1', label: 'Spicy Arrabbiata', category: 'Style', icon: '🌶️' },
+  { id: 's2', label: 'Creamy Tikka Masala', category: 'Style', icon: '🍛' },
+  { id: 's3', label: 'Sticky Teriyaki Sesame', category: 'Style', icon: '🫚' },
+  { id: 's4', label: 'Rich Onion & Red Wine', category: 'Style', icon: '🧅' },
+  { id: 's5', label: 'Smoky Mexican Chipotle', category: 'Style', icon: '🥑' },
+  { id: 's6', label: 'Garlic Herb Butter', category: 'Style', icon: '🧄' },
+  { id: 's7', label: 'Thai Green Coconut', category: 'Style', icon: '🥥' },
+];
+
+// Sunday Roast Builder 4-Reels
+export const SUNDAY_MEATS: ReelComboItem[] = [
+  { id: 'sm1', label: 'Dry-Aged Roast Beef', category: 'Roast Main', icon: '🥩' },
+  { id: 'sm2', label: 'Crispy Pork Belly', category: 'Roast Main', icon: '🥓' },
+  { id: 'sm3', label: 'Whole Herb Butter Chicken', category: 'Roast Main', icon: '🍗' },
+  { id: 'sm4', label: 'Rosemary Leg of Lamb', category: 'Roast Main', icon: '🍖' },
+  { id: 'sm5', label: 'Mushroom Wellington', category: 'Roast Main', icon: '🥧' },
+];
+
+export const SUNDAY_POTATOES: ReelComboItem[] = [
+  { id: 'sp1', label: 'Goose Fat Crispy Roasties', category: 'Potatoes', icon: '🥔' },
+  { id: 'sp2', label: 'Duck Fat Garlic Parmentier', category: 'Potatoes', icon: '🧄' },
+  { id: 'sp3', label: 'Creamy Garlic Dauphinoise', category: 'Potatoes', icon: '🧀' },
+  { id: 'sp4', label: 'Triple-Cooked Maris Pipers', category: 'Potatoes', icon: '🍟' },
+];
+
+export const SUNDAY_STAR_SIDES: ReelComboItem[] = [
+  { id: 'ss1', label: 'Giant Yorkshire Puddings', category: 'Star Side', icon: '🧁' },
+  { id: 'ss2', label: 'Cauliflower Vintage Cheese', category: 'Star Side', icon: '🥦' },
+  { id: 'ss3', label: 'Honey & Grain Mustard Parsnips', category: 'Star Side', icon: '🥕' },
+  { id: 'ss4', label: 'Butcher’s Pigs in Blankets', category: 'Star Side', icon: '🥓' },
+];
+
+export const SUNDAY_VEG_GRAVY: ReelComboItem[] = [
+  { id: 'sv1', label: 'Charred Cabbage & Rich Beef Gravy', category: 'Veg & Gravy', icon: '🥣' },
+  { id: 'sv2', label: 'Buttered Leeks & Red Wine Gravy', category: 'Veg & Gravy', icon: '🍷' },
+  { id: 'sv3', label: 'Honey Carrots & Sweet Onion Gravy', category: 'Veg & Gravy', icon: '🥕' },
+  { id: 'sv4', label: 'Minted Garden Peas & Cider Pan Juices', category: 'Veg & Gravy', icon: '🌿' },
+];
+
+// Takeaway Categories & Usual Orders
+export const INITIAL_TAKEAWAYS: TakeawayOption[] = [
+  {
+    id: 'takeaway_1',
+    name: 'Indian Curry House',
+    category: 'Indian',
+    badge: 'Tandoor & Masala',
+    color: '#e76f51',
+    usualOrders: [
+      { memberName: 'Dad', order: 'Chicken Tikka Dopiaza (Madras Hot) + Garlic Naan' },
+      { memberName: 'Mum', order: 'King Prawn Bhuna + Pilau Rice + Tarka Dhal' },
+      { memberName: 'Alex', order: 'Chicken Korma + Peshwari Naan + Poppadoms' },
+    ],
+  },
+  {
+    id: 'takeaway_2',
+    name: 'Chinese Dragon',
+    category: 'Chinese',
+    badge: 'Wok & Dumplings',
+    color: '#e63946',
+    usualOrders: [
+      { memberName: 'Dad', order: 'Crispy Shredded Chilli Beef + Special Fried Rice' },
+      { memberName: 'Mum', order: 'Sweet & Sour Chicken Balls + Spring Rolls' },
+      { memberName: 'Alex', order: 'Chicken Chow Mein + Sesame Prawn Toast' },
+    ],
+  },
+  {
+    id: 'takeaway_3',
+    name: 'Italian Wood-Fired Pizza',
+    category: 'Italian',
+    badge: 'Neapolitan Sourdough',
+    color: '#2a9d8f',
+    usualOrders: [
+      { memberName: 'Dad', order: 'Diavola (Spicy Nduja, Spianata, Hot Honey)' },
+      { memberName: 'Mum', order: 'Funghi & Tartufo (Truffle base, wild mushrooms)' },
+      { memberName: 'Alex', order: 'Double Pepperoni + Garlic Herb Dip' },
+    ],
+  },
+  {
+    id: 'takeaway_4',
+    name: 'Traditional Fish & Chips',
+    category: 'Fish & Chips',
+    badge: 'Salt & Vinegar',
+    color: '#457b9d',
+    usualOrders: [
+      { memberName: 'Dad', order: 'Large Haddock & Chips + Mushy Peas + Curry Sauce' },
+      { memberName: 'Mum', order: 'Cod & Chips + Pickled Onion + Tartare' },
+      { memberName: 'Alex', order: 'Jumbo Battered Sausage + Chips & Gravy' },
+    ],
+  },
+  {
+    id: 'takeaway_5',
+    name: 'McDonald’s',
+    category: 'Burgers',
+    badge: 'Drive-Thru',
+    color: '#ffb703',
+    usualOrders: [
+      { memberName: 'Dad', order: 'Double Quarter Pounder with Cheese Meal (Large)' },
+      { memberName: 'Mum', order: 'Filet-O-Fish Meal + Diet Coke' },
+      { memberName: 'Alex', order: '20 McNuggets Sharebox + Sweet Curry Dip' },
+    ],
+  },
+  {
+    id: 'takeaway_6',
+    name: 'KFC',
+    category: 'Fried Chicken',
+    badge: 'Original Recipe',
+    color: '#b7094c',
+    usualOrders: [
+      { memberName: 'Dad', order: 'Trilogy Box Meal + Gravy' },
+      { memberName: 'Mum', order: 'Zinger Burger Meal' },
+      { memberName: 'Alex', order: 'Popcorn Chicken + Hot Wings' },
+    ],
+  },
+  {
+    id: 'takeaway_7',
+    name: 'Thai Orchid Street Food',
+    category: 'Thai',
+    badge: 'Pad Thai & Satay',
+    color: '#06d6a0',
+    usualOrders: [
+      { memberName: 'Dad', order: 'Beef Massaman Curry + Sticky Coconut Rice' },
+      { memberName: 'Mum', order: 'Prawn Pad Thai + Chicken Satay Skewers' },
+      { memberName: 'Alex', order: 'Sweet & Sour Pork with Jasmine Rice' },
+    ],
+  },
+];
+
+// Household Members for Voting and Door Duty
+export const INITIAL_MEMBERS: HouseholdMember[] = [
+  { id: 'm1', name: 'Dad', avatar: '👨‍🍳', vetoTokensRemaining: 3 },
+  { id: 'm2', name: 'Mum', avatar: '👩‍💼', vetoTokensRemaining: 2 },
+  { id: 'm3', name: 'Alex', avatar: '🧑‍💻', vetoTokensRemaining: 3 },
+  { id: 'm4', name: 'Maya', avatar: '👧', vetoTokensRemaining: 3 },
+];
+
+// Sample Pantry and Cupboard
+export const INITIAL_PANTRY: PantryItem[] = [
+  { id: 'p1', name: 'Mature Cheddar', category: 'Dairy & Eggs', freshness: 'red', quantity: '1/2 block', addedDate: '2026-10-10' }, // Use Next!
+  { id: 'p2', name: 'Courgettes', category: 'Produce', freshness: 'red', quantity: '2 items', addedDate: '2026-10-10' }, // Use Next!
+  { id: 'p3', name: 'Free-Range Chicken Thighs', category: 'Meat & Fish', freshness: 'red', quantity: '600g', addedDate: '2026-10-11' }, // Use Next!
+  { id: 'p4', name: 'Maris Piper Potatoes', category: 'Produce', freshness: 'amber', quantity: '1.5kg bag', addedDate: '2026-10-12' },
+  { id: 'p5', name: 'Semi-Skimmed Milk', category: 'Dairy & Eggs', freshness: 'amber', quantity: '2 pints', addedDate: '2026-10-12' },
+  { id: 'p6', name: 'Greek Style Yoghurt', category: 'Dairy & Eggs', freshness: 'green', quantity: '500g tub', addedDate: '2026-10-13' },
+  { id: 'p7', name: 'Scottish Salmon Fillets', category: 'Meat & Fish', freshness: 'green', quantity: '2 fillets', addedDate: '2026-10-14' },
+  { id: 'p8', name: 'Tenderstem Broccoli', category: 'Produce', freshness: 'green', quantity: '200g pack', addedDate: '2026-10-14' },
+];
+
+export const INITIAL_STAPLES = [
+  'Olive Oil',
+  'Vegetable Oil',
+  'Maldon Sea Salt',
+  'Black Peppercorns',
+  'Garlic Bulbs',
+  'Brown Onions',
+  'Plain White Flour',
+  'Tinned Chopped Tomatoes',
+  'Basmati Rice',
+  'Dried Pasta (Rigatoni & Spaghetti)',
+  'Worcestershire Sauce',
+  'English Mustard',
+  'Butter',
+  'Beef & Chicken Stock Cubes',
+];
+
+export const INITIAL_LIKED_INGREDIENTS = [
+  'Garlic',
+  'Mature Cheddar',
+  'Scottish Salmon',
+  'Crispy Roasties',
+  'Chipotle',
+  'Basmati Rice',
+  'Tenderstem Broccoli',
+];
+
+export const INITIAL_BANNED_INGREDIENTS = [
+  'Raw Celery',
+  'Tinned Tuna',
+  'Brussels Sprouts',
+];
+
+export const INITIAL_USER_PROFILE: UserProfile = {
+  id: 'usr_uk_master',
+  name: 'Head Chef',
+  email: 'headpark@gmail.com',
+  avatarUrl: 'https://api.dicebear.com/7.x/bottts/svg?seed=dinner-spinner-chef&backgroundColor=e76f51',
+  provider: 'google',
+  cloudSyncEnabled: true,
+  lastSyncedAt: '', // never saved to the server yet
+};

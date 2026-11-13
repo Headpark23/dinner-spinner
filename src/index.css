@@ -1,0 +1,224 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------
+   Design tokens (see DESIGN.md). Light is the default; dark follows the OS.
+   ------------------------------------------------------------------ */
+:root {
+  --paper: #f4efe6;
+  --card: #fffcf6;
+  --sunk: #ece5d8;
+  --ink: #1f1a15;
+  --ink-2: #5c5249;
+  --ink-3: #7a6f64;
+  --line: #e3d9c8;
+  --line-strong: #cfc2ad;
+  --tomato: #b93a26;
+  --tomato-hover: #9e2f1d;
+  --tomato-soft: #f6e1da;
+  --sage: #3d6a4c;
+  --sage-soft: #e1ebe2;
+  --saffron: #9a6510;
+  --saffron-soft: #f5e8cf;
+  --enamel: #1a1612;
+  --enamel-2: #241f1a;
+  --brass: #c7a15a;
+  --on-enamel: #f3ead9;
+  --on-enamel-2: #a99b86;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #13110f;
+    --card: #1c1915;
+    --sunk: #171410;
+    --ink: #f2ece2;
+    --ink-2: #b7ac9f;
+    --ink-3: #93887b;
+    --line: #2f2a24;
+    --line-strong: #40392f;
+    --tomato: #e2604a;
+    --tomato-hover: #ec7560;
+    --tomato-soft: #3a1d17;
+    --sage: #7fb394;
+    --sage-soft: #1b2a20;
+    --saffron: #e0a94a;
+    --saffron-soft: #33260f;
+    --enamel: #0c0a08;
+    --enamel-2: #171310;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-card: var(--card);
+  --color-sunk: var(--sunk);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-tomato: var(--tomato);
+  --color-tomato-hover: var(--tomato-hover);
+  --color-tomato-soft: var(--tomato-soft);
+  --color-sage: var(--sage);
+  --color-sage-soft: var(--sage-soft);
+  --color-saffron: var(--saffron);
+  --color-saffron-soft: var(--saffron-soft);
+  --color-enamel: var(--enamel);
+  --color-enamel-2: var(--enamel-2);
+  --color-brass: var(--brass);
+  --color-on-enamel: var(--on-enamel);
+  --color-on-enamel-2: var(--on-enamel-2);
+
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+html {
+  background: var(--paper);
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+.font-display {
+  font-optical-sizing: auto;
+  letter-spacing: -0.01em;
+}
+
+@layer utilities {
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .pb-safe {
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+  }
+}
+
+/* The reel window: the one deliberately "physical" surface in the product. */
+.reel-window {
+  background: linear-gradient(180deg, var(--enamel-2) 0%, var(--enamel) 45%, var(--enamel) 55%, var(--enamel-2) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 18px 24px -12px rgba(0, 0, 0, 0.7),
+    inset 0 -18px 24px -12px rgba(0, 0, 0, 0.7);
+}
+
+.reel-fade::before,
+.reel-fade::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 34%;
+  pointer-events: none;
+  z-index: 2;
+}
+.reel-fade::before {
+  top: 0;
+  background: linear-gradient(180deg, var(--enamel) 10%, transparent);
+}
+.reel-fade::after {
+  bottom: 0;
+  background: linear-gradient(0deg, var(--enamel) 10%, transparent);
+}
+
+@keyframes reel-roll {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-50%);
+  }
+}
+.reel-rolling {
+  animation: reel-roll 0.32s linear infinite;
+  filter: blur(1.2px);
+}
+
+@keyframes reel-settle {
+  0% {
+    transform: translateY(-14px);
+  }
+  60% {
+    transform: translateY(4px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+.reel-settle {
+  animation: reel-settle 380ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.fade-up {
+  animation: fade-up 260ms ease-out both;
+}
+
+/* Keyboard focus: visible, on-brand, never on mouse click. */
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--tomato);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+::selection {
+  background: var(--tomato-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reel-rolling {
+    filter: none;
+  }
+}
