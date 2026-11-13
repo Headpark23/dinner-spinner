@@ -501,9 +501,7 @@ async function startServer() {
 export const shouldStartStandaloneServer = (environment: NodeJS.ProcessEnv = process.env) =>
   environment.NODE_ENV !== 'test' && !environment.VERCEL;
 
-if (process.env.VERCEL) {
-  mountProductionFrontend();
-} else if (shouldStartStandaloneServer()) {
+if (shouldStartStandaloneServer()) {
   startServer().catch((err) => {
     console.error('Server startup error:', err);
   });

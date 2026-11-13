@@ -2,9 +2,14 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npm run build",
   "installCommand": "npm install --legacy-peer-deps",
+  "outputDirectory": "dist",
   "functions": {
-    "server.ts": {
-      "includeFiles": "dist/**"
+    "api/[...path].ts": {}
+  },
+  "rewrites": [
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
     }
-  }
+  ]
 }
