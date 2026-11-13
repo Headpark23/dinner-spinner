@@ -8,6 +8,15 @@ test('exports the tested Express app as the Vercel handler', async () => {
   assert.equal(serverModule.default, serverModule.app);
 });
 
+test('resolves the Vercel entrypoint through a Node-compatible ESM import', async () => {
+  const [serverModule, vercelModule] = await Promise.all([
+    import('../../server.js'),
+    import('../../api/[...path].js'),
+  ]);
+
+  assert.equal(vercelModule.default, serverModule.app);
+});
+
 test('never opens a standalone listener inside Vercel', async () => {
   const serverModule = await import('../../server');
   assert.equal(typeof serverModule.shouldStartStandaloneServer, 'function');
