@@ -1,51 +1,59 @@
 @import "tailwindcss";
 
 /* ------------------------------------------------------------------
-   Design tokens (see DESIGN.md). Light is the default; dark follows the OS.
+   Modern British kitchen heirloom: porcelain, enamel, oxblood and brass.
+   Light is the default; dark follows the OS.
    ------------------------------------------------------------------ */
 :root {
-  --paper: #f4efe6;
-  --card: #fffcf6;
-  --sunk: #ece5d8;
-  --ink: #1f1a15;
-  --ink-2: #5c5249;
-  --ink-3: #7a6f64;
-  --line: #e3d9c8;
-  --line-strong: #cfc2ad;
-  --tomato: #b93a26;
-  --tomato-hover: #9e2f1d;
-  --tomato-soft: #f6e1da;
-  --sage: #3d6a4c;
-  --sage-soft: #e1ebe2;
-  --saffron: #9a6510;
-  --saffron-soft: #f5e8cf;
-  --enamel: #1a1612;
-  --enamel-2: #241f1a;
-  --brass: #c7a15a;
-  --on-enamel: #f3ead9;
-  --on-enamel-2: #a99b86;
+  --paper: #f5f2eb;
+  --card: #fffdf8;
+  --sunk: #ebe7de;
+  --ink: #1d2420;
+  --ink-2: #53605a;
+  --ink-3: #748078;
+  --line: #ded8cc;
+  --line-strong: #c6beb0;
+  --tomato: #8f2f3b;
+  --tomato-hover: #74242f;
+  --tomato-soft: #f4e3e5;
+  --sage: #466354;
+  --sage-soft: #e5ece7;
+  --saffron: #996b23;
+  --saffron-soft: #f3ead7;
+  --enamel: #10241d;
+  --enamel-2: #173129;
+  --brass: #c3a15d;
+  --on-enamel: #f6f1e6;
+  --on-enamel-2: #b7c4bb;
+  --shadow-soft: 0 16px 45px -34px rgba(18, 38, 31, 0.52);
+  --shadow-lift: 0 24px 70px -40px rgba(18, 38, 31, 0.62);
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #13110f;
-    --card: #1c1915;
-    --sunk: #171410;
-    --ink: #f2ece2;
-    --ink-2: #b7ac9f;
-    --ink-3: #93887b;
-    --line: #2f2a24;
-    --line-strong: #40392f;
-    --tomato: #e2604a;
-    --tomato-hover: #ec7560;
-    --tomato-soft: #3a1d17;
-    --sage: #7fb394;
-    --sage-soft: #1b2a20;
-    --saffron: #e0a94a;
-    --saffron-soft: #33260f;
-    --enamel: #0c0a08;
-    --enamel-2: #171310;
+    --paper: #111713;
+    --card: #18201b;
+    --sunk: #0d130f;
+    --ink: #f5f1e8;
+    --ink-2: #bdc7c0;
+    --ink-3: #8d9a92;
+    --line: #2a382f;
+    --line-strong: #3a4b41;
+    --tomato: #d67882;
+    --tomato-hover: #e58e97;
+    --tomato-soft: #351c22;
+    --sage: #89aa96;
+    --sage-soft: #1d2d24;
+    --saffron: #d6ad68;
+    --saffron-soft: #302817;
+    --enamel: #07110d;
+    --enamel-2: #0d1c16;
+    --brass: #d1b16f;
+    --on-enamel: #f4efe4;
+    --on-enamel-2: #a9b8ae;
+    --shadow-soft: 0 20px 52px -34px rgba(0, 0, 0, 0.82);
+    --shadow-lift: 0 30px 78px -42px rgba(0, 0, 0, 0.9);
     color-scheme: dark;
   }
 }
@@ -72,8 +80,8 @@
   --color-on-enamel: var(--on-enamel);
   --color-on-enamel-2: var(--on-enamel-2);
 
-  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
-  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Newsreader", Georgia, "Times New Roman", serif;
+  --font-sans: "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 html {
@@ -93,9 +101,16 @@ body {
   overflow-x: hidden;
 }
 
+button,
+input,
+select,
+textarea {
+  letter-spacing: -0.01em;
+}
+
 .font-display {
   font-optical-sizing: auto;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.025em;
 }
 
 @layer utilities {
@@ -121,7 +136,111 @@ body {
   }
 }
 
-/* The reel window: the one deliberately "physical" surface in the product. */
+/* App composition. These hooks keep layout styling out of feature logic. */
+.app-shell {
+  background:
+    radial-gradient(circle at 15% -8%, color-mix(in srgb, var(--brass) 12%, transparent) 0, transparent 28rem),
+    linear-gradient(180deg, color-mix(in srgb, var(--card) 38%, transparent), transparent 32rem),
+    var(--paper);
+}
+
+.cabinet-shell {
+  position: relative;
+  isolation: isolate;
+  background: color-mix(in srgb, var(--paper) 96%, transparent);
+}
+
+.view-stage {
+  position: relative;
+}
+
+.tonight-rail {
+  color: var(--ink);
+}
+
+.machine-intro {
+  position: relative;
+  padding-left: 0.1rem;
+}
+
+.machine-intro::after {
+  content: "";
+  display: block;
+  width: 2.6rem;
+  height: 1px;
+  margin-top: 0.7rem;
+  background: var(--brass);
+}
+
+.control-deck {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--card) 72%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 55%, transparent);
+}
+
+.reel-housing {
+  position: relative;
+  border: 1px solid color-mix(in srgb, var(--brass) 62%, var(--enamel));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--enamel-2) 88%, white) 0%, var(--enamel) 48%, var(--enamel-2) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.45),
+    0 28px 65px -34px rgba(7, 23, 17, 0.88);
+}
+
+.reel-housing::before {
+  content: "";
+  position: absolute;
+  inset: 0.45rem;
+  pointer-events: none;
+  border: 1px solid rgba(195, 161, 93, 0.18);
+  border-radius: 1rem;
+}
+
+.spin-result {
+  box-shadow: var(--shadow-lift);
+}
+
+.spin-result img {
+  filter: saturate(0.92) contrast(1.03);
+}
+
+.app-nav {
+  box-shadow: 0 -18px 38px -34px rgba(17, 36, 29, 0.7);
+}
+
+.ui-card {
+  box-shadow: var(--shadow-soft);
+}
+
+.ui-button {
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 28%, transparent);
+}
+
+.ui-button-primary {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 12px 26px -18px color-mix(in srgb, var(--tomato) 82%, black);
+}
+
+.ui-field {
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--ink) 5%, transparent);
+}
+
+.ui-sheet {
+  box-shadow: 0 40px 90px -38px rgba(4, 13, 9, 0.72);
+}
+
+.ui-dish-tile {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, white 24%, transparent);
+}
+
+/* The reel window: the one deliberately physical surface in the product. */
 .reel-window {
   background: linear-gradient(180deg, var(--enamel-2) 0%, var(--enamel) 45%, var(--enamel) 55%, var(--enamel-2) 100%);
   box-shadow:
@@ -193,8 +312,8 @@ body {
 
 /* Keyboard focus: visible, on-brand, never on mouse click. */
 :where(button, a, input, select, textarea, [tabindex]):focus-visible {
-  outline: 2px solid var(--tomato);
-  outline-offset: 2px;
+  outline: 2px solid color-mix(in srgb, var(--tomato) 88%, white);
+  outline-offset: 3px;
   border-radius: 8px;
 }
 
@@ -207,6 +326,21 @@ textarea {
 
 ::selection {
   background: var(--tomato-soft);
+}
+
+@media (min-width: 1024px) {
+  .cabinet-shell {
+    margin-block: 1.25rem;
+    min-height: calc(100vh - 2.5rem);
+    border: 1px solid var(--line);
+    border-radius: 1.5rem;
+    box-shadow: var(--shadow-lift);
+    overflow: clip;
+  }
+
+  .tonight-rail > div {
+    padding-top: 2rem;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,7 +1,7 @@
 # Dinner Spinner: Design Direction
 
 ## The idea in one line
-**A well-made object in a warm kitchen.** The fruit machine stays as the product's signature, but it's rendered like a piece of real hardware: a dark enamel reel window with a brass payline and a proper lever, set into a calm, paper-warm interface that reads like a good cookbook rather than a casino.
+**A modern British kitchen heirloom.** The fruit machine stays as the product's signature, rendered like real bottle-green enamel hardware with an aged-brass payline and proper lever. It sits inside a calm porcelain interface that reads like an impeccably edited cookbook rather than a casino.
 
 ## What I learned from the category (and adjacent products)
 This is drawn from product knowledge rather than a fresh screenshot crawl in this pass.
@@ -18,22 +18,22 @@ Emoji used as icons, monospace uppercase on every label, amber glows and drop-sh
 ## Tokens
 | Role | Light | Dark |
 |---|---|---|
-| Paper (page) | `#F4EFE6` | `#13110F` |
-| Card | `#FFFCF6` | `#1C1915` |
-| Ink (text) | `#1F1A15` | `#F2ECE2` |
-| Ink 2 (secondary) | `#5C5249` | `#B7AC9F` |
-| Line | `#E3D9C8` | `#2F2A24` |
-| Tomato (the one accent, actions) | `#B93A26` | `#E2604A` |
-| Sage (fresh / have it / agreed) | `#3D6A4C` | `#7FB394` |
-| Saffron (eat soon) | `#9A6510` | `#E0A94A` |
-| Enamel (reel window) | `#1A1612` | `#0C0A08` |
-| Brass (machine details) | `#C7A15A` | `#C7A15A` |
+| Porcelain (page) | `#F5F2EB` | `#111713` |
+| Card | `#FFFDF8` | `#18201B` |
+| Carbon ink (text) | `#1D2420` | `#F5F1E8` |
+| Ink 2 (secondary) | `#53605A` | `#BDC7C0` |
+| Line | `#DED8CC` | `#2A382F` |
+| Oxblood (the one accent, actions) | `#8F2F3B` | `#D67882` |
+| Sage (fresh / have it / agreed) | `#466354` | `#89AA96` |
+| Amber (eat soon) | `#996B23` | `#D6AD68` |
+| Bottle-green enamel (reel window) | `#10241D` | `#07110D` |
+| Aged brass (machine details) | `#C3A15D` | `#D1B16F` |
 
-Status colours are semantic only: tomato for "use next" and destructive actions, saffron for "soon", sage for "fresh" and success.
+Status colours are semantic only: oxblood for "use next" and destructive actions, amber for "soon", sage for "fresh" and success. The legacy token names remain in code so the redesign cannot disturb feature call sites.
 
 ## Type
-- **Fraunces** (variable serif, OFL) for display: screen titles, meal names, the reel.
-- **Instrument Sans** (OFL) for all UI text, with tabular numerals for times and counts.
+- **Newsreader** (variable serif, OFL) for display: screen titles, meal names and the reel.
+- **Manrope** (OFL) for all UI text, with tabular numerals for times and counts.
 - Scale: 30 / 22 / 17 / 15 / 13 / 12. Uppercase is only used for tiny section eyebrows, tracked +0.08em.
 
 ## Layout

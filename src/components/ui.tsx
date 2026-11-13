@@ -9,18 +9,18 @@ type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger' | 'success';
 type ButtonSize = 'sm' | 'md' | 'lg';
 
 const variantClass: Record<ButtonVariant, string> = {
-  primary: 'bg-tomato text-white hover:bg-tomato-hover disabled:bg-line-strong disabled:text-ink-3',
+  primary: 'ui-button-primary bg-tomato text-white hover:bg-tomato-hover disabled:bg-line-strong disabled:text-ink-3',
   secondary:
-    'bg-card text-ink border border-line hover:border-line-strong disabled:text-ink-3 disabled:hover:border-line',
+    'bg-card text-ink border border-line hover:border-line-strong hover:bg-sunk/45 disabled:text-ink-3 disabled:hover:border-line',
   quiet: 'text-ink-2 hover:text-ink hover:bg-sunk disabled:text-ink-3 disabled:hover:bg-transparent',
   danger: 'bg-card text-tomato border border-line hover:border-tomato disabled:text-ink-3',
   success: 'bg-sage text-white hover:opacity-90 disabled:opacity-50',
 };
 
 const sizeClass: Record<ButtonSize, string> = {
-  sm: 'h-9 px-3 text-[13px] gap-1.5 rounded-lg',
-  md: 'h-11 px-4 text-[15px] gap-2 rounded-xl',
-  lg: 'h-14 px-5 text-[17px] gap-2.5 rounded-2xl',
+  sm: 'h-9 px-3 text-[13px] gap-1.5 rounded-[10px]',
+  md: 'h-11 px-4 text-[14px] gap-2 rounded-[12px]',
+  lg: 'h-14 px-5 text-[16px] gap-2.5 rounded-[14px]',
 };
 
 export const Button: React.FC<
@@ -34,7 +34,7 @@ export const Button: React.FC<
     type="button"
     {...rest}
     className={cx(
-      'inline-flex items-center justify-center font-semibold transition-colors duration-150 select-none disabled:cursor-not-allowed active:translate-y-px',
+      'ui-button inline-flex items-center justify-center font-semibold transition-[color,background-color,border-color,transform] duration-150 select-none disabled:cursor-not-allowed active:translate-y-px',
       variantClass[variant],
       sizeClass[size],
       block && 'w-full',
@@ -54,7 +54,7 @@ export const IconButton: React.FC<
     title={label}
     {...rest}
     className={cx(
-      'inline-flex h-10 w-10 items-center justify-center rounded-xl transition-colors',
+      'ui-icon-button inline-flex h-10 w-10 items-center justify-center rounded-[11px] transition-colors',
       active ? 'text-tomato bg-tomato-soft' : 'text-ink-2 hover:text-ink hover:bg-sunk',
       className
     )}
@@ -71,7 +71,7 @@ export const Card: React.FC<React.HTMLAttributes<HTMLDivElement> & { as?: 'div' 
 }) => {
   const Tag = as;
   return (
-    <Tag {...rest} className={cx('rounded-2xl border border-line bg-card', className)}>
+    <Tag {...rest} className={cx('ui-card rounded-[18px] border border-line bg-card', className)}>
       {children}
     </Tag>
   );
@@ -112,7 +112,7 @@ export function Segmented<T extends string>({
     <div
       role="radiogroup"
       aria-label={label}
-      className={cx('grid gap-1 rounded-xl bg-sunk p-1', className)}
+      className={cx('ui-segmented grid gap-1 rounded-[13px] border border-line/60 bg-sunk p-1', className)}
       style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
     >
       {options.map((opt) => {
@@ -126,10 +126,10 @@ export function Segmented<T extends string>({
             title={opt.hint}
             onClick={() => onChange(opt.value)}
             className={cx(
-              'rounded-lg font-semibold transition-colors duration-150 leading-tight',
+              'rounded-[9px] font-semibold transition-colors duration-150 leading-tight',
               size === 'sm' ? 'min-h-8 px-2 text-[12px]' : 'min-h-10 px-2 text-[13px]',
               selected
-                ? 'bg-card text-ink shadow-[0_1px_2px_rgba(31,26,21,0.12)]'
+                ? 'bg-card text-ink shadow-[0_2px_8px_-5px_rgba(18,38,31,0.5)]'
                 : 'text-ink-2 hover:text-ink'
             )}
           >
@@ -160,7 +160,7 @@ export const Switch: React.FC<{
       aria-checked={checked}
       onClick={() => onChange(!checked)}
       className={cx(
-        'relative h-7 w-12 shrink-0 rounded-full transition-colors duration-150',
+        'ui-switch relative h-7 w-12 shrink-0 rounded-full transition-colors duration-150',
         checked ? 'bg-sage' : 'bg-line-strong'
       )}
     >
@@ -254,7 +254,7 @@ export const TextInput = React.forwardRef<HTMLInputElement, React.InputHTMLAttri
       ref={ref}
       {...rest}
       className={cx(
-        'h-11 w-full rounded-xl border border-line bg-card px-3.5 text-[15px] text-ink placeholder:text-ink-3 focus:border-ink-2 focus:outline-none',
+        'ui-field h-11 w-full rounded-[12px] border border-line bg-card px-3.5 text-[15px] text-ink placeholder:text-ink-3 focus:border-ink-2 focus:outline-none',
         className
       )}
     />
@@ -270,7 +270,7 @@ export const Select: React.FC<React.SelectHTMLAttributes<HTMLSelectElement>> = (
   <select
     {...rest}
     className={cx(
-      'h-11 rounded-xl border border-line bg-card px-3 text-[15px] text-ink focus:border-ink-2 focus:outline-none',
+      'ui-field h-11 rounded-[12px] border border-line bg-card px-3 text-[15px] text-ink focus:border-ink-2 focus:outline-none',
       className
     )}
   >
@@ -319,7 +319,7 @@ export const Sheet: React.FC<{
         aria-modal="true"
         aria-labelledby={labelledBy}
         tabIndex={-1}
-        className="fade-up relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-paper p-5 pb-8 outline-none sm:rounded-3xl sm:pb-5"
+        className="ui-sheet fade-up relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-[26px] border border-line bg-paper p-5 pb-8 outline-none sm:rounded-[26px] sm:pb-5"
       >
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
@@ -364,13 +364,13 @@ export const DishTile: React.FC<{ cuisine?: string; imageUrl?: string; size?: nu
       width={size}
       height={size}
       loading="lazy"
-      className={cx('shrink-0 rounded-xl object-cover', className)}
+      className={cx('ui-dish-tile shrink-0 rounded-[12px] object-cover', className)}
       style={{ width: size, height: size }}
     />
   ) : (
     <span
       aria-hidden="true"
-      className={cx('inline-flex shrink-0 items-center justify-center rounded-xl font-display font-semibold text-white', className)}
+      className={cx('ui-dish-tile inline-flex shrink-0 items-center justify-center rounded-[12px] font-display font-semibold text-white', className)}
       style={{ width: size, height: size, background: cuisineColor(cuisine), fontSize: size * 0.42 }}
     >
       {(cuisine || '?').charAt(0)}
