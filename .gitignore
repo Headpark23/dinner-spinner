@@ -10,3 +10,4 @@ coverage/
 .cloud-sync-cache.json
 .antigravity/
 .shopping-list.json
+.worktrees/
