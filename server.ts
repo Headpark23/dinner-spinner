@@ -4,6 +4,8 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
+import { applyShoppingOp } from './src/utils/shopping';
+import type { ShoppingItem } from './src/types';
 
 dotenv.config();
 
@@ -120,6 +122,42 @@ app.get('/api/sync/cloud', (_req, res) => {
     syncId: cloudSyncStore.syncId,
     data: cloudSyncStore.data,
   });
+});
+
+// ---------------------------------------------------------------------------
+// Shared household shopping list. Everyone using this server sees one list, so
+// whoever is at the shop can tick items off and the rest of the family sees it.
+// Clients send small operations; the server applies them in order and bumps a
+// version number that clients poll.
+// ---------------------------------------------------------------------------
+const SHOPPING_PATH = process.env.NODE_ENV === 'test' ? null : path.resolve(__dirname, '.shopping-list.json');
+
+let shopping: { version: number; items: ShoppingItem[] } = { version: 0, items: [] };
+try {
+  if (SHOPPING_PATH && fs.existsSync(SHOPPING_PATH)) {
+    shopping = JSON.parse(fs.readFileSync(SHOPPING_PATH, 'utf-8'));
+  }
+} catch {
+  shopping = { version: 0, items: [] };
+}
+
+app.get('/api/shopping', (_req, res) => {
+  res.json(shopping);
+});
+
+app.post('/api/shopping/ops', (req, res) => {
+  const ops = Array.isArray(req.body?.ops) ? req.body.ops.slice(0, 200) : [];
+  if (ops.length === 0) return res.status(400).json({ error: 'No operations' });
+  shopping.items = ops.reduce(applyShoppingOp, shopping.items);
+  shopping.version += 1;
+  if (SHOPPING_PATH) {
+    try {
+      fs.writeFileSync(SHOPPING_PATH, JSON.stringify(shopping, null, 2), 'utf-8');
+    } catch {
+      // Read-only filesystem: the list still lives in memory.
+    }
+  }
+  res.json(shopping);
 });
 
 // Live model calls must never leave the UI hanging: give up after GEMINI_TIMEOUT_MS

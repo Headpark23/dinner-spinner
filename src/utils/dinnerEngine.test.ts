@@ -211,3 +211,66 @@ test('React UI Component Suite: renders all 5 Cabinet Views and Modals cleanly w
   }
 });
 
+
+test('World Kitchen: 100+ unique, well-formed recipes with timed steps', async () => {
+  const { WORLD_RECIPES } = await import('../data/worldRecipes');
+  assert.ok(WORLD_RECIPES.length >= 100);
+  assert.equal(new Set(WORLD_RECIPES.map((r) => r.id)).size, WORLD_RECIPES.length);
+  for (const r of WORLD_RECIPES) {
+    assert.ok(['20m', '30m', '60m', 'all-day'].includes(r.timeStake), r.id);
+    assert.ok(['one-pot', 'standard', 'chef-mode'].includes(r.effort), r.id);
+    assert.ok(r.ingredients.length >= 3, r.id);
+    assert.ok(r.prepSteps.every((s) => /\(-\d+m\)$/.test(s)), `${r.id} steps need timings`);
+    assert.ok(r.prepSteps[r.prepSteps.length - 1].endsWith('(-0m)'), `${r.id} should end at serving`);
+  }
+});
+
+test('Tweaks: extra ingredients count for stock and extra steps slot into the timeline', async () => {
+  const { withTweaks } = await import('./dinnerEngine');
+  const meal = {
+    ...INITIAL_MEALS[0],
+    tweaks: { extraIngredients: ['Anchovies'], extraSteps: [{ text: 'Toast breadcrumbs', minutesBefore: 9 }] },
+  };
+  const eff = withTweaks(meal);
+  assert.ok(eff.ingredients.includes('Anchovies'));
+  assert.equal(INITIAL_MEALS[0].ingredients.includes('Anchovies'), false, 'original recipe untouched');
+  const steps = buildReverseTimerSteps('18:30', meal);
+  const offsets = steps.map((s) => s.minuteOffset);
+  assert.deepEqual(offsets, [...offsets].sort((a, b) => b - a), 'timeline stays in time order');
+  assert.ok(steps.some((s) => s.label === 'Toast breadcrumbs' && s.timeString === '18:21'));
+});
+
+test('Shopping list ops: add dedupes, ticks record who, clear removes ticked', async () => {
+  const { applyShoppingOp } = await import('./shopping');
+  let items = applyShoppingOp([], { type: 'add', item: { id: 'a', name: 'Limes', forMeal: 'Pad Thai' } });
+  items = applyShoppingOp(items, { type: 'add', item: { id: 'b', name: 'limes' } });
+  assert.equal(items.length, 1, 'no duplicate while still to buy');
+  items = applyShoppingOp(items, { type: 'toggle', id: 'a', by: 'Mum' });
+  assert.equal(items[0].checked, true);
+  assert.equal(items[0].checkedBy, 'Mum');
+  items = applyShoppingOp(items, { type: 'add', item: { id: 'c', name: 'Rice Noodles' } });
+  items = applyShoppingOp(items, { type: 'removeByName', name: 'rice noodles' });
+  assert.equal(items.length, 1);
+  items = applyShoppingOp(items, { type: 'clearChecked' });
+  assert.equal(items.length, 0);
+});
+
+test('Server: shared shopping list round trip', async () => {
+  const { app } = await import('../../server');
+  const server = http.createServer(app);
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address() as { port: number };
+  try {
+    const post = await fetch(`http://127.0.0.1:${port}/api/shopping/ops`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ops: [{ type: 'add', item: { id: 'x1', name: 'Saffron' } }, { type: 'toggle', id: 'x1', by: 'Dad' }] }),
+    });
+    const json = await post.json();
+    assert.equal(json.items.find((i: any) => i.id === 'x1').checkedBy, 'Dad');
+    const get = await (await fetch(`http://127.0.0.1:${port}/api/shopping`)).json();
+    assert.equal(get.version, json.version);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});

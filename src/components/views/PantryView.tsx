@@ -21,6 +21,9 @@ import {
   LoaderCircle,
 } from 'lucide-react';
 import { FreshnessLevel, Meal, TimeStake, EffortLevel } from '../../types';
+import { RecipeSheet } from '../RecipeSheet';
+import { photoFor } from '../../data/photos';
+import { INITIAL_MEALS } from '../../data/initialData';
 import {
   Button,
   Card,
@@ -31,6 +34,7 @@ import {
   Notice,
   Select,
   TextInput,
+  Segmented,
   cx,
   freshnessLabel,
   timeLabel,
@@ -73,8 +77,27 @@ export const PantryView: React.FC = () => {
     sendToVote,
     setActiveView,
     getMealPantryMatch,
-    agreedMeal,
+    worldRecipes,
+    rejectedMealIds,
+    restoreRejected,
+    shoppingList,
+    shoppingOnline,
+    householdMembers,
+    meId,
+    setMeId,
+    addShoppingItems,
+    toggleShoppingItem,
+    removeShoppingItem,
+    clearCheckedShopping,
   } = useDinner();
+
+  const [recipeScope, setRecipeScope] = useState<'ours' | 'world'>('ours');
+  const [worldCuisine, setWorldCuisine] = useState('all');
+  const [sheetMeal, setSheetMeal] = useState<Meal | null>(null);
+  const [newShopName, setNewShopName] = useState('');
+  const toBuy = shoppingList.filter((i) => !i.checked);
+  const gotIt = shoppingList.filter((i) => i.checked);
+  const worldCuisines = Array.from(new Set(worldRecipes.map((r) => r.cuisine))).sort();
 
   const [activeTab, setActiveTab] = useState<Tab>(readInitialTab);
 
@@ -92,13 +115,6 @@ export const PantryView: React.FC = () => {
   const [newStapleName, setNewStapleName] = useState('');
   const [newBannedName, setNewBannedName] = useState('');
 
-  // Shopping
-  const defaultChecklistMeal =
-    (agreedMeal && meals.find((m) => m.id === agreedMeal.id)?.id) ||
-    (activeMealResult && meals.find((m) => m.id === activeMealResult.id)?.id) ||
-    meals[0]?.id ||
-    '';
-  const [checklistMealId, setChecklistMealId] = useState<string>(defaultChecklistMeal);
   const [copiedShopping, setCopiedShopping] = useState(false);
 
   // Vault
@@ -209,17 +225,20 @@ export const PantryView: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
-  // Shopping diff
-  const selectedMeal = meals.find((m) => m.id === checklistMealId) || meals[0];
-  const ingredientChecklist = selectedMeal
-    ? (() => {
-        const match = getMealPantryMatch(selectedMeal);
-        return selectedMeal.ingredients.map((name) => ({ name, inStock: !match.missingItems.includes(name) }));
-      })()
-    : [];
-  const missingItemsList = ingredientChecklist.filter((i) => !i.inStock);
-
   const redCount = pantry.filter((p) => p.freshness === 'red').length;
+
+  const filteredWorld = worldRecipes.filter((r) => {
+    if (worldCuisine !== 'all' && r.cuisine !== worldCuisine) return false;
+    if (rejectedMealIds.includes(r.id)) return false;
+    const q = vaultSearch.trim().toLowerCase();
+    return (
+      !q ||
+      r.title.toLowerCase().includes(q) ||
+      r.cuisine.toLowerCase().includes(q) ||
+      (r.origin || '').toLowerCase().includes(q) ||
+      r.ingredients.some((i) => i.toLowerCase().includes(q))
+    );
+  });
 
   const filteredVaultMeals = meals.filter((meal) => {
     const q = vaultSearch.trim().toLowerCase();
@@ -253,6 +272,7 @@ export const PantryView: React.FC = () => {
           ? stepList
           : ['Prep and chop everything (-20m)', 'Cook the main (-12m)', 'Finish the sauce and season (-4m)', 'Serve (-0m)'],
       tags: ['Family recipe', customCuisine],
+      source: 'own',
     });
     flash(`Saved “${customTitle.trim()}” to your recipes.`);
     setCustomTitle('');
@@ -265,7 +285,7 @@ export const PantryView: React.FC = () => {
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: 'fridge', label: 'Fridge', count: pantry.length },
     { id: 'vault', label: 'Recipes', count: meals.length },
-    { id: 'missing', label: 'Shopping' },
+    { id: 'missing', label: 'Shopping', count: toBuy.length || undefined },
     { id: 'camera', label: 'Scan' },
     { id: 'staples', label: 'Staples' },
     { id: 'banned', label: 'Avoid' },
@@ -434,241 +454,319 @@ export const PantryView: React.FC = () => {
         {/* RECIPES */}
         {activeTab === 'vault' && (
           <>
+            <Segmented<'ours' | 'world'>
+              label="Recipe collection"
+              value={recipeScope}
+              onChange={setRecipeScope}
+              options={[
+                { value: 'ours', label: `Our recipes · ${meals.length}` },
+                { value: 'world', label: `World kitchen · ${worldRecipes.length}` },
+              ]}
+            />
             <div className="relative">
               <Search className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-ink-3" />
               <TextInput
                 type="search"
                 value={vaultSearch}
                 onChange={(e) => setVaultSearch(e.target.value)}
-                placeholder="Search dishes or ingredients"
+                placeholder={recipeScope === 'world' ? 'Search 46 cuisines' : 'Search dishes or ingredients'}
                 aria-label="Search recipes"
                 className="pl-10"
               />
             </div>
-            <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 scrollbar-none" role="radiogroup" aria-label="Filter recipes">
-              {(
-                [
-                  ['all', 'All'],
-                  ['favorites', 'Favourites'],
-                  ['5star', 'Five-star'],
-                  ['20m', '20 min'],
-                  ['clearout', 'Uses up fridge'],
-                ] as const
-              ).map(([id, label]) => (
-                <button
-                  key={id}
-                  role="radio"
-                  aria-checked={vaultFilter === id}
-                  onClick={() => setVaultFilter(id)}
-                  className={cx(
-                    'h-8 shrink-0 rounded-full border px-3 text-[13px] font-medium transition-colors',
-                    vaultFilter === id ? 'border-ink bg-ink text-paper' : 'border-line text-ink-2 hover:border-line-strong'
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
 
-            {filteredVaultMeals.length === 0 ? (
-              <p className="py-8 text-center text-[14px] text-ink-2">No recipes match. Try another filter.</p>
+            {recipeScope === 'ours' ? (
+              <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 scrollbar-none" role="radiogroup" aria-label="Filter recipes">
+                {(
+                  [
+                    ['all', 'All'],
+                    ['favorites', 'Favourites'],
+                    ['5star', 'Five-star'],
+                    ['20m', '20 min'],
+                    ['clearout', 'Uses up fridge'],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    role="radio"
+                    aria-checked={vaultFilter === id}
+                    onClick={() => setVaultFilter(id)}
+                    className={cx(
+                      'h-8 shrink-0 rounded-full border px-3 text-[13px] font-medium transition-colors',
+                      vaultFilter === id ? 'border-ink bg-ink text-paper' : 'border-line text-ink-2 hover:border-line-strong'
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <Select value={worldCuisine} onChange={(e) => setWorldCuisine(e.target.value)} aria-label="Cuisine" className="w-full">
+                <option value="all">Every cuisine</option>
+                {worldCuisines.map((c) => (
+                  <option key={c}>{c}</option>
+                ))}
+              </Select>
+            )}
+
+            {(recipeScope === 'ours' ? filteredVaultMeals : filteredWorld).length === 0 ? (
+              <p className="py-8 text-center text-[14px] text-ink-2">Nothing matches. Try another search.</p>
             ) : (
               <ul className="space-y-2">
-                {filteredVaultMeals.map((meal) => {
+                {(recipeScope === 'ours' ? filteredVaultMeals : filteredWorld).map((meal) => {
                   const match = getMealPantryMatch(meal);
+                  const added = recipeScope === 'world' && meals.some((m) => m.id === meal.id);
                   return (
                     <li key={meal.id}>
-                      <Card as="div" className="p-3">
-                        <div className="flex items-start gap-3">
-                          <DishTile cuisine={meal.cuisine} imageUrl={meal.imageUrl} size={44} />
-                          <div className="min-w-0 flex-1">
-                            <h3 className="font-display text-[17px] leading-snug font-semibold">{meal.title}</h3>
-                            <p className="mt-0.5 text-[12px] text-ink-2">
-                              {timeLabel(meal.timeStake)} · {effortLabel(meal.effort)} · have {match.matchedCount}/{match.totalCount}
-                              {meal.rating === 5 && (
-                                <span className="ml-1 inline-flex items-center gap-0.5 text-saffron">
-                                  · <Star className="h-3 w-3 fill-current" aria-label="five stars" />
-                                </span>
-                              )}
-                            </p>
-                            {match.redMatchedItems.length > 0 && (
-                              <Chip tone="tomato" className="mt-1.5">
-                                Uses up {match.redMatchedItems.join(', ')}
-                              </Chip>
-                            )}
-                          </div>
-                          <IconButton
-                            label={meal.isFavorite ? `Unfavourite ${meal.title}` : `Favourite ${meal.title}`}
-                            active={meal.isFavorite}
-                            onClick={() => toggleFavoriteMeal(meal.id)}
-                            className="-mt-1 -mr-1"
-                          >
-                            <Heart className={cx('h-4 w-4', meal.isFavorite && 'fill-current')} />
-                          </IconButton>
-                        </div>
-                        <div className="mt-2 flex items-center gap-1 border-t border-line pt-2">
-                          <Button
-                            variant="quiet"
-                            size="sm"
-                            onClick={() => {
-                              setActiveMealResult(meal);
-                              setActiveView(0);
-                            }}
-                          >
-                            <Dices className="h-4 w-4" /> Put on the reel
-                          </Button>
-                          <Button variant="quiet" size="sm" onClick={() => sendToVote(meal)}>
-                            <Send className="h-4 w-4" /> Propose
-                          </Button>
-                          {meals.length > 1 && (
-                            <IconButton
-                              label={`Delete ${meal.title}`}
-                              className="ml-auto"
-                              onClick={() => {
-                                if (window.confirm(`Delete “${meal.title}” from your recipes? This can’t be undone.`)) {
-                                  deleteMeal(meal.id);
-                                }
-                              }}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </IconButton>
+                      <button
+                        onClick={() => setSheetMeal(meal)}
+                        className="flex w-full items-center gap-3 rounded-2xl border border-line bg-card p-2.5 text-left transition-colors hover:border-line-strong"
+                      >
+                        <DishTile cuisine={meal.cuisine} imageUrl={meal.imageUrl || photoFor(meal.id)} size={56} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-display text-[16px] leading-snug font-semibold">{meal.title}</span>
+                          <span className="mt-0.5 block text-[12px] text-ink-2">
+                            {recipeScope === 'world' ? `${meal.origin} · ` : ''}
+                            {timeLabel(meal.timeStake)} · have {match.matchedCount}/{match.totalCount}
+                            {meal.rating === 5 && ' · ★ five-star'}
+                            {meal.tweaks && (meal.tweaks.extraIngredients.length + meal.tweaks.extraSteps.length > 0) && ' · tweaked'}
+                          </span>
+                          {recipeScope === 'ours' && match.redMatchedItems.length > 0 && (
+                            <Chip tone="tomato" className="mt-1">
+                              Uses up {match.redMatchedItems.join(', ')}
+                            </Chip>
                           )}
-                        </div>
-                      </Card>
+                        </span>
+                        {added && <Chip tone="sage">Added</Chip>}
+                        {recipeScope === 'ours' && meal.isFavorite && <Heart className="h-4 w-4 shrink-0 fill-tomato text-tomato" aria-label="Favourite" />}
+                      </button>
                     </li>
                   );
                 })}
               </ul>
             )}
 
-            <div className="border-t border-line pt-3">
-              <button
-                onClick={() => setShowAddRecipe((v) => !v)}
-                aria-expanded={showAddRecipe}
-                className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-ink-2 hover:text-ink"
-              >
-                <Plus className="h-4 w-4" /> {showAddRecipe ? 'Cancel' : 'Add a recipe by hand'}
-              </button>
-              {showAddRecipe && (
-                <form onSubmit={handleSaveManualRecipe} className="fade-up mt-3 space-y-2">
-                  <TextInput value={customTitle} onChange={(e) => setCustomTitle(e.target.value)} placeholder="Dish name" aria-label="Dish name" required />
-                  <TextInput value={customDesc} onChange={(e) => setCustomDesc(e.target.value)} placeholder="One line about it (optional)" aria-label="Description" />
-                  <div className="grid grid-cols-3 gap-2">
-                    <Select value={customCuisine} onChange={(e) => setCustomCuisine(e.target.value)} aria-label="Cuisine">
-                      {['British', 'Italian', 'Indian', 'Mexican', 'Chinese', 'Thai', 'Greek'].map((c) => (
-                        <option key={c}>{c}</option>
-                      ))}
-                    </Select>
-                    <Select value={customTime} onChange={(e) => setCustomTime(e.target.value as TimeStake)} aria-label="Time">
-                      <option value="20m">20 min</option>
-                      <option value="30m">30 min</option>
-                      <option value="60m">1 hour</option>
-                      <option value="all-day">All day</option>
-                    </Select>
-                    <Select value={customEffort} onChange={(e) => setCustomEffort(e.target.value as EffortLevel)} aria-label="Effort">
-                      <option value="one-pot">One pot</option>
-                      <option value="standard">Standard</option>
-                      <option value="chef-mode">Chef mode</option>
-                    </Select>
-                  </div>
-                  <TextInput
-                    value={customIngredients}
-                    onChange={(e) => setCustomIngredients(e.target.value)}
-                    placeholder="Ingredients, separated by commas"
-                    aria-label="Ingredients"
-                  />
-                  <textarea
-                    value={customSteps}
-                    onChange={(e) => setCustomSteps(e.target.value)}
-                    rows={3}
-                    placeholder={'Steps, one per line. Add timing like (-15m)'}
-                    aria-label="Steps"
-                    className="w-full rounded-xl border border-line bg-card px-3.5 py-2.5 text-[15px] placeholder:text-ink-3 focus:border-ink-2 focus:outline-none"
-                  />
-                  <Button type="submit" variant="primary" block disabled={!customTitle.trim()}>
-                    Save recipe
-                  </Button>
-                </form>
-              )}
-            </div>
+            {recipeScope === 'ours' && (
+              <div className="space-y-3 border-t border-line pt-3">
+                <button
+                  onClick={() => setShowAddRecipe((v) => !v)}
+                  aria-expanded={showAddRecipe}
+                  className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-ink-2 hover:text-ink"
+                >
+                  <Plus className="h-4 w-4" /> {showAddRecipe ? 'Cancel' : 'Add your own recipe'}
+                </button>
+                {showAddRecipe && (
+                  <form onSubmit={handleSaveManualRecipe} className="fade-up space-y-2">
+                    <TextInput value={customTitle} onChange={(e) => setCustomTitle(e.target.value)} placeholder="Dish name" aria-label="Dish name" required />
+                    <TextInput value={customDesc} onChange={(e) => setCustomDesc(e.target.value)} placeholder="One line about it (optional)" aria-label="Description" />
+                    <div className="grid grid-cols-3 gap-2">
+                      <Select value={customCuisine} onChange={(e) => setCustomCuisine(e.target.value)} aria-label="Cuisine">
+                        {['British', 'Italian', 'Indian', 'Mexican', 'Chinese', 'Thai', 'Greek', 'French', 'Japanese', 'Other'].map((c) => (
+                          <option key={c}>{c}</option>
+                        ))}
+                      </Select>
+                      <Select value={customTime} onChange={(e) => setCustomTime(e.target.value as TimeStake)} aria-label="Time">
+                        <option value="20m">20 min</option>
+                        <option value="30m">30 min</option>
+                        <option value="60m">1 hour</option>
+                        <option value="all-day">All day</option>
+                      </Select>
+                      <Select value={customEffort} onChange={(e) => setCustomEffort(e.target.value as EffortLevel)} aria-label="Effort">
+                        <option value="one-pot">One pot</option>
+                        <option value="standard">Standard</option>
+                        <option value="chef-mode">Chef mode</option>
+                      </Select>
+                    </div>
+                    <TextInput
+                      value={customIngredients}
+                      onChange={(e) => setCustomIngredients(e.target.value)}
+                      placeholder="Ingredients, separated by commas"
+                      aria-label="Ingredients"
+                    />
+                    <textarea
+                      value={customSteps}
+                      onChange={(e) => setCustomSteps(e.target.value)}
+                      rows={3}
+                      placeholder={'Steps, one per line. Add timing like (-15m)'}
+                      aria-label="Steps"
+                      className="w-full rounded-xl border border-line bg-card px-3.5 py-2.5 text-[15px] placeholder:text-ink-3 focus:border-ink-2 focus:outline-none"
+                    />
+                    <Button type="submit" variant="primary" block disabled={!customTitle.trim()}>
+                      Save recipe
+                    </Button>
+                  </form>
+                )}
+
+                {rejectedMealIds.length > 0 && (
+                  <details className="text-[14px]">
+                    <summary className="cursor-pointer font-semibold text-ink-2">
+                      Hidden dishes ({rejectedMealIds.length})
+                    </summary>
+                    <ul className="mt-2 divide-y divide-line rounded-xl border border-line bg-card">
+                      {rejectedMealIds.map((id) => {
+                        const dish = worldRecipes.find((r) => r.id === id) || INITIAL_MEALS.find((m) => m.id === id);
+                        return (
+                          <li key={id} className="flex items-center justify-between gap-2 px-3 py-2">
+                            <span className="truncate">{dish?.title || id}</span>
+                            <Button variant="quiet" size="sm" onClick={() => restoreRejected(id)}>
+                              Bring back
+                            </Button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </details>
+                )}
+              </div>
+            )}
           </>
         )}
 
         {/* SHOPPING */}
         {activeTab === 'missing' && (
           <>
-            <div>
-              <label htmlFor="missing-meal-select" className="mb-1.5 block text-[13px] font-semibold text-ink-2">
-                Shopping for
+            <div className="flex items-center justify-between gap-3 rounded-xl bg-sunk px-3 py-2.5 text-[13px]">
+              <span className="flex items-center gap-2 text-ink-2">
+                <span
+                  className={cx(
+                    'h-2 w-2 shrink-0 rounded-full',
+                    shoppingOnline ? 'bg-sage' : shoppingOnline === false ? 'bg-saffron' : 'bg-line-strong'
+                  )}
+                />
+                {shoppingOnline
+                  ? 'Shared with everyone in the household'
+                  : shoppingOnline === false
+                  ? 'Offline. Changes sync when you’re back'
+                  : 'Connecting…'}
+              </span>
+              <label className="flex shrink-0 items-center gap-1.5">
+                <span className="text-ink-2">I’m</span>
+                <select
+                  value={meId}
+                  onChange={(e) => setMeId(e.target.value)}
+                  aria-label="Who is using this phone"
+                  className="rounded-lg border border-line bg-card px-2 py-1 text-[13px] font-semibold"
+                >
+                  <option value="">Choose…</option>
+                  {householdMembers.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
               </label>
-              <Select
-                id="missing-meal-select"
-                value={selectedMeal?.id}
-                onChange={(e) => setChecklistMealId(e.target.value)}
-                className="w-full"
-              >
-                {meals.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.title}
-                  </option>
-                ))}
-              </Select>
             </div>
 
-            <Card className="p-1">
-              <ul className="divide-y divide-line">
-                {ingredientChecklist.map((item, idx) => (
-                  <li key={idx} className="flex items-center gap-3 px-3 py-2.5 text-[15px]">
-                    <span
-                      className={cx(
-                        'flex h-5 w-5 shrink-0 items-center justify-center rounded-full',
-                        item.inStock ? 'bg-sage text-white' : 'border border-line-strong'
-                      )}
-                    >
-                      {item.inStock && <Check className="h-3 w-3" strokeWidth={3} />}
-                    </span>
-                    <span className={cx('flex-1', item.inStock && 'text-ink-3')}>{item.name}</span>
-                    <span className={cx('text-[12px] font-semibold', item.inStock ? 'text-ink-3' : 'text-tomato')}>
-                      {item.inStock ? 'Have it' : 'Buy'}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </Card>
+            <form
+              className="flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!newShopName.trim()) return;
+                addShoppingItems([newShopName.trim()]);
+                setNewShopName('');
+              }}
+            >
+              <TextInput value={newShopName} onChange={(e) => setNewShopName(e.target.value)} placeholder="Add to the list" aria-label="Add to the shopping list" />
+              <Button type="submit" variant="primary" disabled={!newShopName.trim()} aria-label="Add" className="!px-3">
+                <Plus className="h-5 w-5" />
+              </Button>
+            </form>
 
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                variant="secondary"
-                onClick={async () => {
-                  const text = `Shopping for ${selectedMeal?.title}:\n${
-                    missingItemsList.map((i) => `- ${i.name}`).join('\n') || 'Nothing. We have it all.'
-                  }`;
-                  try {
-                    await navigator.clipboard.writeText(text);
-                    setCopiedShopping(true);
-                    setTimeout(() => setCopiedShopping(false), 2000);
-                  } catch {
-                    setAnalysisError('Couldn’t copy to the clipboard on this device.');
-                  }
-                }}
-              >
-                {copiedShopping ? <Check className="h-4 w-4 text-sage" /> : <Copy className="h-4 w-4" />}
-                {copiedShopping ? 'Copied' : 'Copy list'}
-              </Button>
-              <Button
-                variant="success"
-                disabled={missingItemsList.length === 0}
-                onClick={() => {
-                  missingItemsList.forEach((item) =>
-                    addPantryItem({ name: item.name, category: 'Shopping', freshness: 'green', quantity: '' })
-                  );
-                  flash(`Added ${missingItemsList.length} items to the fridge.`);
-                }}
-              >
-                <ShoppingBasket className="h-4 w-4" />
-                {missingItemsList.length === 0 ? 'All in stock' : 'Bought them'}
-              </Button>
-            </div>
+            {shoppingList.length === 0 ? (
+              <Card className="p-6 text-center">
+                <p className="font-display text-[19px] font-semibold">The list is empty</p>
+                <p className="mt-1 text-[14px] text-ink-2">
+                  Open a recipe and tick what you have. Whatever’s left lands here for whoever does the shop.
+                </p>
+                <Button variant="secondary" className="mt-4" onClick={() => setActiveTab('vault')}>
+                  Pick a recipe
+                </Button>
+              </Card>
+            ) : (
+              <>
+                {[
+                  { title: 'To buy', items: toBuy },
+                  { title: 'In the basket', items: gotIt },
+                ].map(
+                  (group) =>
+                    group.items.length > 0 && (
+                      <section key={group.title} aria-label={group.title}>
+                        <h3 className="mb-1.5 px-1 text-[13px] font-semibold text-ink-2">
+                          {group.title} <span className="font-normal text-ink-3 tabular-nums">{group.items.length}</span>
+                        </h3>
+                        <ul className="divide-y divide-line rounded-2xl border border-line bg-card">
+                          {group.items.map((item) => (
+                            <li key={item.id} className="flex items-center gap-1 pr-1">
+                              <button
+                                role="checkbox"
+                                aria-checked={item.checked}
+                                onClick={() => toggleShoppingItem(item.id)}
+                                className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left"
+                              >
+                                <span
+                                  className={cx(
+                                    'flex h-6 w-6 shrink-0 items-center justify-center rounded-full border',
+                                    item.checked ? 'border-sage bg-sage text-white' : 'border-line-strong'
+                                  )}
+                                >
+                                  {item.checked && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
+                                </span>
+                                <span className="min-w-0">
+                                  <span className={cx('block truncate text-[15px]', item.checked && 'text-ink-3 line-through')}>
+                                    {item.name}
+                                  </span>
+                                  <span className="block truncate text-[12px] text-ink-3">
+                                    {item.checked
+                                      ? `Got it${item.checkedBy ? ` · ${item.checkedBy}` : ''}`
+                                      : [item.forMeal && `for ${item.forMeal}`, item.addedBy && `added by ${item.addedBy}`]
+                                          .filter(Boolean)
+                                          .join(' · ')}
+                                  </span>
+                                </span>
+                              </button>
+                              <IconButton label={`Remove ${item.name}`} onClick={() => removeShoppingItem(item.id)}>
+                                <X className="h-4 w-4" />
+                              </IconButton>
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                    )
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant="secondary"
+                    onClick={async () => {
+                      const text = `Shopping list:\n${toBuy.map((i) => `- ${i.name}`).join('\n') || 'All done!'}`;
+                      try {
+                        await navigator.clipboard.writeText(text);
+                        setCopiedShopping(true);
+                        setTimeout(() => setCopiedShopping(false), 2000);
+                      } catch {
+                        setAnalysisError('Couldn’t copy to the clipboard on this device.');
+                      }
+                    }}
+                  >
+                    {copiedShopping ? <Check className="h-4 w-4 text-sage" /> : <Copy className="h-4 w-4" />}
+                    {copiedShopping ? 'Copied' : 'Copy list'}
+                  </Button>
+                  <Button
+                    variant="success"
+                    disabled={gotIt.length === 0}
+                    onClick={() => {
+                      gotIt.forEach((i) => addPantryItem({ name: i.name, category: 'Shopping', freshness: 'green', quantity: '' }));
+                      clearCheckedShopping();
+                      flash(`Put ${gotIt.length} ${gotIt.length === 1 ? 'item' : 'items'} away in the fridge.`);
+                    }}
+                  >
+                    <ShoppingBasket className="h-4 w-4" /> Put away
+                  </Button>
+                </div>
+                <p className="text-center text-[12px] text-ink-3">
+                  “Put away” moves ticked items into the fridge and clears them from the list.
+                </p>
+              </>
+            )}
           </>
         )}
 
@@ -802,6 +900,19 @@ export const PantryView: React.FC = () => {
           </Card>
         )}
       </div>
+      {sheetMeal && (
+        <RecipeSheet
+          meal={sheetMeal}
+          onClose={() => setSheetMeal(null)}
+          onReplaced={(gone, replacement) =>
+            flash(
+              replacement
+                ? `“${gone.title}” is hidden for good. “${replacement.title}” has taken its place.`
+                : `“${gone.title}” is hidden for good.`
+            )
+          }
+        />
+      )}
     </div>
   );
 };

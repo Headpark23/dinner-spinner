@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { RecipeSheet } from '../RecipeSheet';
+import { photoFor } from '../../data/photos';
 import { useDinner } from '../../context/DinnerContext';
 import { ReelWindow } from '../ReelWindow';
 import { TimeStake, EffortLevel, MachineMode } from '../../types';
-import { Send, Heart, Check, ShoppingBasket, Star, Snowflake } from 'lucide-react';
+import { Send, Heart, Check, ShoppingBasket, Star, Snowflake, BookOpen } from 'lucide-react';
 import { Card, Chip, DishTile, Segmented, Switch, Button, IconButton, cx } from '../ui';
 
 const dayPart = () => {
@@ -45,6 +47,8 @@ export const MachineView: React.FC = () => {
     getCoolingOffDays,
   } = useDinner();
 
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [swapNote, setSwapNote] = useState<string | null>(null);
   const redItems = pantry.filter((p) => p.freshness === 'red');
   const pantryMatch = activeMealResult ? getMealPantryMatch(activeMealResult) : null;
   const coolingDays = activeMealResult ? getCoolingOffDays(activeMealResult) : null;
@@ -124,9 +128,23 @@ export const MachineView: React.FC = () => {
       <ReelWindow onSpin={spin} />
 
       {activeMealResult && !isSpinning && pantryMatch && (
-        <Card className="fade-up p-4" aria-label="Spin result">
+        <Card className="fade-up overflow-hidden" aria-label="Spin result">
+          {photoFor(activeMealResult.id) && (
+            <button onClick={() => setSheetOpen(true)} className="block w-full" aria-label="Open the full recipe">
+              <img
+                src={photoFor(activeMealResult.id)}
+                alt=""
+                className="aspect-[16/9] w-full object-cover"
+                width={480}
+                height={270}
+              />
+            </button>
+          )}
+          <div className="p-4">
           <div className="flex items-start gap-3">
-            <DishTile cuisine={activeMealResult.cuisine} imageUrl={activeMealResult.imageUrl} size={52} />
+            {!photoFor(activeMealResult.id) && (
+              <DishTile cuisine={activeMealResult.cuisine} imageUrl={activeMealResult.imageUrl} size={52} />
+            )}
             <div className="min-w-0 flex-1">
               <p className="eyebrow">Tonight’s spin</p>
               <h2 className="font-display text-[21px] leading-snug font-semibold">{activeMealResult.title}</h2>
@@ -217,11 +235,37 @@ export const MachineView: React.FC = () => {
             </p>
           )}
 
-          <Button variant="primary" block className="mt-4" onClick={() => sendToVote(activeMealResult)}>
-            <Send className="h-4 w-4" />
-            Put it to the household
-          </Button>
+          <div className="mt-4 grid grid-cols-[auto_1fr] gap-2">
+            <Button variant="secondary" onClick={() => setSheetOpen(true)}>
+              <BookOpen className="h-4 w-4" /> Recipe
+            </Button>
+            <Button variant="primary" onClick={() => sendToVote(activeMealResult)}>
+              <Send className="h-4 w-4" />
+              Put it to the household
+            </Button>
+          </div>
+          </div>
         </Card>
+      )}
+
+      {swapNote && (
+        <p role="status" className="fade-up rounded-xl bg-sunk px-3.5 py-3 text-[14px] text-ink-2">
+          {swapNote}
+        </p>
+      )}
+
+      {sheetOpen && activeMealResult && (
+        <RecipeSheet
+          meal={activeMealResult}
+          onClose={() => setSheetOpen(false)}
+          onReplaced={(gone, replacement) =>
+            setSwapNote(
+              replacement
+                ? `“${gone.title}” won’t come up again. “${replacement.title}” is on the reel instead.`
+                : `“${gone.title}” won’t come up again.`
+            )
+          }
+        />
       )}
     </div>
   );

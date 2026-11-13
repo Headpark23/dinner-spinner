@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import {
   Meal,
   TimeStake,
@@ -13,7 +13,12 @@ import {
   UserProfile,
   CookLogEntry,
   TakeawayLogEntry,
+  MealTweaks,
+  MealReview,
+  ShoppingItem,
 } from '../types';
+import { WORLD_RECIPES } from '../data/worldRecipes';
+import { applyShoppingOp, newShoppingId, ShoppingOp } from '../utils/shopping';
 import {
   INITIAL_MEALS,
   INITIAL_PANTRY,
@@ -140,6 +145,28 @@ interface DinnerContextType {
   resetToFactoryDefaults: () => void;
   isSyncing: boolean;
 
+  // World Kitchen library, tweaks and "not for us"
+  worldRecipes: Meal[];
+  addFromLibrary: (id: string) => Meal | null;
+  rejectMeal: (id: string) => Meal | null;
+  rejectedMealIds: string[];
+  restoreRejected: (id: string) => void;
+  updateMealTweaks: (id: string, tweaks: MealTweaks) => void;
+
+  // After-dinner reviews
+  saveDinnerReviews: (cookLogId: string, reviews: MealReview[]) => void;
+
+  // Shared shopping list
+  shoppingList: ShoppingItem[];
+  shoppingOnline: boolean | null;
+  meId: string;
+  setMeId: (id: string) => void;
+  addShoppingItems: (names: string[], forMeal?: string) => void;
+  removeShoppingByName: (name: string) => void;
+  toggleShoppingItem: (id: string) => void;
+  removeShoppingItem: (id: string) => void;
+  clearCheckedShopping: () => void;
+
   // Cooling-off helper
   isCoolingOff: (meal: Meal) => boolean;
   getCoolingOffDays: (meal: Meal) => number | null;
@@ -179,6 +206,11 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     loadStored('rescued_count', 7)
   );
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [rejectedMealIds, setRejectedMealIds] = useState<string[]>(() => loadStored('rejected', []));
+  const [shoppingList, setShoppingList] = useState<ShoppingItem[]>(() => loadStored('shopping', []));
+  const [shoppingOnline, setShoppingOnline] = useState<boolean | null>(null);
+  const pendingShoppingOps = useRef<ShoppingOp[]>(loadStored('shopping_queue', []));
+  const [meId, setMeIdState] = useState<string>(() => loadStored('me', ''));
   const [cookLog, setCookLog] = useState<CookLogEntry[]>(() => loadStored('cook_log', []));
   const [takeawayLog, setTakeawayLog] = useState<TakeawayLogEntry[]>(() =>
     loadStored('takeaway_log', [])
@@ -298,6 +330,66 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY}_cook_log`, JSON.stringify(cookLog));
   }, [cookLog]);
+
+  useEffect(() => {
+    localStorage.setItem(`${STORAGE_KEY}_rejected`, JSON.stringify(rejectedMealIds));
+  }, [rejectedMealIds]);
+
+  useEffect(() => {
+    localStorage.setItem(`${STORAGE_KEY}_shopping`, JSON.stringify(shoppingList));
+  }, [shoppingList]);
+
+  // ---------- Shared shopping list sync ----------
+  // Changes apply locally at once, queue, and are sent to the server. The list is
+  // polled so ticks made on another phone appear within a few seconds.
+  const persistQueue = () => {
+    try {
+      localStorage.setItem(`${STORAGE_KEY}_shopping_queue`, JSON.stringify(pendingShoppingOps.current));
+    } catch {
+      // storage full or blocked; the queue still lives in memory
+    }
+  };
+
+  const syncShopping = useCallback(async () => {
+    try {
+      const queued = pendingShoppingOps.current;
+      const res = queued.length
+        ? await fetch('/api/shopping/ops', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ops: queued }),
+          })
+        : await fetch('/api/shopping');
+      if (!res.ok) throw new Error('shopping sync failed');
+      const json = await res.json();
+      if (queued.length) {
+        pendingShoppingOps.current = pendingShoppingOps.current.slice(queued.length);
+        persistQueue();
+      }
+      // Re-apply anything queued meanwhile so local edits never flicker away.
+      setShoppingList(pendingShoppingOps.current.reduce(applyShoppingOp, json.items as ShoppingItem[]));
+      setShoppingOnline(true);
+    } catch {
+      setShoppingOnline(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    syncShopping();
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') syncShopping();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [syncShopping]);
+
+  const queueShopping = (ops: ShoppingOp[]) => {
+    if (ops.length === 0) return;
+    setShoppingList((prev) => ops.reduce(applyShoppingOp, prev));
+    pendingShoppingOps.current = [...pendingShoppingOps.current, ...ops];
+    persistQueue();
+    syncShopping();
+  };
 
   useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY}_takeaway_log`, JSON.stringify(takeawayLog));
@@ -644,6 +736,107 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return { allowed: true };
   };
 
+  const meName = () => householdMembers.find((m) => m.id === meId)?.name;
+
+  const setMeId = (id: string) => {
+    setMeIdState(id);
+    try {
+      localStorage.setItem(`${STORAGE_KEY}_me`, JSON.stringify(id));
+    } catch {
+      // ignore
+    }
+  };
+
+  const addShoppingItems = (names: string[], forMeal?: string) =>
+    queueShopping(
+      names
+        .map((n) => n.trim())
+        .filter(Boolean)
+        .map((name) => ({ type: 'add' as const, item: { id: newShoppingId(), name, forMeal, addedBy: meName() } }))
+    );
+  const removeShoppingByName = (name: string) => queueShopping([{ type: 'removeByName', name }]);
+  const toggleShoppingItem = (id: string) => queueShopping([{ type: 'toggle', id, by: meName() }]);
+  const removeShoppingItem = (id: string) => queueShopping([{ type: 'remove', id }]);
+  const clearCheckedShopping = () => queueShopping([{ type: 'clearChecked' }]);
+
+  // ---------- World Kitchen, tweaks, "not for us" ----------
+  const addFromLibrary = (id: string): Meal | null => {
+    const dish = WORLD_RECIPES.find((r) => r.id === id);
+    if (!dish) return null;
+    setRejectedMealIds((prev) => prev.filter((r) => r !== id));
+    setMeals((prev) => (prev.some((m) => m.id === id) ? prev : [...prev, dish]));
+    sound.playHold();
+    return dish;
+  };
+
+  /** Hide a dish for good and bring in a similar one from the World Kitchen in its place. */
+  const rejectMeal = (id: string): Meal | null => {
+    const gone = meals.find((m) => m.id === id);
+    if (!gone) return null;
+    const hidden = new Set([...rejectedMealIds, id]);
+    const inRotation = new Set(meals.map((m) => m.id));
+    const candidates = WORLD_RECIPES.filter(
+      (r) =>
+        !hidden.has(r.id) &&
+        !inRotation.has(r.id) &&
+        !r.ingredients.some((ing) =>
+          bannedIngredients.some((b) => b.trim() && ing.toLowerCase().includes(b.toLowerCase()))
+        )
+    );
+    const score = (r: Meal) =>
+      (r.cuisine === gone.cuisine ? 4 : 0) +
+      (r.timeStake === gone.timeStake ? 2 : 0) +
+      (r.effort === gone.effort ? 1 : 0) +
+      Math.random();
+    const replacement = candidates.sort((a, b) => score(b) - score(a))[0] || null;
+
+    setRejectedMealIds([...hidden]);
+    setMeals((prev) => {
+      const next = prev.filter((m) => m.id !== id);
+      return replacement ? [...next, replacement] : next;
+    });
+    if (activeMealResult?.id === id) setActiveMealResult(replacement);
+    if (proposedMeal?.id === id) setProposedMeal(null);
+    sound.playBuzzer();
+    return replacement;
+  };
+
+  const restoreRejected = (id: string) => {
+    setRejectedMealIds((prev) => prev.filter((r) => r !== id));
+    const dish = WORLD_RECIPES.find((r) => r.id === id) || INITIAL_MEALS.find((m) => m.id === id);
+    if (dish) setMeals((prev) => (prev.some((m) => m.id === id) ? prev : [...prev, dish]));
+  };
+
+  const updateMealTweaks = (id: string, tweaks: MealTweaks) => {
+    const apply = (m: Meal) => (m.id === id ? { ...m, tweaks } : m);
+    setMeals((prev) => prev.map(apply));
+    setActiveMealResult((prev) => (prev ? apply(prev) : prev));
+    setProposedMeal((prev) => (prev ? apply(prev) : prev));
+    if (agreedMeal?.id === id) {
+      const updated = apply(agreedMeal);
+      setAgreedMeal(updated);
+      generateReverseTimers(targetEatingTime, updated);
+    }
+  };
+
+  // ---------- After-dinner reviews ----------
+  const saveDinnerReviews = (cookLogId: string, reviews: MealReview[]) => {
+    const entry = cookLog.find((c) => c.id === cookLogId);
+    if (!entry) return;
+    const nextLog = cookLog.map((c) => (c.id === cookLogId ? { ...c, reviews } : c));
+    setCookLog(nextLog);
+    const allStars = nextLog
+      .filter((c) => c.mealId === entry.mealId)
+      .flatMap((c) => c.reviews || [])
+      .map((r) => r.stars)
+      .filter((n) => n >= 1);
+    if (allStars.length) {
+      const avg = Math.round(allStars.reduce((a, b) => a + b, 0) / allStars.length);
+      setMeals((prev) => prev.map((m) => (m.id === entry.mealId ? { ...m, rating: avg } : m)));
+    }
+    sound.playWin();
+  };
+
   // Clears tonight's decision so the household can start a fresh evening.
   const resetEvening = () => {
     setAgreedMeal(null);
@@ -887,6 +1080,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             rescuedItemsCount,
             cookLog,
             takeawayLog,
+            rejectedMealIds,
           },
         }),
       });
@@ -944,6 +1138,9 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (Array.isArray(payload.takeawayLog)) {
         setTakeawayLog(payload.takeawayLog);
       }
+      if (Array.isArray(payload.rejectedMealIds)) {
+        setRejectedMealIds(payload.rejectedMealIds);
+      }
       setUserProfile((prev) => ({
         ...prev,
         ...(payload.userProfile || {}),
@@ -991,6 +1188,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setVoteLogs([]);
     setCookLog([]);
     setTakeawayLog([]);
+    setRejectedMealIds([]);
     setReverseTimers([]);
     setAgreedMeal(null);
     setConsecutiveRejections(0);
@@ -1094,6 +1292,23 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         isCoolingOff,
         getCoolingOffDays,
+
+        worldRecipes: WORLD_RECIPES,
+        addFromLibrary,
+        rejectMeal,
+        rejectedMealIds,
+        restoreRejected,
+        updateMealTweaks,
+        saveDinnerReviews,
+        shoppingList,
+        shoppingOnline,
+        meId,
+        setMeId,
+        addShoppingItems,
+        removeShoppingByName,
+        toggleShoppingItem,
+        removeShoppingItem,
+        clearCheckedShopping,
       }}
     >
       {children}

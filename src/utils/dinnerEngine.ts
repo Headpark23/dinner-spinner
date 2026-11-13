@@ -9,6 +9,23 @@ import {
 } from '../types';
 
 /**
+ * Returns the meal as the household actually cooks it: the original recipe plus
+ * any tweaks (extra ingredients and steps). The stored recipe is never modified.
+ */
+export function withTweaks(meal: Meal): Meal {
+  const t = meal.tweaks;
+  if (!t || (t.extraIngredients.length === 0 && t.extraSteps.length === 0)) return meal;
+  return {
+    ...meal,
+    ingredients: [...meal.ingredients, ...t.extraIngredients],
+    prepSteps: [
+      ...meal.prepSteps,
+      ...t.extraSteps.map((s) => `${s.text} (-${Math.max(0, Math.round(s.minutesBefore))}m)`),
+    ],
+  };
+}
+
+/**
  * Checks if a meal was cooked within the last 4 days (Cooling-off rule).
  */
 export function isMealCoolingOff(meal: Meal, nowMs: number = Date.now()): boolean {
@@ -35,10 +52,11 @@ export function getMealCoolingOffDays(meal: Meal, nowMs: number = Date.now()): n
  * and identifies any Red ("Use Next") items it helps rescue.
  */
 export function calculateMealPantryMatch(
-  meal: Meal,
+  rawMeal: Meal,
   pantry: PantryItem[],
   staples: string[]
 ): PantryMatchInfo {
+  const meal = withTweaks(rawMeal);
   const totalCount = meal.ingredients.length;
   if (totalCount === 0) {
     return {
@@ -318,7 +336,8 @@ export function buildComboMeal(
 /**
  * Generates reverse countdown prep steps from a target HH:MM eating time.
  */
-export function buildReverseTimerSteps(targetTime: string, meal: Meal): ReverseTimerStep[] {
+export function buildReverseTimerSteps(targetTime: string, rawMeal: Meal): ReverseTimerStep[] {
+  const meal = withTweaks(rawMeal);
   if (!targetTime || !targetTime.includes(':')) return [];
   const [targetHour, targetMin] = targetTime.split(':').map(Number);
   if (Number.isNaN(targetHour) || Number.isNaN(targetMin)) return [];
@@ -326,7 +345,7 @@ export function buildReverseTimerSteps(targetTime: string, meal: Meal): ReverseT
   const targetDate = new Date();
   targetDate.setHours(targetHour, targetMin, 0, 0);
 
-  return meal.prepSteps.map((step, idx) => {
+  const steps = meal.prepSteps.map((step, idx) => {
     const match = step.match(/-(\d+)m/);
     const offset = match ? Number(match[1]) : (meal.prepSteps.length - idx) * 7;
     const stepTime = new Date(targetDate.getTime() - offset * 60000);
@@ -342,5 +361,10 @@ export function buildReverseTimerSteps(targetTime: string, meal: Meal): ReverseT
       done: false,
     };
   });
+  // Tweaked steps can land anywhere in the evening, so keep the timeline in time order.
+  return steps
+    .map((s, i) => ({ s, i }))
+    .sort((a, b) => b.s.minuteOffset - a.s.minuteOffset || a.i - b.i)
+    .map(({ s }) => s);
 }
 

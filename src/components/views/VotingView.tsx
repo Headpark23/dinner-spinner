@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useDinner } from '../../context/DinnerContext';
 import { Check, X, Copy, UserPlus, Trash2, CircleAlert, RotateCcw, Dices, Clock } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { AfterDinnerReview } from '../AfterDinnerReview';
+import { RecipeSheet } from '../RecipeSheet';
 import { HouseholdMember } from '../../types';
 import { Button, Card, Chip, Notice, Segmented, TextInput, cx, timeLabel, effortLabel } from '../ui';
 
@@ -59,6 +61,7 @@ export const VotingView: React.FC = () => {
   const [servings, setServings] = useState<'2' | '4' | '6' | '8'>('4');
   const [showRoster, setShowRoster] = useState(false);
   const [newMemberName, setNewMemberName] = useState('');
+  const [recipeOpen, setRecipeOpen] = useState(false);
 
   const currentVoter = householdMembers[activeVoterIndex] || householdMembers[0];
   const yesVotesCount = Object.values(currentBallot).filter((v) => v === 'yes').length;
@@ -146,6 +149,16 @@ export const VotingView: React.FC = () => {
           </div>
           <h1 className="mt-2 font-display text-[28px] leading-tight font-semibold">{agreedMeal.title}</h1>
           <p className="mt-1 text-[14px] text-ink-2">{agreedMeal.description}</p>
+          <button
+            onClick={() => setRecipeOpen(true)}
+            className="mt-2 text-[14px] font-semibold text-tomato underline-offset-2 hover:underline"
+          >
+            Full recipe, tweaks and shopping
+          </button>
+          {agreedMeal.tweaks?.note && (
+            <p className="mt-2 rounded-xl bg-saffron-soft px-3 py-2 text-[13px] text-saffron">Note: {agreedMeal.tweaks.note}</p>
+          )}
+          {recipeOpen && <RecipeSheet meal={agreedMeal} onClose={() => setRecipeOpen(false)} />}
         </div>
 
         {loggedEntry ? (
@@ -157,15 +170,16 @@ export const VotingView: React.FC = () => {
                 ? `, and ${loggedEntry.rescued.join(', ')} ${loggedEntry.rescued.length === 1 ? 'is' : 'are'} off the use-next list.`
                 : '.'}
             </p>
-            <div className="mt-4 flex flex-col gap-2">
-              <Button variant="primary" block onClick={resetEvening}>
-                <RotateCcw className="h-4 w-4" /> Start a new evening
-              </Button>
-              <Button variant="quiet" block onClick={() => setActiveView(4)}>
-                Rate it in Stats
-              </Button>
-            </div>
           </Card>
+        ) : null}
+
+        {loggedEntry ? (
+          <>
+            <AfterDinnerReview key={loggedEntry.id} entry={loggedEntry} />
+            <Button variant="secondary" block onClick={resetEvening}>
+              <RotateCcw className="h-4 w-4" /> Start a new evening
+            </Button>
+          </>
         ) : (
           <>
             <Card className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-3 p-4">

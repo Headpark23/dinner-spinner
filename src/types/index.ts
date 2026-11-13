@@ -20,6 +20,33 @@ export interface Meal {
   tags: string[];
   servings?: number;
   estimatedCostPerHead?: number;
+  origin?: string; // country or region, for World Kitchen dishes
+  source?: 'starter' | 'world' | 'own' | 'scanned';
+  tweaks?: MealTweaks;
+}
+
+/** A household's own changes layered on top of a recipe (the original stays intact). */
+export interface MealTweaks {
+  extraIngredients: string[];
+  extraSteps: { text: string; minutesBefore: number }[];
+  note?: string;
+}
+
+export interface MealReview {
+  memberId: string;
+  memberName: string;
+  stars: number; // 1-5
+  comment?: string;
+}
+
+export interface ShoppingItem {
+  id: string;
+  name: string;
+  forMeal?: string; // dish title it was added for
+  addedBy?: string;
+  checked: boolean;
+  checkedBy?: string;
+  updatedAt: string;
 }
 
 export interface PantryMatchInfo {
@@ -101,6 +128,7 @@ export interface CookLogEntry {
   cuisine: string;
   date: string; // ISO timestamp the household finished cooking
   rescued: string[]; // Use-next pantry items cleared by this cook
+  reviews?: MealReview[]; // after-dinner household verdicts
 }
 
 export interface TakeawayLogEntry {

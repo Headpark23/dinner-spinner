@@ -288,13 +288,16 @@ export const Sheet: React.FC<{
   labelledBy: string;
 }> = ({ isOpen, onClose, title, subtitle, children, labelledBy }) => {
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
+  // Runs only when the sheet opens/closes, so typing inside never loses focus.
   useEffect(() => {
     if (!isOpen) return;
     const previouslyFocused = document.activeElement as HTMLElement | null;
     panelRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') onCloseRef.current();
     };
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
@@ -303,7 +306,7 @@ export const Sheet: React.FC<{
       document.body.style.overflow = '';
       previouslyFocused?.focus?.();
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

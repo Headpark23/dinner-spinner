@@ -1,44 +1,50 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Dinner Spinner
 
-# 🎰 Dinner Spinner — Mechanical Kitchen Decision Cabinet
+A pub fruit machine for deciding what's for dinner. Spin your household's recipes, use up what's in the fridge, vote on it together, cook to a timeline, and score it afterwards.
 
-A tactile British pub fruit-machine ("one-armed bandit") dinner decider, zero-waste pantry manager, family voting booth, and reverse prep timer built with **React 19, TypeScript, Tailwind CSS v4, Express, Web Audio API, and Google Gemini Vision**.
+Built with React 19, TypeScript, Tailwind CSS v4 and Vite, served by a small Express server (which also handles the shared shopping list and optional Gemini photo scanning).
 
-## ✨ Key Features
+## What it does
 
-- **3 Arcade Reel Modes**:
-  - **Single Reel**: Spins your curated recipe library filtered by **Time Stake** (`20m`, `30m`, `60m`, `all-day`), **Effort** (`one-pot`, `standard`, `chef-mode`), and **Banned Ingredients**.
-  - **3-Reel Builder**: Mix-and-match `Carb + Hero Ingredient + Sauce` with individual reel **HOLD** locks and **NUDGE** steps.
-  - **4-Reel Sunday Roast Jackpot**: Builds a full Sunday feast (`Meat + Potatoes + Star Side + Veg & Gravy`).
-- **Smart Probability Engine**:
-  - **Use-It-or-Lose-It Clearout (`4.5×` Boost)**: Prioritizes recipes that rescue expiring **Red ("Use Next")** fridge items.
-  - **4-Day Cooling-Off Rule (`-85%` Weight)**: Prevents midweek meal repetition while allowing manual Nudge overrides.
-- **Family Voting Booth & 3-Veto Takeaway Override**:
-  - Pass-the-phone household ballot with weekly Veto Token allowances (`3/week`).
-  - Hit **3 consecutive vetoes** and the kitchen officially closes—triggering the **Takeaway & Door Duty Spinner**!
-- **Reverse Prep Timers & Portion Scaler**:
-  - Enter your target eating time (e.g. `18:30`) and get a backwards-calculated prep checklist (`-28m`, `-18m`, `-0m`) plus `2p / 4p / 6p / 8p` ingredient scaling.
-- **Pantry Vision, Meal Vault & Kitchen Telemetry**:
-  - Traffic-light fridge inventory, Gemini Multimodal Vision (Fridge Snap, Supermarket Receipt Scanner, Recipe Photo/Text Extractor with offline demo fallback), interactive SVG Cuisine Donut Chart, and JSON Cloud Sync/Backup.
+- **Spin**: three machines (your recipes, build-a-plate from 3 reels, or a 4-reel Sunday roast), with hold, nudge and a lever. You can filter by time and washing-up, and the spinner can favour dishes that use up "use next" fridge items.
+- **World Kitchen**: 119 classic dinners from 46 cuisines to browse and add to your rotation.
+- **Recipe sheet**: a photo, the method, and a "what do you have?" checklist. Anything you don't tick goes onto the shared shopping list.
+- **Make it yours**: add your own ingredients, steps (with timing) and a note to any recipe. The original is kept, and your additions show up in the cooking timeline.
+- **Not for us**: hide a dish for good, and a similar one from the World Kitchen replaces it automatically. Hidden dishes can be brought back.
+- **Your own recipes**: add them by hand, or scan a recipe page or plate photo.
+- **Tonight**: the household votes on one phone, with vetoes. Three vetoes in a row closes the kitchen and sends you to the takeaway spinner. A majority yes builds a timeline back from when you want to eat.
+- **After dinner**: everyone gives the dish stars and a quick comment. The average becomes the dish's rating.
+- **Shared shopping list**: one list for the whole household. Whoever's at the shop ticks items off ("Got it · Mum") and everyone else sees it within seconds. "Put away" moves ticked items into the fridge.
+- **Stats**: built only from what you've actually logged.
 
-## 🚀 Run Locally
+## Run locally
 
-**Prerequisites:** Node.js (v20+)
+Requires Node.js 20+.
 
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
-2. *(Optional)* Set `GEMINI_API_KEY` in `.env` for live Gemini Vision analysis (works out-of-the-box in Smart Kitchen Simulation mode if omitted).
-3. Start the development server:
-   ```bash
-   npm run dev
-   ```
-4. Run automated unit & API tests and type-checking:
-   ```bash
-   npm test
-   npm run lint
-   npm run build
-   ```
+```bash
+npm install
+npm run dev
+```
+
+To share the shopping list across the household, open the app from each phone using the computer's local network address (for example `http://192.168.1.20:3000`) or a hosted copy. Everyone using the same server shares one list.
+
+Optional: set `GEMINI_API_KEY` in `.env` for live fridge, receipt and recipe scanning. Without it, the "Try a sample" buttons and the fallback still work.
+
+```bash
+npm test        # engine, server and UI render tests
+npm run lint    # type-check
+npm run build
+```
+
+## Recipes and photos
+
+World Kitchen recipe text is written for this project. Dish photos are freely licensed images from Wikimedia Commons (CC0, public domain, CC BY or CC BY-SA), resized and stored in `public/photos/`. Each photo's author, licence and source page are recorded in `src/data/photoCredits.json` and shown in the app under *How it works → Recipes and photo credits*, and under each photo.
+
+To refresh or replace photos:
+
+```bash
+python -I scripts/fetch_photos.py                          # fetch any missing
+python -I scripts/fetch_photos.py --override w_pho="File:Some better photo.jpg"
+```
+
+See `DESIGN.md` for the design system and `SCAFFOLD_HEALTH.md` for the original audit.

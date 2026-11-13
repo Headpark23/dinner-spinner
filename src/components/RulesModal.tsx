@@ -1,5 +1,11 @@
 import React from 'react';
 import { Button, Sheet } from './ui';
+import { PHOTO_CREDITS } from '../data/photos';
+import { WORLD_RECIPES } from '../data/worldRecipes';
+import { INITIAL_MEALS } from '../data/initialData';
+
+const titleFor = (id: string) =>
+  WORLD_RECIPES.find((r) => r.id === id)?.title || INITIAL_MEALS.find((m) => m.id === id)?.title || id;
 
 interface RulesModalProps {
   isOpen: boolean;
@@ -69,6 +75,34 @@ export const RulesModal: React.FC<RulesModalProps> = ({ isOpen, onClose }) => (
         ))}
       </dl>
     </div>
+
+    <details className="mt-5 text-[13px] text-ink-2">
+      <summary className="cursor-pointer font-semibold text-ink">
+        Recipes and photo credits ({Object.keys(PHOTO_CREDITS).length} photos)
+      </summary>
+      <p className="mt-2">
+        World Kitchen recipes are written for Dinner Spinner. Dish photos come from Wikimedia Commons under the
+        licences shown, and are used unmodified apart from resizing.
+      </p>
+      <ul className="mt-2 space-y-1.5">
+        {Object.entries(PHOTO_CREDITS).map(([id, c]) => (
+          <li key={id}>
+            <span className="text-ink">{titleFor(id)}</span>:{' '}
+            <a href={c.source} target="_blank" rel="noreferrer" className="underline">
+              {c.author.slice(0, 80)}
+            </a>
+            ,{' '}
+            {c.licenseUrl ? (
+              <a href={c.licenseUrl} target="_blank" rel="noreferrer" className="underline">
+                {c.license}
+              </a>
+            ) : (
+              c.license
+            )}
+          </li>
+        ))}
+      </ul>
+    </details>
 
     <Button variant="primary" block className="mt-5" onClick={onClose}>
       Got it
