@@ -12,6 +12,7 @@ import {
   SUNDAY_VEG_GRAVY,
 } from '../data/initialData';
 import { Button, cx, timeLabel, effortLabel } from './ui';
+import { getSpinMotionPlan, prefersReducedMotion } from '../utils/motion';
 
 interface ReelWindowProps {
   onSpin: () => void;
@@ -21,10 +22,6 @@ const REEL_HEADERS: Record<'3-reel' | 'sunday', string[]> = {
   '3-reel': ['Base', 'Main', 'Sauce'],
   sunday: ['Roast', 'Potatoes', 'Side', 'Veg & gravy'],
 };
-
-const prefersReducedMotion = () =>
-  typeof window !== 'undefined' &&
-  window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 /** A vertical strip of labels that rolls while spinning. */
 const RollingStrip: React.FC<{ labels: string[]; className?: string; itemClass?: string }> = ({
@@ -123,8 +120,11 @@ export const ReelWindow: React.FC<ReelWindowProps> = ({ onSpin }) => {
 
   const handleLeverPull = () => {
     if (isSpinning) return;
-    setLeverPulled(true);
-    setTimeout(() => setLeverPulled(false), 450);
+    const motion = getSpinMotionPlan(450, prefersReducedMotion());
+    if (motion.animateLever) {
+      setLeverPulled(true);
+      setTimeout(() => setLeverPulled(false), motion.durationMs);
+    }
     onSpin();
   };
 

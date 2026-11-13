@@ -37,6 +37,7 @@ import {
   SUNDAY_VEG_GRAVY,
 } from '../data/initialData';
 import { sound } from '../utils/audio';
+import { getSpinMotionPlan, prefersReducedMotion } from '../utils/motion';
 import {
   isMealCoolingOff,
   getMealCoolingOffDays,
@@ -499,16 +500,8 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Main Fruit Machine Spin Trigger
   const spin = () => {
     if (isSpinning) return;
-    setIsSpinning(true);
-    sound.playLeverPull();
-
-    const tickInterval = setInterval(() => {
-      sound.playReelTick();
-    }, 90);
-
-    setTimeout(() => {
-      clearInterval(tickInterval);
-
+    const motion = getSpinMotionPlan(1250, prefersReducedMotion());
+    const settleSpin = () => {
       if (mode === 'single') {
         const { pool } = filterEligibleMeals(meals, timeStake, effort, bannedIngredients);
         const chosen = selectWeightedMeal(pool, pantry, clearoutActive, effort);
@@ -550,21 +543,29 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       setIsSpinning(false);
       setHeldReels([false, false, false, false]);
-    }, 1250);
+    };
+
+    if (motion.durationMs === 0) {
+      settleSpin();
+      return;
+    }
+
+    setIsSpinning(true);
+    sound.playLeverPull();
+    const tickInterval = setInterval(() => {
+      sound.playReelTick();
+    }, motion.tickIntervalMs ?? 90);
+    setTimeout(() => {
+      clearInterval(tickInterval);
+      settleSpin();
+    }, motion.durationMs);
   };
 
   // Takeaway Spinner Trigger
   const spinTakeaway = () => {
     if (isTakeawaySpinning) return;
-    setIsTakeawaySpinning(true);
-    sound.playLeverPull();
-
-    const interval = setInterval(() => {
-      sound.playReelTick();
-    }, 90);
-
-    setTimeout(() => {
-      clearInterval(interval);
+    const motion = getSpinMotionPlan(1300, prefersReducedMotion());
+    const settleTakeaway = () => {
       sound.playReelLock();
       const randomTakeaway = takeaways[Math.floor(Math.random() * takeaways.length)];
       const randomDoorPerson =
@@ -574,7 +575,22 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setDoorDutyPerson(randomDoorPerson);
       setIsTakeawaySpinning(false);
       sound.playWin();
-    }, 1300);
+    };
+
+    if (motion.durationMs === 0) {
+      settleTakeaway();
+      return;
+    }
+
+    setIsTakeawaySpinning(true);
+    sound.playLeverPull();
+    const interval = setInterval(() => {
+      sound.playReelTick();
+    }, motion.tickIntervalMs ?? 90);
+    setTimeout(() => {
+      clearInterval(interval);
+      settleTakeaway();
+    }, motion.durationMs);
   };
 
   const addTakeawayOption = (name: string, category: string, badge: string) => {

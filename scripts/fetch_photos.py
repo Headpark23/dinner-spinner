@@ -3,7 +3,7 @@ Fetch freely licensed dish photos from Wikimedia Commons.
 
 For each recipe it looks up the lead image of the matching Wikipedia article,
 keeps it only if the file lives on Commons under CC0 / public domain / CC BY /
-CC BY-SA, then saves an 800px WebP to public/photos/<id>.webp and records the
+CC BY-SA, then saves a 960px WebP to public/photos/<id>.webp and records the
 author, licence and source page in src/data/photoCredits.json.
 
 Usage:  python -I scripts/fetch_photos.py [--only id1,id2] [--override id=Wiki_or_File:Name ...]
@@ -146,7 +146,7 @@ def main():
                 continue
             raw = fetch(info.get("thumburl") or info["url"])
             img = Image.open(io.BytesIO(raw)).convert("RGB")
-            img.thumbnail((800, 800))
+            img.thumbnail((960, 960))
             img.save(dest, "WEBP", quality=78, method=6)
             credits[rid] = {
                 "file": ftitle,
