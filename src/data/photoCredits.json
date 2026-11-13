@@ -13,6 +13,20 @@
     "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
     "source": "https://commons.wikimedia.org/wiki/File:Yorkshire_Puddings_on_plate.jpg"
   },
+  "meal_11": {
+    "file": "File:Schweinebauch-2.jpg",
+    "author": "Rainer Zenz",
+    "license": "CC BY-SA 3.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Schweinebauch-2.jpg"
+  },
+  "meal_12": {
+    "file": "File:Vegetable Wellington served, served.jpg",
+    "author": "Johan Jönsson (Julle)",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Vegetable_Wellington_served,_served.jpg"
+  },
   "meal_2": {
     "file": "File:Mutton_Dopiaza.jpg",
     "author": "赤猫法師",
@@ -34,6 +48,13 @@
     "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0",
     "source": "https://commons.wikimedia.org/wiki/File:Sausage_and_mash_with_peas.jpg"
   },
+  "meal_5": {
+    "file": "File:Steckenroth, salmon on baked vegetables.jpg",
+    "author": "Gerda Arendt",
+    "license": "CC0",
+    "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+    "source": "https://commons.wikimedia.org/wiki/File:Steckenroth,_salmon_on_baked_vegetables.jpg"
+  },
   "meal_6": {
     "file": "File:Bowl_of_chili.jpg",
     "author": "Carstor",
@@ -47,6 +68,13 @@
     "license": "CC BY-SA 3.0",
     "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
     "source": "https://commons.wikimedia.org/wiki/File:Homerton_College_-_Shepherd%27s_pie_(cropped).jpg"
+  },
+  "meal_8": {
+    "file": "File:Salatat zaatar.jpg",
+    "author": "Wikx62",
+    "license": "CC BY 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Salatat_zaatar.jpg"
   },
   "meal_9": {
     "file": "File:Thai_green_chicken_curry_and_roti.jpg",
@@ -152,6 +180,13 @@
     "license": "CC BY-SA 2.0 kr",
     "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0/kr/deed.en",
     "source": "https://commons.wikimedia.org/wiki/File:Bulgogi_2.jpg"
+  },
+  "w_bunny_chow": {
+    "file": "File:Bunny Chow with Lamb & Potato - African Chow 2023-07-27.jpg",
+    "author": "Andy Li",
+    "license": "CC0",
+    "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+    "source": "https://commons.wikimedia.org/wiki/File:Bunny_Chow_with_Lamb_%26_Potato_-_African_Chow_2023-07-27.jpg"
   },
   "w_butter_chicken": {
     "file": "File:Butter_Chicken_&_Butter_Naan_-_Home_-_Chandigarh_-_India_-_0006.jpg",
@@ -341,6 +376,20 @@
     "license": "CC BY 2.0",
     "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
     "source": "https://commons.wikimedia.org/wiki/File:Gambas_al_ajillo.jpg"
+  },
+  "w_gnocchi": {
+    "file": "File:Semolina gnocchi with sage brown butter (10063056444).jpg",
+    "author": "Karen and Brad Emerson",
+    "license": "CC BY 2.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Semolina_gnocchi_with_sage_brown_butter_(10063056444).jpg"
+  },
+  "w_goan_fish": {
+    "file": "File:Goan Fish Curry.jpg",
+    "author": "Ramakrishna Reddy y",
+    "license": "CC BY-SA 2.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Goan_Fish_Curry.jpg"
   },
   "w_goulash": {
     "file": "File:Gulyas080.jpg",
@@ -622,6 +671,13 @@
     "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
     "source": "https://commons.wikimedia.org/wiki/File:Parmigiana_di_melanzane.jpg"
   },
+  "w_peri_peri": {
+    "file": "File:Flame-grilled PERi-PERi chicken.jpg",
+    "author": "Banej",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Flame-grilled_PERi-PERi_chicken.jpg"
+  },
   "w_pesto_trofie": {
     "file": "File:BasilPesto.JPG",
     "author": "Ɱ",
@@ -642,6 +698,20 @@
     "license": "CC BY-SA 4.0",
     "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
     "source": "https://commons.wikimedia.org/wiki/File:Pierogi_z_mas%C5%82em_-_2023.03.31.jpg"
+  },
+  "w_plov": {
+    "file": "File:14T 20240407 19.jpg",
+    "author": "BeshevI",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:14T_20240407_19.jpg"
+  },
+  "w_poke": {
+    "file": "File:Salmon Poke.jpg",
+    "author": "Pokebros",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Salmon_Poke.jpg"
   },
   "w_poutine": {
     "file": "File:Food_at_WIkimanian_2017_02.jpg",
@@ -691,6 +761,13 @@
     "license": "CC BY 2.0",
     "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
     "source": "https://commons.wikimedia.org/wiki/File:Risotto_with_speck_and_goat_cheese_(6101067436).jpg"
+  },
+  "w_roast_lamb_kumara": {
+    "file": "File:Roast leg of lamb.jpg",
+    "author": "CNEcija12345",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Roast_leg_of_lamb.jpg"
   },
   "w_rogan_josh": {
     "file": "File:Rogan_Josh_Kashmiri.jpg",
