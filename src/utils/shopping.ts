@@ -1,4 +1,4 @@
-import { ShoppingItem } from '../types';
+import type { ShoppingItem } from '../types/index.js';
 
 /** One change to the shared shopping list. Applied identically on the server and on the phone. */
 export type ShoppingOp =

@@ -4,8 +4,8 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
-import { applyShoppingOp } from './src/utils/shopping';
-import type { ShoppingItem } from './src/types';
+import { applyShoppingOp } from './src/utils/shopping.js';
+import type { ShoppingItem } from './src/types/index.js';
 
 dotenv.config();
 
