@@ -39,7 +39,7 @@ export const ArcadeNavBar: React.FC = () => {
   return (
     <nav
       aria-label="Main"
-      className="pb-safe sticky bottom-0 z-30 border-t border-line bg-paper/95 px-2 pt-1.5 backdrop-blur-sm"
+      className="app-nav pb-safe sticky bottom-0 z-30 border-t border-line bg-paper/92 px-2 pt-1.5 backdrop-blur-md"
     >
       <ul className="grid grid-cols-5">
         {navItems.map((item) => {

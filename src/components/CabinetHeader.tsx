@@ -24,8 +24,8 @@ export const CabinetHeader: React.FC<CabinetHeaderProps> = ({ onOpenProfile, onO
     useDinner();
 
   return (
-    <header className="sticky top-0 z-30 border-b border-line bg-paper/95 backdrop-blur-sm">
-      <div className="flex h-14 items-center justify-between px-3">
+    <header className="cabinet-header sticky top-0 z-30 border-b border-line bg-paper/92 backdrop-blur-md">
+      <div className="flex h-[60px] items-center justify-between px-3.5">
         <button
           onClick={() => setActiveView(0)}
           className="flex items-center gap-2.5 rounded-lg px-1 py-1"

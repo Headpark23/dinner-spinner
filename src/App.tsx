@@ -34,7 +34,7 @@ const TonightPanel: React.FC = () => {
   const nextStep = reverseTimers.find((s) => !s.done);
 
   return (
-    <aside aria-label="Tonight at a glance" className="hidden lg:block w-[320px] shrink-0">
+    <aside aria-label="Tonight at a glance" className="tonight-rail hidden w-[320px] shrink-0 lg:block">
       <div className="sticky top-0 space-y-4 py-6">
         <p className="eyebrow px-1">Tonight at a glance</p>
 
@@ -143,14 +143,14 @@ const MainCabinet: React.FC = () => {
   const [isRulesOpen, setIsRulesOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-paper text-ink lg:flex lg:justify-center lg:gap-8 lg:px-6">
-      <div className="mx-auto flex min-h-screen w-full max-w-[480px] flex-col lg:mx-0 lg:border-x lg:border-line">
+    <div className="app-shell min-h-screen bg-paper text-ink lg:flex lg:justify-center lg:gap-8 lg:px-6">
+      <div className="cabinet-shell mx-auto flex min-h-screen w-full max-w-[480px] flex-col lg:mx-0">
         <CabinetHeader
           onOpenProfile={() => setIsProfileOpen(true)}
           onOpenRules={() => setIsRulesOpen(true)}
         />
 
-        <main id="main" className="flex-1 px-4 pt-4 pb-8">
+        <main id="main" className="view-stage flex-1 px-4 pt-5 pb-8">
           <div key={activeView} className="fade-up">
             {activeView === 0 && <MachineView />}
             {activeView === 1 && <TakeawayView />}

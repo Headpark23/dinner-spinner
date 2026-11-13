@@ -6,7 +6,6 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf
 
 const css = read('./index.css');
 const app = read('./App.tsx');
-const ui = read('./components/ui.tsx');
 const reel = read('./components/ReelWindow.tsx');
 const nav = read('./components/ArcadeNavBar.tsx');
 const machine = read('./components/views/MachineView.tsx');
@@ -69,6 +68,6 @@ test('defines the modern British kitchen heirloom design contract', () => {
     assert.ok(css.includes(`.${hook}`), `missing presentation rule: .${hook}`);
   }
 
-  assert.ok(ui.includes('focus-visible'), 'shared controls must retain visible focus treatment');
+  assert.ok(css.includes(':focus-visible'), 'shared controls must retain visible focus treatment');
   assert.ok(css.includes('@media (prefers-reduced-motion: reduce)'), 'reduced motion support must remain');
 });
