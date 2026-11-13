@@ -62,73 +62,75 @@ export const MachineView: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <div>
+      <div className="machine-intro">
         <p className="text-[13px] text-ink-2">{dayPart()}</p>
         <h1 className="font-display text-[30px] leading-[1.1] font-semibold tracking-tight">
           What’s for dinner?
         </h1>
       </div>
 
-      <Segmented<MachineMode>
-        label="Spin mode"
-        value={mode}
-        onChange={setMode}
-        options={[
-          { value: 'single', label: 'Our recipes', hint: 'Spin your saved dishes' },
-          { value: '3-reel', label: 'Build a plate', hint: 'Base + main + sauce' },
-          { value: 'sunday', label: 'Sunday roast', hint: 'Four-reel roast builder' },
-        ]}
-      />
+      <div className="control-deck">
+        <Segmented<MachineMode>
+          label="Spin mode"
+          value={mode}
+          onChange={setMode}
+          options={[
+            { value: 'single', label: 'Our recipes', hint: 'Spin your saved dishes' },
+            { value: '3-reel', label: 'Build a plate', hint: 'Base + main + sauce' },
+            { value: 'sunday', label: 'Sunday roast', hint: 'Four-reel roast builder' },
+          ]}
+        />
 
-      {mode === 'sunday' ? (
-        <p className="text-[13px] text-ink-2">
-          A roast takes the afternoon. Hold the reels you like and spin the rest.
-        </p>
-      ) : (
-        <div className="space-y-1.5">
-          <Segmented<TimeStake>
-            label="Time available"
-            size="sm"
-            value={timeStake}
-            onChange={setTimeStake}
-            options={[
-              { value: '20m', label: '20 min' },
-              { value: '30m', label: '30 min' },
-              { value: '60m', label: '1 hour' },
-              { value: 'all-day', label: 'All day' },
-            ]}
-          />
-          <Segmented<EffortLevel>
-            label="Effort and washing-up"
-            size="sm"
-            value={effort}
-            onChange={setEffort}
-            options={[
-              { value: 'one-pot', label: 'One pot' },
-              { value: 'standard', label: 'Standard' },
-              { value: 'chef-mode', label: 'Chef mode' },
-            ]}
-          />
-          {poolNote && <p className="px-1 text-[12px] text-ink-3">{poolNote}</p>}
-        </div>
-      )}
+        {mode === 'sunday' ? (
+          <p className="px-1 text-[13px] text-ink-2">
+            A roast takes the afternoon. Hold the reels you like and spin the rest.
+          </p>
+        ) : (
+          <div className="space-y-1.5">
+            <Segmented<TimeStake>
+              label="Time available"
+              size="sm"
+              value={timeStake}
+              onChange={setTimeStake}
+              options={[
+                { value: '20m', label: '20 min' },
+                { value: '30m', label: '30 min' },
+                { value: '60m', label: '1 hour' },
+                { value: 'all-day', label: 'All day' },
+              ]}
+            />
+            <Segmented<EffortLevel>
+              label="Effort and washing-up"
+              size="sm"
+              value={effort}
+              onChange={setEffort}
+              options={[
+                { value: 'one-pot', label: 'One pot' },
+                { value: 'standard', label: 'Standard' },
+                { value: 'chef-mode', label: 'Chef mode' },
+              ]}
+            />
+            {poolNote && <p className="px-1 text-[12px] text-ink-3">{poolNote}</p>}
+          </div>
+        )}
 
-      {redItems.length > 0 && mode === 'single' && (
-        <div className="rounded-xl border border-line bg-card px-3.5 py-2.5">
-          <Switch
-            id="clearout-switch"
-            checked={clearoutActive}
-            onChange={setClearoutActive}
-            label={`Use up ${redItems.length} ${redItems.length === 1 ? 'item' : 'items'} first`}
-            description={<span className="line-clamp-1">{redItems.map((r) => r.name).join(', ')}</span>}
-          />
-        </div>
-      )}
+        {redItems.length > 0 && mode === 'single' && (
+          <div className="rounded-[12px] border border-line bg-card px-3.5 py-2.5">
+            <Switch
+              id="clearout-switch"
+              checked={clearoutActive}
+              onChange={setClearoutActive}
+              label={`Use up ${redItems.length} ${redItems.length === 1 ? 'item' : 'items'} first`}
+              description={<span className="line-clamp-1">{redItems.map((r) => r.name).join(', ')}</span>}
+            />
+          </div>
+        )}
+      </div>
 
       <ReelWindow onSpin={spin} />
 
       {activeMealResult && !isSpinning && pantryMatch && (
-        <Card className="fade-up overflow-hidden" aria-label="Spin result">
+        <Card className="spin-result fade-up overflow-hidden" aria-label="Spin result">
           {photoFor(activeMealResult.id) && (
             <button onClick={() => setSheetOpen(true)} className="block w-full" aria-label="Open the full recipe">
               <img

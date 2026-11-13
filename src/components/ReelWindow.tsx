@@ -148,7 +148,7 @@ export const ReelWindow: React.FC<ReelWindowProps> = ({ onSpin }) => {
 
   return (
     <div>
-      <div className="rounded-[22px] bg-enamel p-3 text-on-enamel ring-1 ring-line shadow-[0_10px_30px_-12px_rgba(31,26,21,0.5)]">
+      <div className="reel-housing rounded-[22px] bg-enamel p-3 text-on-enamel">
         {/* Status strip */}
         <div className="mb-2.5 flex items-center justify-between px-1 text-[12px] text-on-enamel-2">
           <span aria-live="polite">{isSpinning ? 'Spinning…' : drumCaption}</span>
