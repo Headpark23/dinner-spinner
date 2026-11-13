@@ -470,6 +470,14 @@ Fields:
   }
 });
 
+function mountProductionFrontend() {
+  const distPath = path.resolve(__dirname, 'dist');
+  app.use(express.static(distPath));
+  app.get('*', (_req, res) => {
+    res.sendFile(path.resolve(distPath, 'index.html'));
+  });
+}
+
 // Start Express server and mount Vite in development
 async function startServer() {
   const isProduction = process.env.NODE_ENV === 'production';
@@ -482,11 +490,7 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.resolve(__dirname, 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (_req, res) => {
-      res.sendFile(path.resolve(distPath, 'index.html'));
-    });
+    mountProductionFrontend();
   }
 
   app.listen(PORT, '0.0.0.0', () => {
@@ -494,10 +498,16 @@ async function startServer() {
   });
 }
 
-if (process.env.NODE_ENV !== 'test') {
+export const shouldStartStandaloneServer = (environment: NodeJS.ProcessEnv = process.env) =>
+  environment.NODE_ENV !== 'test' && !environment.VERCEL;
+
+if (process.env.VERCEL) {
+  mountProductionFrontend();
+} else if (shouldStartStandaloneServer()) {
   startServer().catch((err) => {
     console.error('Server startup error:', err);
   });
 }
 
 export { app };
+export default app;
