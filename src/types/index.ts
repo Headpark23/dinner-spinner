@@ -137,3 +137,7 @@ export interface TakeawayLogEntry {
   name: string;
   date: string;
 }
+
+/** The spinner's filters also allow "no preference". */
+export type TimeFilter = TimeStake | 'any';
+export type EffortFilter = EffortLevel | 'any';

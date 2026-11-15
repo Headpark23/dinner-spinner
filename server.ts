@@ -542,7 +542,15 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.resolve(__dirname, 'dist');
-    app.use(express.static(distPath));
+    app.use(
+      express.static(distPath, {
+        setHeaders: (res, filePath) => {
+          // The service worker and page must always be re-checked; hashed assets can be cached for a year.
+          if (/sw\.js$|index\.html$|manifest\.webmanifest$/.test(filePath)) res.setHeader('Cache-Control', 'no-cache');
+          else if (filePath.includes(`${path.sep}assets${path.sep}`)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        },
+      })
+    );
     app.get('*', (_req, res) => {
       res.sendFile(path.resolve(distPath, 'index.html'));
     });

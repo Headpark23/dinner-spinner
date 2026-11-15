@@ -16,6 +16,8 @@ import {
   MealTweaks,
   MealReview,
   ShoppingItem,
+  TimeFilter,
+  EffortFilter,
 } from '../types';
 import { WORLD_RECIPES } from '../data/worldRecipes';
 import { applyShoppingOp, newShoppingId, ShoppingOp } from '../utils/shopping';
@@ -51,10 +53,10 @@ interface DinnerContextType {
   // Machine State
   mode: MachineMode;
   setMode: (m: MachineMode) => void;
-  timeStake: TimeStake;
-  setTimeStake: (t: TimeStake) => void;
-  effort: EffortLevel;
-  setEffort: (e: EffortLevel) => void;
+  timeStake: TimeFilter;
+  setTimeStake: (t: TimeFilter) => void;
+  effort: EffortFilter;
+  setEffort: (e: EffortFilter) => void;
   clearoutActive: boolean;
   setClearoutActive: (c: boolean) => void;
   nudgesRemaining: number;
@@ -186,6 +188,17 @@ const DinnerContext = createContext<DinnerContextType | null>(null);
 
 const STORAGE_KEY = 'dinner_spinner_state_v1';
 
+const VIEW_PATHS = ['/', '/takeaway', '/kitchen', '/tonight', '/stats'];
+const viewFromPath = (pathname: string): number | null => {
+  const clean = pathname.replace(/\/+$/, '') || '/';
+  const i = VIEW_PATHS.indexOf(clean);
+  return i === -1 ? null : i;
+};
+
+// A built plate needs a concrete time and effort even when the filters say "any".
+const comboTime = (t: TimeFilter): TimeStake => (t === 'any' ? '30m' : t);
+const comboEffort = (e: EffortFilter): EffortLevel => (e === 'any' ? 'standard' : e);
+
 function loadStored<T>(suffix: string, fallback: T): T {
   try {
     const saved = localStorage.getItem(`${STORAGE_KEY}_${suffix}`);
@@ -249,8 +262,8 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
     return 'single';
   });
-  const [timeStake, setTimeStake] = useState<TimeStake>('20m');
-  const [effort, setEffort] = useState<EffortLevel>('one-pot');
+  const [timeStake, setTimeStake] = useState<TimeFilter>('any');
+  const [effort, setEffort] = useState<EffortFilter>('any');
   const [clearoutActive, setClearoutActive] = useState<boolean>(false);
   const [nudgesRemaining, setNudgesRemaining] = useState<number>(3);
   const [heldReels, setHeldReels] = useState<boolean[]>([false, false, false, false]);
@@ -290,18 +303,44 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     loadStored('reverse_timers', [])
   );
 
-  // Navigation View (0: Machine, 1: Takeaway, 2: Pantry, 3: Voting, 4: Scorecard)
-  const [activeView, setActiveView] = useState<number>(() => {
+  // Navigation View (0: Machine, 1: Takeaway, 2: Kitchen, 3: Tonight, 4: Stats).
+  // Each view has a real URL, so the browser Back button and shared links work.
+  const [activeView, setActiveViewState] = useState<number>(() => {
     if (typeof window !== 'undefined') {
+      const fromPath = viewFromPath(window.location.pathname);
+      if (fromPath !== null) return fromPath;
       const v = new URLSearchParams(window.location.search).get('view');
       if (v === '0' || v === 'spinner' || v === 'machine') return 0;
       if (v === '1' || v === 'takeaway') return 1;
-      if (v === '2' || v === 'pantry') return 2;
-      if (v === '3' || v === 'vote' || v === 'voting') return 3;
+      if (v === '2' || v === 'pantry' || v === 'kitchen') return 2;
+      if (v === '3' || v === 'vote' || v === 'voting' || v === 'tonight') return 3;
       if (v === '4' || v === 'stats' || v === 'scorecard') return 4;
     }
     return 0;
   });
+
+  const setActiveView = useCallback((view: number) => {
+    setActiveViewState(view);
+    if (typeof window === 'undefined') return;
+    const path = VIEW_PATHS[view] ?? '/';
+    if (window.location.pathname !== path) {
+      try {
+        window.history.pushState({ view }, '', path);
+      } catch {
+        // history may be unavailable (e.g. sandboxed frames); the view still changes
+      }
+    }
+    window.scrollTo?.(0, 0);
+  }, []);
+
+  useEffect(() => {
+    const onPop = () => {
+      const v = viewFromPath(window.location.pathname);
+      setActiveViewState(v ?? 0);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   // Sync to localStorage
   useEffect(() => {
@@ -443,7 +482,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (nextMode === '3-reel') {
       const initial3 = [REEL_CARBS[0].label, REEL_PROTEINS[0].label, REEL_SAUCES[0].label];
       setCustomReelResult(initial3);
-      setActiveMealResult(buildComboMeal('3-reel', initial3, timeStake, effort));
+      setActiveMealResult(buildComboMeal('3-reel', initial3, comboTime(timeStake), comboEffort(effort)));
     } else if (nextMode === 'sunday') {
       const initial4 = [
         SUNDAY_MEATS[0].label,
@@ -512,7 +551,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const nextReels = [...customReelResult];
       nextReels[reelIndex] = list[nextIndex].label;
       setCustomReelResult(nextReels);
-      setActiveMealResult(buildComboMeal('3-reel', nextReels, timeStake, effort));
+      setActiveMealResult(buildComboMeal('3-reel', nextReels, comboTime(timeStake), comboEffort(effort)));
     } else if (mode === 'sunday') {
       const lists = [SUNDAY_MEATS, SUNDAY_POTATOES, SUNDAY_STAR_SIDES, SUNDAY_VEG_GRAVY];
       const list = lists[reelIndex] || SUNDAY_MEATS;
@@ -562,7 +601,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           newRes[2] = REEL_SAUCES[Math.floor(Math.random() * REEL_SAUCES.length)].label;
         }
         setCustomReelResult(newRes);
-        const comboMeal = buildComboMeal('3-reel', newRes, timeStake, effort);
+        const comboMeal = buildComboMeal('3-reel', newRes, comboTime(timeStake), comboEffort(effort));
         setActiveMealResult(comboMeal);
         sound.playReelLock();
         sound.playWin();

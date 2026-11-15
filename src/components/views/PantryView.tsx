@@ -91,7 +91,15 @@ export const PantryView: React.FC = () => {
     clearCheckedShopping,
   } = useDinner();
 
-  const [recipeScope, setRecipeScope] = useState<'ours' | 'world'>('ours');
+  const [recipeScope, setRecipeScope] = useState<'ours' | 'world'>(() => {
+    try {
+      const v = sessionStorage.getItem('ds_pantry_scope');
+      sessionStorage.removeItem('ds_pantry_scope');
+      return v === 'world' ? 'world' : 'ours';
+    } catch {
+      return 'ours';
+    }
+  });
   const [worldCuisine, setWorldCuisine] = useState('all');
   const [sheetMeal, setSheetMeal] = useState<Meal | null>(null);
   const [newShopName, setNewShopName] = useState('');
@@ -354,7 +362,7 @@ export const PantryView: React.FC = () => {
       />
 
       <div>
-        <h1 className="font-display text-[28px] leading-tight font-semibold">Pantry</h1>
+        <h1 className="font-display text-[28px] leading-tight font-semibold">Kitchen</h1>
         <p className="mt-1 text-[14px] text-ink-2">
           {redCount > 0
             ? `${redCount} ${redCount === 1 ? 'thing needs' : 'things need'} using up. The spinner can favour them.`
@@ -362,7 +370,7 @@ export const PantryView: React.FC = () => {
         </p>
       </div>
 
-      <div role="tablist" aria-label="Pantry sections" className="-mx-4 flex gap-1 overflow-x-auto px-4 scrollbar-none">
+      <div role="tablist" aria-label="Kitchen sections" className="-mx-4 flex gap-1 overflow-x-auto px-4 scrollbar-none">
         {tabs.map((tab) => {
           const selected = activeTab === tab.id;
           return (
@@ -374,7 +382,7 @@ export const PantryView: React.FC = () => {
               aria-controls={`panel-${tab.id}`}
               onClick={() => setActiveTab(tab.id)}
               className={cx(
-                'h-9 shrink-0 rounded-full px-3.5 text-[14px] font-semibold transition-colors',
+                'h-11 shrink-0 rounded-full px-4 text-[14px] font-semibold transition-colors',
                 selected ? 'bg-ink text-paper' : 'text-ink-2 hover:bg-sunk hover:text-ink'
               )}
             >

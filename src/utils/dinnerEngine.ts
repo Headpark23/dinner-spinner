@@ -122,8 +122,8 @@ export interface EligiblePoolResult {
  */
 export function filterEligibleMeals(
   meals: Meal[],
-  timeStake: TimeStake,
-  effort: EffortLevel,
+  timeStake: TimeStake | 'any',
+  effort: EffortLevel | 'any',
   bannedIngredients: string[]
 ): EligiblePoolResult {
   const nonBannedMeals = meals.filter((meal) => {
@@ -139,8 +139,8 @@ export function filterEligibleMeals(
 
   const baseMeals = nonBannedMeals.length > 0 ? nonBannedMeals : meals;
 
-  const timeMatched = baseMeals.filter((m) => m.timeStake === timeStake);
-  const exactMatched = timeMatched.filter((m) => m.effort === effort);
+  const timeMatched = timeStake === 'any' ? baseMeals : baseMeals.filter((m) => m.timeStake === timeStake);
+  const exactMatched = effort === 'any' ? timeMatched : timeMatched.filter((m) => m.effort === effort);
 
   if (exactMatched.length > 0) {
     return {
@@ -189,7 +189,7 @@ export function selectWeightedMeal(
   pool: Meal[],
   pantry: PantryItem[],
   clearoutActive: boolean,
-  effort: EffortLevel,
+  effort: EffortLevel | 'any',
   nowMs: number = Date.now(),
   randomFn: () => number = Math.random
 ): Meal {

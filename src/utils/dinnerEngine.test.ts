@@ -316,7 +316,7 @@ test('React UI Component Suite: renders all 5 Cabinet Views and Modals cleanly w
   const views = [
     { name: 'MachineView', el: React.createElement(MachineView), expectedText: 'What’s for dinner?' },
     { name: 'TakeawayView', el: React.createElement(TakeawayView), expectedText: 'Spin for takeaway' },
-    { name: 'PantryView', el: React.createElement(PantryView), expectedText: '>Pantry</h1>' },
+    { name: 'PantryView', el: React.createElement(PantryView), expectedText: '>Kitchen</h1>' },
     { name: 'VotingView', el: React.createElement(VotingView), expectedText: 'Nothing on the table yet' },
     { name: 'ScorecardView', el: React.createElement(ScorecardView), expectedText: 'Your kitchen' },
     {
@@ -384,3 +384,18 @@ test('Shopping list ops: add dedupes, ticks record who, clear removes ticked', a
   assert.equal(items.length, 0);
 });
 
+
+test('Eligibility Engine: "any" time and effort keeps the whole non-banned pool', () => {
+  const all = filterEligibleMeals(INITIAL_MEALS, 'any', 'any', []);
+  assert.equal(all.pool.length, INITIAL_MEALS.length);
+  assert.equal(all.isExactEffortMatch, true);
+
+  const anyTime = filterEligibleMeals(INITIAL_MEALS, 'any', 'one-pot', []);
+  assert.ok(anyTime.pool.length > 0 && anyTime.pool.every((m) => m.effort === 'one-pot'));
+
+  const banned = filterEligibleMeals(INITIAL_MEALS, 'any', 'any', ['Halloumi']);
+  assert.equal(banned.pool.some((m) => m.title.includes('Halloumi')), false);
+
+  const pick = selectWeightedMeal(all.pool, [], false, 'any', Date.now(), () => 0.5);
+  assert.ok(pick && pick.id);
+});

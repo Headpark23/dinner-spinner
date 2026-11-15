@@ -19,7 +19,7 @@ const steps = [
   },
   {
     title: 'Use up the fridge',
-    body: 'Mark anything that needs eating as “use next” in the Pantry. Turn on “use up first” and dishes that need those items become 4.5× likelier. Anything cooked in the last four days rests, so the week stays varied.',
+    body: 'Mark anything that needs eating as “use next” in the Kitchen. Turn on “use up first” and dishes that need those items become 4.5× likelier. Anything cooked in the last four days rests, so the week stays varied.',
   },
   {
     title: 'Hold, nudge, spin',
