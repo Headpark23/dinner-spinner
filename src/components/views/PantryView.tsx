@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { useDinner } from '../../context/DinnerContext';
 import { DietPicker } from '../DietPicker';
 import { mealFitsDiets } from '../../utils/diets';
+import { STORES, StoreId } from '../../utils/planner';
 import {
   Camera,
   Receipt,
@@ -21,6 +22,7 @@ import {
   Sparkles,
   Copy,
   LoaderCircle,
+  ExternalLink,
 } from 'lucide-react';
 import { FreshnessLevel, Meal, TimeStake, EffortLevel } from '../../types';
 import { RecipeSheet } from '../RecipeSheet';
@@ -93,7 +95,10 @@ export const PantryView: React.FC = () => {
     toggleShoppingItem,
     removeShoppingItem,
     clearCheckedShopping,
+    store,
+    setStore,
   } = useDinner();
+  const storeInfo = STORES.find((x) => x.id === store) || STORES[0];
 
   const [recipeScope, setRecipeScope] = useState<'ours' | 'world'>(() => {
     try {
@@ -697,6 +702,20 @@ export const PantryView: React.FC = () => {
               </Card>
             ) : (
               <>
+                {toBuy.length > 0 && (
+                  <div className="flex items-center justify-between gap-3 px-1">
+                    <label htmlFor="store-pick" className="text-[13px] text-ink-2">
+                      Search items at
+                    </label>
+                    <Select id="store-pick" value={store} onChange={(e) => setStore(e.target.value as StoreId)} className="!text-[14px]">
+                      {STORES.map((x) => (
+                        <option key={x.id} value={x.id}>
+                          {x.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                )}
                 {[
                   { title: 'To buy', items: toBuy },
                   { title: 'In the basket', items: gotIt },
@@ -737,6 +756,17 @@ export const PantryView: React.FC = () => {
                                   </span>
                                 </span>
                               </button>
+                              {!item.checked && (
+                                <a
+                                  href={storeInfo.url(item.name)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  aria-label={`Find ${item.name} at ${storeInfo.label} (opens a new tab)`}
+                                  className="flex h-11 w-11 items-center justify-center rounded-xl text-ink-3 hover:bg-sunk hover:text-ink"
+                                >
+                                  <ExternalLink className="h-4 w-4" />
+                                </a>
+                              )}
                               <IconButton label={`Remove ${item.name}`} onClick={() => removeShoppingItem(item.id)}>
                                 <X className="h-4 w-4" />
                               </IconButton>

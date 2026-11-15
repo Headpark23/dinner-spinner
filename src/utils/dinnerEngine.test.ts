@@ -522,3 +522,62 @@ test('Quantities: every bundled recipe has a quantity for every ingredient', () 
     .filter((v) => !/^\d/.test(v) && !['to taste', 'a pinch', 'a handful', 'to serve', 'to fry'].includes(v));
   assert.deepEqual(odd, []);
 });
+
+// ---------------------------------------------------------------------------
+// Week planner
+// ---------------------------------------------------------------------------
+import { nextDays, suggestWeek, tidyPlan, weekShopping, themeFits, STORES } from './planner';
+
+test('Planner: seven distinct dishes, diets and themes respected, existing nights kept', () => {
+  const pool = [...INITIAL_MEALS, ...WORLD_RECIPES.slice(0, 40)];
+  const days = nextDays(new Date(2026, 10, 15), 7);
+  assert.equal(days.length, 7);
+  assert.equal(days[0], '2026-11-15');
+  assert.equal(days[6], '2026-11-21');
+
+  const kept = { [days[2]]: { mealId: pool[0].id, title: pool[0].title } };
+  const plan = suggestWeek(pool, { days, plan: kept, themes: { [days[0]]: 'meatless' }, diets: ['vegetarian'], banned: [] });
+  assert.equal(Object.keys(plan).length, 7);
+  assert.equal(plan[days[2]].mealId, pool[0].id, 'a night you already chose is untouched');
+  const ids = Object.values(plan).map((p) => p.mealId);
+  assert.equal(new Set(ids).size, ids.length, 'no repeats in a week');
+  for (const [day, v] of Object.entries(plan)) {
+    if (day === days[2]) continue;
+    const meal = pool.find((m) => m.id === v.mealId)!;
+    assert.ok(mealFitsDiets(meal.ingredients, ['vegetarian']), `${meal.title} suits a vegetarian household`);
+  }
+
+  const fish = suggestWeek(pool, { days: [days[0]], plan: {}, themes: { [days[0]]: 'fish' }, diets: [], banned: [] });
+  const fishMeal = pool.find((m) => m.id === fish[days[0]].mealId)!;
+  assert.ok(themeFits('fish', fishMeal), 'a fish night gets a fish dish when one exists');
+
+  const nothing = suggestWeek([], { days, plan: {}, themes: {}, diets: [], banned: [] });
+  assert.deepEqual(nothing, {});
+});
+
+test('Planner: old days and deleted dishes are dropped; shopping is merged once', () => {
+  const meals = INITIAL_MEALS.slice(0, 3);
+  const old = { '2020-01-01': { mealId: meals[0].id, title: 'x' } };
+  const gone = { '2999-01-01': { mealId: 'nope', title: 'y' } };
+  assert.deepEqual(tidyPlan({ ...old, ...gone }, new Date(2026, 10, 15), meals), {});
+
+  const plan = {
+    '2026-11-16': { mealId: meals[0].id, title: meals[0].title },
+    '2026-11-17': { mealId: meals[0].id, title: meals[0].title },
+    '2026-11-18': { mealId: meals[1].id, title: meals[1].title },
+  };
+  const list = weekShopping(plan, meals, [], [], []);
+  assert.equal(new Set(list.map((x) => x.toLowerCase())).size, list.length, 'each item once');
+  const onList = weekShopping(plan, meals, [], [], [list[0]]);
+  assert.ok(!onList.includes(list[0]), 'anything already on the list is skipped');
+  const stocked = weekShopping(plan, meals, [], meals[0].ingredients, []);
+  assert.ok(meals[0].ingredients.every((i) => !stocked.includes(i)), 'staples are never bought');
+});
+
+test('Planner: supermarket links encode the search term', () => {
+  for (const s of STORES) {
+    const url = s.url('chilli flakes & oil');
+    assert.ok(url.startsWith('https://'));
+    assert.ok(!url.includes(' ') && !url.includes('&oil'), `${s.id} escapes the term`);
+  }
+});

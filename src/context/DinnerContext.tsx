@@ -41,6 +41,7 @@ import {
 import { sound } from '../utils/audio';
 import { checkBackup, BackupCheck } from '../utils/backup';
 import { DietId, isDietId, mealFitsDiets } from '../utils/diets';
+import { WeekPlan, ThemeId, THEMES, StoreId, STORES, nextDays, suggestWeek, tidyPlan, weekShopping } from '../utils/planner';
 import {
   isMealCoolingOff,
   getMealCoolingOffDays,
@@ -105,6 +106,17 @@ interface DinnerContextType {
   toggleDiet: (id: DietId) => void;
   servings: number;
   setServings: (n: number) => void;
+
+  // Week planner
+  weekPlan: WeekPlan;
+  weekThemes: Record<number, ThemeId>;
+  setWeekTheme: (weekday: number, theme: ThemeId) => void;
+  setPlanDay: (day: string, meal: Meal | null) => void;
+  planWeek: () => void;
+  clearWeekPlan: () => void;
+  shopForWeek: () => number;
+  store: StoreId;
+  setStore: (id: StoreId) => void;
   meals: Meal[];
   addMeal: (meal: Omit<Meal, 'id' | 'rating' | 'cookCount' | 'lastCookedDate' | 'isFavorite'>) => Meal;
   deleteMeal: (id: string) => void;
@@ -234,6 +246,18 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [servings, setServingsState] = useState<number>(() => {
     const n = Number(loadStored<number>('servings', 4));
     return [2, 4, 6, 8].includes(n) ? n : 4;
+  });
+  const [weekPlan, setWeekPlan] = useState<WeekPlan>(() => {
+    const stored = loadStored<WeekPlan>('week_plan', {});
+    return stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
+  });
+  const [weekThemes, setWeekThemes] = useState<Record<number, ThemeId>>(() => {
+    const stored = loadStored<Record<number, ThemeId>>('week_themes', {});
+    return stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
+  });
+  const [store, setStoreState] = useState<StoreId>(() => {
+    const v = loadStored<string>('store', 'tesco');
+    return (STORES.some((x) => x.id === v) ? v : 'tesco') as StoreId;
   });
   const [diets, setDiets] = useState<DietId[]>(() =>
     loadStored<unknown[]>('diets', []).filter(isDietId) as DietId[]
@@ -392,6 +416,38 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY}_servings`, JSON.stringify(servings));
   }, [servings]);
+  useEffect(() => {
+    localStorage.setItem(`${STORAGE_KEY}_week_plan`, JSON.stringify(weekPlan));
+  }, [weekPlan]);
+  useEffect(() => {
+    localStorage.setItem(`${STORAGE_KEY}_week_themes`, JSON.stringify(weekThemes));
+  }, [weekThemes]);
+  useEffect(() => {
+    localStorage.setItem(`${STORAGE_KEY}_store`, JSON.stringify(store));
+  }, [store]);
+  const setStore = (id: StoreId) => setStoreState(id);
+  const setWeekTheme = (weekday: number, theme: ThemeId) =>
+    setWeekThemes((prev) => ({ ...prev, [weekday]: theme }));
+  const setPlanDay = (day: string, meal: Meal | null) =>
+    setWeekPlan((prev) => {
+      const next = { ...prev };
+      if (meal) next[day] = { mealId: meal.id, title: meal.title };
+      else delete next[day];
+      return next;
+    });
+  const planWeek = () => {
+    const today = new Date();
+    const days = nextDays(today, 7);
+    const themes: Record<string, ThemeId> = {};
+    days.forEach((d) => {
+      const wd = new Date(d + 'T12:00:00').getDay();
+      if (weekThemes[wd] && THEMES.some((t) => t.id === weekThemes[wd])) themes[d] = weekThemes[wd];
+    });
+    setWeekPlan((prev) =>
+      suggestWeek(meals, { days, plan: tidyPlan(prev, today, meals), themes, diets, banned: bannedIngredients })
+    );
+  };
+  const clearWeekPlan = () => setWeekPlan({});
   const setServings = (n: number) => setServingsState([2, 4, 6, 8].includes(n) ? n : 4);
 
   useEffect(() => {
@@ -860,6 +916,17 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         .filter(Boolean)
         .map((name) => ({ type: 'add' as const, item: { id: newShoppingId(), name, forMeal, addedBy: meName() } }))
     );
+  const shopForWeek = (): number => {
+    const names = weekShopping(
+      tidyPlan(weekPlan, new Date(), meals),
+      meals,
+      pantry,
+      staples,
+      shoppingList.map((i) => i.name)
+    );
+    if (names.length) addShoppingItems(names, 'this week’s plan');
+    return names.length;
+  };
   const removeShoppingByName = (name: string) => queueShopping([{ type: 'removeByName', name }]);
   const toggleShoppingItem = (id: string) => queueShopping([{ type: 'toggle', id, by: meName() }]);
   const removeShoppingItem = (id: string) => queueShopping([{ type: 'remove', id }]);
@@ -1185,6 +1252,8 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             members: householdMembers,
             banned: bannedIngredients,
             diets,
+            weekPlan,
+            weekThemes,
             voteLogs,
             rescuedItemsCount,
             cookLog,
@@ -1228,6 +1297,24 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setBannedIngredients(payload.banned || payload.bannedIngredients);
     }
     if (Array.isArray(payload.diets)) setDiets(payload.diets.filter(isDietId));
+    if (payload.weekPlan && typeof payload.weekPlan === 'object' && !Array.isArray(payload.weekPlan)) {
+      setWeekPlan(
+        Object.fromEntries(
+          Object.entries(payload.weekPlan as Record<string, any>).filter(
+            ([k, v]) => /^\d{4}-\d{2}-\d{2}$/.test(k) && v && typeof v.mealId === 'string' && typeof v.title === 'string'
+          )
+        ) as WeekPlan
+      );
+    }
+    if (payload.weekThemes && typeof payload.weekThemes === 'object' && !Array.isArray(payload.weekThemes)) {
+      setWeekThemes(
+        Object.fromEntries(
+          Object.entries(payload.weekThemes as Record<string, any>).filter(
+            ([k, v]) => /^[0-6]$/.test(k) && THEMES.some((t) => t.id === v)
+          )
+        ) as Record<number, ThemeId>
+      );
+    }
     if (Array.isArray(payload.voteLogs)) setVoteLogs(payload.voteLogs);
     if (typeof payload.rescuedItemsCount === 'number') setRescuedItemsCount(payload.rescuedItemsCount);
     if (Array.isArray(payload.cookLog)) setCookLog(payload.cookLog);
@@ -1514,6 +1601,15 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         toggleDiet,
         servings,
         setServings,
+        weekPlan,
+        weekThemes,
+        setWeekTheme,
+        setPlanDay,
+        planWeek,
+        clearWeekPlan,
+        shopForWeek,
+        store,
+        setStore,
         toggleBannedIngredient,
         meals,
         addMeal,

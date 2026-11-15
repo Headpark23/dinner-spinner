@@ -4,7 +4,8 @@ import { photoFor } from '../../data/photos';
 import { useDinner } from '../../context/DinnerContext';
 import { ReelWindow } from '../ReelWindow';
 import { TimeFilter, EffortFilter, MachineMode } from '../../types';
-import { Send, Heart, Check, ShoppingBasket, Star, Snowflake, BookOpen, ChevronDown, Globe2 } from 'lucide-react';
+import { Send, Heart, Check, ShoppingBasket, Star, Snowflake, BookOpen, ChevronDown, Globe2, CalendarDays } from 'lucide-react';
+import { PlannerSheet } from '../PlannerSheet';
 import { Card, Chip, Notice, DishTile, Segmented, Switch, Button, IconButton, cx } from '../ui';
 
 const dayPart = () => {
@@ -63,6 +64,7 @@ export const MachineView: React.FC = () => {
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [plannerOpen, setPlannerOpen] = useState(false);
   const filterSummary =
     timeStake === 'any' && effort === 'any'
       ? 'Any dish, any time'
@@ -310,6 +312,20 @@ export const MachineView: React.FC = () => {
         </span>
         <ChevronDown className="h-4 w-4 -rotate-90 text-ink-3" />
       </button>
+
+      <button
+        type="button"
+        onClick={() => setPlannerOpen(true)}
+        className="flex min-h-11 w-full items-center gap-2.5 rounded-xl border border-line bg-card px-3.5 py-2.5 text-left hover:border-line-strong"
+      >
+        <CalendarDays className="h-5 w-5 shrink-0 text-ink-2" strokeWidth={1.75} />
+        <span className="min-w-0 flex-1">
+          <span className="block text-[14px] font-semibold">Plan the week</span>
+          <span className="block text-[13px] text-ink-2">Seven dinners, themed nights, one shopping trip</span>
+        </span>
+        <ChevronDown className="h-4 w-4 -rotate-90 text-ink-3" />
+      </button>
+      <PlannerSheet isOpen={plannerOpen} onClose={() => setPlannerOpen(false)} />
 
       {swapNote && (
         <p role="status" className="fade-up rounded-xl bg-sunk px-3.5 py-3 text-[14px] text-ink-2">
