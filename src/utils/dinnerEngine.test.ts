@@ -581,3 +581,134 @@ test('Planner: supermarket links encode the search term', () => {
     assert.ok(!url.includes(' ') && !url.includes('&oil'), `${s.id} escapes the term`);
   }
 });
+
+// ---------------------------------------------------------------------------
+// Hosted storage: the same server behaviour on a Redis-style store, including
+// two phones writing at the same moment.
+// ---------------------------------------------------------------------------
+import { createRedisStore, mutate, Store } from '../server/store';
+
+/** A stand-in for Upstash's REST API that understands GET, SET and the compare-and-set script. */
+async function withFakeRedis(run: (url: string, data: Map<string, string>) => Promise<void>) {
+  const data = new Map<string, string>();
+  const server = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      if (req.headers.authorization !== 'Bearer tok') {
+        res.statusCode = 401;
+        return res.end(JSON.stringify({ error: 'unauthorized' }));
+      }
+      const [cmd, ...a] = JSON.parse(body) as (string | number)[];
+      let result: unknown = null;
+      if (cmd === 'GET') result = data.get(String(a[0])) ?? null;
+      else if (cmd === 'SET') {
+        data.set(String(a[1 - 1]), String(a[1]));
+        result = 'OK';
+      } else if (cmd === 'EVAL') {
+        const key = String(a[2]);
+        const expected = Number(a[3]);
+        const cur = data.get(key);
+        const rev = cur ? JSON.parse(cur)._rev || 0 : 0;
+        if ((cur && rev !== expected) || (!cur && expected !== 0)) result = 0;
+        else {
+          data.set(key, String(a[4]));
+          result = 1;
+        }
+      }
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ result }));
+    });
+  });
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  const { port } = server.address() as { port: number };
+  try {
+    await run(`http://127.0.0.1:${port}`, data);
+  } finally {
+    await new Promise<void>((r) => server.close(() => r()));
+  }
+}
+
+test('Hosted storage: households, shopping, saved copy and live vote work on a Redis-style store', async () => {
+  await withFakeRedis(async (redisUrl, data) => {
+    const { useStore } = await import('../../server');
+    const store = createRedisStore(redisUrl, 'tok');
+    useStore(store);
+    await withServer(async (baseUrl) => {
+      const a = await newHousehold(baseUrl);
+      const b = await newHousehold(baseUrl);
+      assert.equal((await fetch(`${baseUrl}/api/households/me`, { headers: authed(a) })).status, 200);
+      assert.equal(
+        (await fetch(`${baseUrl}/api/households/me`, { headers: { ...authed(a), 'x-household-key': 'wrong' } })).status,
+        401
+      );
+      assert.equal(
+        (await fetch(`${baseUrl}/api/households/me`, { headers: { ...json, 'x-household-id': '__proto__', 'x-household-key': 'x' } })).status,
+        401
+      );
+
+      await fetch(`${baseUrl}/api/shopping/ops`, {
+        method: 'POST',
+        headers: authed(a),
+        body: JSON.stringify({ ops: [{ type: 'add', item: { id: 's1', name: 'Milk' } }] }),
+      });
+      const list = await (await fetch(`${baseUrl}/api/shopping`, { headers: authed(a) })).json();
+      assert.equal(list.items.length, 1);
+      assert.equal((await (await fetch(`${baseUrl}/api/shopping`, { headers: authed(b) })).json()).items.length, 0);
+
+      const save = await fetch(`${baseUrl}/api/sync/cloud`, {
+        method: 'POST',
+        headers: authed(a),
+        body: JSON.stringify({ data: { meals: [{ id: 'x' }] } }),
+      });
+      assert.equal((await save.json()).itemCount, 1);
+      const got = await (await fetch(`${baseUrl}/api/sync/cloud`, { headers: authed(a) })).json();
+      assert.equal(got.hasSnapshot, true);
+      assert.equal((await (await fetch(`${baseUrl}/api/households/me`, { headers: authed(a) })).json()).hasSnapshot, true);
+      // The big saved copy lives under its own key, so polling never drags it along.
+      assert.ok(data.has(`hh:${a.householdId}:snap`));
+      assert.ok(!data.get(`hh:${a.householdId}`)!.includes('"meals"'));
+      assert.equal((await (await fetch(`${baseUrl}/api/sync/cloud`, { headers: authed(b) })).json()).hasSnapshot, false);
+
+      const meal = {
+        id: 'meal_1', title: 'Pasta', timeStake: '20m', effort: 'one-pot', ingredients: ['Pasta'], prepSteps: ['Boil (-10m)'],
+      };
+      const post = (h: any, body: object) =>
+        fetch(`${baseUrl}/api/tonight`, { method: 'POST', headers: authed(h), body: JSON.stringify(body) });
+      await post(a, { op: 'propose', meal, people: ['Sam', 'Jo', 'Pat'], needed: 3 });
+      // Three phones vote at the same moment: nobody's vote may be lost.
+      await Promise.all(['Sam', 'Jo', 'Pat'].map((voter) => post(a, { op: 'vote', voter, vote: 'yes' })));
+      const t = await (await fetch(`${baseUrl}/api/tonight`, { headers: authed(a) })).json();
+      assert.deepEqual(Object.keys(t.ballot).sort(), ['Jo', 'Pat', 'Sam']);
+      assert.equal(t.status, 'agreed');
+      assert.equal((await (await fetch(`${baseUrl}/api/tonight`, { headers: authed(b) })).json()).status, 'idle');
+    });
+  });
+});
+
+test('Hosted storage: a failing store gives a calm error, not a crash', async () => {
+  const broken: Store = {
+    async get() {
+      throw new Error('down');
+    },
+    async put() {
+      throw new Error('down');
+    },
+    async getSnapshot() {
+      throw new Error('down');
+    },
+    async putSnapshot() {
+      throw new Error('down');
+    },
+  };
+  const { useStore } = await import('../../server');
+  useStore(broken);
+  await withServer(async (baseUrl) => {
+    const r = await fetch(`${baseUrl}/api/households`, { method: 'POST' });
+    assert.equal(r.status, 503);
+    const me = await fetch(`${baseUrl}/api/tonight`, { headers: { 'x-household-id': 'h_aaaaaaaaaaaa', 'x-household-key': 'k' } });
+    assert.equal(me.status, 503);
+    assert.ok(typeof (await me.json()).error === 'string');
+  });
+  await assert.rejects(mutate(broken, 'h_aaaaaaaaaaaa', () => 1));
+});

@@ -1,12 +1,11 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
-import fs from 'fs';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
 import { applyShoppingOp } from './src/utils/shopping';
-import type { ShoppingItem } from './src/types';
+import { Household, HttpError, Store, createFileStore, createStoreFromEnv, mutate } from './src/server/store';
 
 dotenv.config();
 
@@ -14,6 +13,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+// Behind a host's proxy (Vercel) every request would look like one visitor without this.
+if (process.env.VERCEL) app.set('trust proxy', true);
 const PORT = Number(process.env.PORT) || 3000;
 const IS_TEST = process.env.NODE_ENV === 'test';
 // Everything a household has shared lives here. Never written during tests.
@@ -77,42 +78,28 @@ app.use('/api', rateLimit('API', 600, 60_000));
 // key is stored. Every data route below requires it, so one household can never
 // read or overwrite another's data.
 // ---------------------------------------------------------------------------
-type Household = {
-  keyHash: string;
-  createdAt: string;
-  snapshot: { syncedAt: string; syncId: string; data: any } | null;
-  shopping: { version: number; items: ShoppingItem[] };
+// Where households live: Redis when the host provides one, otherwise a local file.
+let store: Store = IS_TEST ? createFileStore(null) : createStoreFromEnv(HOUSEHOLDS_PATH);
+/** Tests swap in a different store. */
+export const useStore = (next: Store) => {
+  store = next;
 };
 
-let households: Record<string, Household> = {};
-try {
-  if (HOUSEHOLDS_PATH && fs.existsSync(HOUSEHOLDS_PATH)) {
-    households = JSON.parse(fs.readFileSync(HOUSEHOLDS_PATH, 'utf-8'));
-  }
-} catch {
-  households = {};
-}
-
-let persistTimer: NodeJS.Timeout | null = null;
-function persistHouseholds() {
-  if (!HOUSEHOLDS_PATH || persistTimer) return;
-  persistTimer = setTimeout(() => {
-    persistTimer = null;
-    try {
-      fs.writeFileSync(HOUSEHOLDS_PATH, JSON.stringify(households), 'utf-8');
-    } catch {
-      // Read-only filesystem: data still lives in memory.
-    }
-  }, 300);
-}
+/** Turns a thrown HttpError into a JSON reply; anything else is a storage problem. */
+const fail = (res: express.Response, err: unknown) => {
+  if (err instanceof HttpError) return res.status(err.status).json(err.body);
+  console.warn('Storage error:', (err as Error)?.message);
+  return res.status(503).json({ error: 'Storage is unavailable just now. Try again in a moment.' });
+};
 
 const sha256 = (v: string) => crypto.createHash('sha256').update(v).digest();
 
-function authenticate(req: express.Request): { id: string; household: Household } | null {
+async function authenticate(req: express.Request): Promise<{ id: string; household: Household } | null> {
   const id = String(req.header('x-household-id') || '');
   const key = String(req.header('x-household-key') || '');
-  const household = Object.prototype.hasOwnProperty.call(households, id) ? households[id] : undefined;
-  if (!household || !key) return null;
+  if (!id || !key) return null;
+  const household = await store.get(id);
+  if (!household) return null;
   const given = sha256(key);
   const stored = Buffer.from(household.keyHash, 'hex');
   if (given.length !== stored.length || !crypto.timingSafeEqual(given, stored)) return null;
@@ -120,12 +107,16 @@ function authenticate(req: express.Request): { id: string; household: Household 
 }
 
 type AuthedRequest = express.Request & { household?: Household; householdId?: string };
-const requireHousehold: express.RequestHandler = (req, res, next) => {
-  const auth = authenticate(req);
-  if (!auth) return res.status(401).json({ error: 'Household code missing or wrong.' });
-  (req as AuthedRequest).household = auth.household;
-  (req as AuthedRequest).householdId = auth.id;
-  next();
+const requireHousehold: express.RequestHandler = async (req, res, next) => {
+  try {
+    const auth = await authenticate(req);
+    if (!auth) return res.status(401).json({ error: 'Household code missing or wrong.' });
+    (req as AuthedRequest).household = auth.household;
+    (req as AuthedRequest).householdId = auth.id;
+    next();
+  } catch (err) {
+    fail(res, err);
+  }
 };
 
 // Health check (nothing sensitive)
@@ -138,56 +129,58 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
-app.post('/api/households', rateLimit('household', 10, 60 * 60_000), (_req, res) => {
+app.post('/api/households', rateLimit('household', 10, 60 * 60_000), async (_req, res) => {
   const id = 'h_' + crypto.randomBytes(6).toString('hex');
   const key = crypto.randomBytes(16).toString('hex');
-  households[id] = {
-    keyHash: sha256(key).toString('hex'),
-    createdAt: new Date().toISOString(),
-    snapshot: null,
-    shopping: { version: 0, items: [] },
-  };
-  persistHouseholds();
-  res.status(201).json({ householdId: id, key, code: `${id}.${key}` });
+  try {
+    await store.put(id, {
+      keyHash: sha256(key).toString('hex'),
+      createdAt: new Date().toISOString(),
+      snapshotAt: null,
+      shopping: { version: 0, items: [] },
+    });
+    res.status(201).json({ householdId: id, key, code: `${id}.${key}` });
+  } catch (err) {
+    fail(res, err);
+  }
 });
 
 app.get('/api/households/me', requireHousehold, (req, res) => {
   const h = (req as AuthedRequest).household!;
-  res.json({ ok: true, hasSnapshot: Boolean(h.snapshot), createdAt: h.createdAt });
+  res.json({ ok: true, hasSnapshot: Boolean(h.snapshotAt), createdAt: h.createdAt });
 });
 
-app.post('/api/sync/cloud', smallJson, requireHousehold, (req, res) => {
+app.post('/api/sync/cloud', smallJson, requireHousehold, async (req, res) => {
   const { data } = req.body || {};
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
     return res.status(400).json({ error: 'Invalid sync payload' });
   }
-  const h = (req as AuthedRequest).household!;
-  h.snapshot = {
-    syncedAt: new Date().toISOString(),
-    syncId: 'sync_' + Date.now(),
-    data,
-  };
-  persistHouseholds();
-  res.json({
-    success: true,
-    syncedAt: h.snapshot.syncedAt,
-    itemCount: Array.isArray(data?.meals) ? data.meals.length : 0,
-    syncId: h.snapshot.syncId,
-  });
+  const id = (req as AuthedRequest).householdId!;
+  const snap = { syncedAt: new Date().toISOString(), syncId: 'sync_' + Date.now(), data };
+  try {
+    await store.putSnapshot(id, snap);
+    await mutate(store, id, (h) => {
+      h.snapshotAt = snap.syncedAt;
+    });
+    res.json({
+      success: true,
+      syncedAt: snap.syncedAt,
+      itemCount: Array.isArray(data?.meals) ? data.meals.length : 0,
+      syncId: snap.syncId,
+    });
+  } catch (err) {
+    fail(res, err);
+  }
 });
 
-app.get('/api/sync/cloud', requireHousehold, (req, res) => {
-  const h = (req as AuthedRequest).household!;
-  if (!h.snapshot) {
-    return res.json({ success: true, hasSnapshot: false, data: null });
+app.get('/api/sync/cloud', requireHousehold, async (req, res) => {
+  try {
+    const snap = await store.getSnapshot((req as AuthedRequest).householdId!);
+    if (!snap) return res.json({ success: true, hasSnapshot: false, data: null });
+    return res.json({ success: true, hasSnapshot: true, syncedAt: snap.syncedAt, syncId: snap.syncId, data: snap.data });
+  } catch (err) {
+    fail(res, err);
   }
-  return res.json({
-    success: true,
-    hasSnapshot: true,
-    syncedAt: h.snapshot.syncedAt,
-    syncId: h.snapshot.syncId,
-    data: h.snapshot.data,
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -198,14 +191,19 @@ app.get('/api/shopping', requireHousehold, (req, res) => {
   res.json((req as AuthedRequest).household!.shopping);
 });
 
-app.post('/api/shopping/ops', smallJson, requireHousehold, (req, res) => {
+app.post('/api/shopping/ops', smallJson, requireHousehold, async (req, res) => {
   const ops = Array.isArray(req.body?.ops) ? req.body.ops.slice(0, 200) : [];
   if (ops.length === 0) return res.status(400).json({ error: 'No operations' });
-  const h = (req as AuthedRequest).household!;
-  h.shopping.items = ops.reduce(applyShoppingOp, h.shopping.items);
-  h.shopping.version += 1;
-  persistHouseholds();
-  res.json(h.shopping);
+  try {
+    const shopping = await mutate(store, (req as AuthedRequest).householdId!, (h) => {
+      h.shopping.items = ops.reduce(applyShoppingOp, h.shopping.items);
+      h.shopping.version += 1;
+      return h.shopping;
+    });
+    res.json(shopping);
+  } catch (err) {
+    fail(res, err);
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -268,15 +266,24 @@ app.get('/api/tonight', requireHousehold, (req, res) => {
   res.json(tonightOf((req as AuthedRequest).household!));
 });
 
-app.post('/api/tonight', smallJson, requireHousehold, (req, res) => {
-  const h = (req as AuthedRequest).household!;
-  const t = tonightOf(h);
+app.post('/api/tonight', smallJson, requireHousehold, async (req, res) => {
   const body = req.body || {};
+  try {
+    const t = await mutate(store, (req as AuthedRequest).householdId!, (h) => applyTonightOp(h, body));
+    res.json(t);
+  } catch (err) {
+    if (err instanceof HttpError) return res.status(err.status).json(err.body);
+    fail(res, err);
+  }
+});
+
+function applyTonightOp(h: Household, body: any): Tonight {
+  const t = tonightOf(h);
   switch (body.op) {
     case 'propose': {
       const meal = cleanMeal(body.meal);
       const people = Array.from(new Set(clipList(body.people, 12, 30)));
-      if (!meal || people.length === 0) return res.status(400).json({ error: 'Invalid proposal' });
+      if (!meal || people.length === 0) throw new HttpError(400, { error: 'Invalid proposal' });
       const needed = Math.min(people.length, Math.max(1, Math.floor(Number(body.needed)) || Math.ceil(people.length / 2)));
       Object.assign(t, {
         version: t.version + 1,
@@ -293,9 +300,9 @@ app.post('/api/tonight', smallJson, requireHousehold, (req, res) => {
       break;
     }
     case 'vote': {
-      if (t.status !== 'open') return res.status(409).json({ error: 'There is no open vote.', tonight: t });
+      if (t.status !== 'open') throw new HttpError(409, { error: 'There is no open vote.', tonight: t });
       const voter = t.people.find((p) => p.toLowerCase() === clipText(body.voter, 30).toLowerCase());
-      if (!voter || !['yes', 'no'].includes(body.vote)) return res.status(400).json({ error: 'Invalid vote' });
+      if (!voter || !['yes', 'no'].includes(body.vote)) throw new HttpError(400, { error: 'Invalid vote' });
       t.ballot[voter] = body.vote;
       if (body.vote === 'no') {
         t.status = 'vetoed';
@@ -307,7 +314,7 @@ app.post('/api/tonight', smallJson, requireHousehold, (req, res) => {
       break;
     }
     case 'decide': {
-      if (t.status !== 'open') return res.status(409).json({ error: 'There is no open vote.', tonight: t });
+      if (t.status !== 'open') throw new HttpError(409, { error: 'There is no open vote.', tonight: t });
       t.status = 'agreed';
       t.version += 1;
       break;
@@ -317,11 +324,10 @@ app.post('/api/tonight', smallJson, requireHousehold, (req, res) => {
       break;
     }
     default:
-      return res.status(400).json({ error: 'Unknown operation' });
+      throw new HttpError(400, { error: 'Unknown operation' });
   }
-  persistHouseholds();
-  res.json(t);
-});
+  return t;
+}
 
 // Live model calls must never leave the UI hanging: give up after GEMINI_TIMEOUT_MS
 // and let the catch block serve the simulated response instead.
@@ -468,7 +474,7 @@ app.post('/api/pantry/analyze', imageJson, rateLimit('scan', 20, 10 * 60_000), a
     }
 
     // Live model calls cost money, so only household members may make them.
-    if (!authenticate(req)) {
+    if (!(await authenticate(req))) {
       return res.status(401).json({ error: 'Turn on household sharing before using scanning.' });
     }
 
@@ -676,7 +682,7 @@ async function startServer() {
   });
 }
 
-if (process.env.NODE_ENV !== 'test') {
+if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
   startServer().catch((err) => {
     console.error('Server startup error:', err);
   });
