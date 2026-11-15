@@ -5,7 +5,7 @@ import { useDinner } from '../../context/DinnerContext';
 import { ReelWindow } from '../ReelWindow';
 import { TimeFilter, EffortFilter, MachineMode } from '../../types';
 import { Send, Heart, Check, ShoppingBasket, Star, Snowflake, BookOpen, ChevronDown, Globe2 } from 'lucide-react';
-import { Card, Chip, DishTile, Segmented, Switch, Button, IconButton, cx } from '../ui';
+import { Card, Chip, Notice, DishTile, Segmented, Switch, Button, IconButton, cx } from '../ui';
 
 const dayPart = () => {
   const now = new Date();
@@ -55,6 +55,7 @@ export const MachineView: React.FC = () => {
     getMealPantryMatch,
     eligiblePoolCount,
     exactEffortMatchCount,
+    diets,
     setActiveView,
     isCoolingOff,
     getCoolingOffDays,
@@ -73,6 +74,8 @@ export const MachineView: React.FC = () => {
 
   const poolNote =
     mode !== 'single'
+      ? null
+      : eligiblePoolCount === 0
       ? null
       : exactEffortMatchCount > 0
       ? null
@@ -160,6 +163,13 @@ export const MachineView: React.FC = () => {
             description={<span className="line-clamp-1">{redItems.map((r) => r.name).join(', ')}</span>}
           />
         </div>
+      )}
+
+      {mode === 'single' && eligiblePoolCount === 0 && diets.length > 0 && (
+        <Notice tone="tomato">
+          None of your saved dishes suit the household’s diets. Try “Fancy something new?” below, or change the diets in
+          Kitchen, then Avoid.
+        </Notice>
       )}
 
       <ReelWindow onSpin={spin} />

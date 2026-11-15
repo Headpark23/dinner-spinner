@@ -1,5 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { useDinner } from '../../context/DinnerContext';
+import { DietPicker } from '../DietPicker';
+import { mealFitsDiets } from '../../utils/diets';
 import {
   Camera,
   Receipt,
@@ -67,6 +69,8 @@ export const PantryView: React.FC = () => {
     addStaple,
     removeStaple,
     bannedIngredients,
+    diets,
+    toggleDiet,
     toggleBannedIngredient,
     meals,
     addMeal,
@@ -238,6 +242,7 @@ export const PantryView: React.FC = () => {
   const filteredWorld = worldRecipes.filter((r) => {
     if (worldCuisine !== 'all' && r.cuisine !== worldCuisine) return false;
     if (rejectedMealIds.includes(r.id)) return false;
+    if (!mealFitsDiets(r.ingredients, diets)) return false;
     const q = vaultSearch.trim().toLowerCase();
     return (
       !q ||
@@ -876,6 +881,9 @@ export const PantryView: React.FC = () => {
         {/* AVOID */}
         {activeTab === 'banned' && (
           <Card className="space-y-3 p-4">
+            <p className="text-[15px] font-semibold">Diets</p>
+            <DietPicker value={diets} onToggle={toggleDiet} />
+            <p className="pt-2 text-[15px] font-semibold">Never</p>
             <p className="text-[14px] text-ink-2">The spinner will never land on a dish containing these.</p>
             {bannedIngredients.length === 0 ? (
               <p className="text-[14px] text-ink-3">Nothing on the list.</p>

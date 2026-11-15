@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useDinner } from '../context/DinnerContext';
 import { Button, Sheet, TextInput } from './ui';
+import { DietPicker } from './DietPicker';
+import { DietId } from '../utils/diets';
 
 /**
  * Shown once, on a brand-new device. Two quick questions so the vote, the door-duty
@@ -10,11 +12,13 @@ export const WelcomeSheet: React.FC = () => {
   const { onboarded, completeOnboarding } = useDinner();
   const [names, setNames] = useState<string[]>(['', '']);
   const [avoid, setAvoid] = useState('');
+  const [diets, setDiets] = useState<DietId[]>([]);
 
   const finish = () =>
     completeOnboarding(
       names,
-      avoid.split(',').map((a) => a.trim())
+      avoid.split(',').map((a) => a.trim()),
+      diets
     );
 
   return (
@@ -66,6 +70,11 @@ export const WelcomeSheet: React.FC = () => {
             Separate with commas. Dishes containing these never come up. For serious allergies, always check the recipe
             yourself too.
           </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <p className="text-[15px] font-semibold">Any diets in the house?</p>
+          <DietPicker value={diets} onToggle={(id) => setDiets((prev) => (prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id]))} />
         </div>
 
         <Button type="submit" variant="primary" block>

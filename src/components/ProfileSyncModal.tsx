@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { useDinner } from '../context/DinnerContext';
-import { RefreshCw, Download, FileUp, CloudDownload, RotateCcw, CircleCheck, CircleAlert, Copy, LogOut } from 'lucide-react';
+import { RefreshCw, Download, FileUp, CloudDownload, RotateCcw, CircleCheck, CircleAlert, Copy, Link2, LogOut } from 'lucide-react';
 import { Button, Notice, Sheet, TextInput } from './ui';
 import { checkBackup, BackupSummary } from '../utils/backup';
 
@@ -77,6 +77,16 @@ export const ProfileSyncModal: React.FC<ProfileSyncModalProps> = ({ isOpen, onCl
       setStatus({ type: 'success', text: 'Code copied. Paste it into the other phone.' });
     } catch {
       setStatus({ type: 'error', text: 'Couldn’t copy. Select the code and copy it by hand.' });
+    }
+  };
+
+  const handleCopyInvite = async () => {
+    const link = `${window.location.origin}/?join=${encodeURIComponent(householdCode || '')}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      setStatus({ type: 'success', text: 'Invite link copied. Send it to someone in your household.' });
+    } catch {
+      setStatus({ type: 'error', text: 'Couldn’t copy. Give them the code instead.' });
     }
   };
 
@@ -254,6 +264,9 @@ export const ProfileSyncModal: React.FC<ProfileSyncModalProps> = ({ isOpen, onCl
           <div className="grid grid-cols-2 gap-2">
             <Button variant="secondary" onClick={handleCopyCode}>
               <Copy className="h-4 w-4" /> Copy code
+            </Button>
+            <Button variant="secondary" onClick={handleCopyInvite}>
+              <Link2 className="h-4 w-4" /> Copy invite link
             </Button>
             {confirmLeave ? (
               <Button

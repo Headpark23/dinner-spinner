@@ -18,6 +18,7 @@ import {
   ShoppingItem,
   TimeFilter,
   EffortFilter,
+  LiveVote,
 } from '../types';
 import { WORLD_RECIPES } from '../data/worldRecipes';
 import { applyShoppingOp, newShoppingId, ShoppingOp } from '../utils/shopping';
@@ -39,6 +40,7 @@ import {
 } from '../data/initialData';
 import { sound } from '../utils/audio';
 import { checkBackup, BackupCheck } from '../utils/backup';
+import { DietId, isDietId, mealFitsDiets } from '../utils/diets';
 import {
   isMealCoolingOff,
   getMealCoolingOffDays,
@@ -99,6 +101,10 @@ interface DinnerContextType {
   likedIngredients: string[];
   bannedIngredients: string[];
   toggleBannedIngredient: (name: string) => void;
+  diets: DietId[];
+  toggleDiet: (id: DietId) => void;
+  servings: number;
+  setServings: (n: number) => void;
   meals: Meal[];
   addMeal: (meal: Omit<Meal, 'id' | 'rating' | 'cookCount' | 'lastCookedDate' | 'isFavorite'>) => Meal;
   deleteMeal: (id: string) => void;
@@ -151,9 +157,16 @@ interface DinnerContextType {
   joinHousehold: (code: string) => Promise<{ success: boolean; message: string }>;
   leaveHousehold: () => void;
 
+  // Live vote across phones
+  tonight: LiveVote | null;
+  startLiveVote: (meal: Meal) => Promise<{ ok: boolean; message?: string }>;
+  castLiveVote: (voter: string, vote: 'yes' | 'no') => Promise<{ ok: boolean; message?: string }>;
+  decideLive: () => Promise<{ ok: boolean; message?: string }>;
+  clearLive: () => Promise<{ ok: boolean; message?: string }>;
+
   // First-run setup
   onboarded: boolean;
-  completeOnboarding: (names: string[], avoid: string[]) => void;
+  completeOnboarding: (names: string[], avoid: string[], diets?: DietId[]) => void;
   resetToFactoryDefaults: () => void;
   isSyncing: boolean;
 
@@ -218,6 +231,13 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     loadStored('members', STARTER_MEMBERS)
   );
   const [staples, setStaples] = useState<string[]>(() => loadStored('staples', INITIAL_STAPLES));
+  const [servings, setServingsState] = useState<number>(() => {
+    const n = Number(loadStored<number>('servings', 4));
+    return [2, 4, 6, 8].includes(n) ? n : 4;
+  });
+  const [diets, setDiets] = useState<DietId[]>(() =>
+    loadStored<unknown[]>('diets', []).filter(isDietId) as DietId[]
+  );
   const [bannedIngredients, setBannedIngredients] = useState<string[]>(() =>
     loadStored<string[]>('banned', [])
   );
@@ -366,6 +386,13 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY}_banned`, JSON.stringify(bannedIngredients));
   }, [bannedIngredients]);
+  useEffect(() => {
+    localStorage.setItem(`${STORAGE_KEY}_diets`, JSON.stringify(diets));
+  }, [diets]);
+  useEffect(() => {
+    localStorage.setItem(`${STORAGE_KEY}_servings`, JSON.stringify(servings));
+  }, [servings]);
+  const setServings = (n: number) => setServingsState([2, 4, 6, 8].includes(n) ? n : 4);
 
   useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY}_profile`, JSON.stringify(userProfile));
@@ -493,7 +520,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setCustomReelResult(initial4);
       setActiveMealResult(buildComboMeal('sunday', initial4, 'all-day', 'chef-mode'));
     } else {
-      const { pool } = filterEligibleMeals(meals, timeStake, effort, bannedIngredients);
+      const { pool } = filterEligibleMeals(meals, timeStake, effort, bannedIngredients, diets);
       if (pool.length > 0) {
         setActiveMealResult(pool[0]);
       }
@@ -521,7 +548,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   // Eligible pool computation for current filters
-  const eligibleInfo = filterEligibleMeals(meals, timeStake, effort, bannedIngredients);
+  const eligibleInfo = filterEligibleMeals(meals, timeStake, effort, bannedIngredients, diets);
   const eligiblePoolCount = eligibleInfo.pool.length;
   const exactEffortMatchCount = eligibleInfo.exactMatchCount;
 
@@ -584,11 +611,16 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       clearInterval(tickInterval);
 
       if (mode === 'single') {
-        const { pool } = filterEligibleMeals(meals, timeStake, effort, bannedIngredients);
-        const chosen = selectWeightedMeal(pool, pantry, clearoutActive, effort);
-        sound.playReelLock();
-        setActiveMealResult(chosen);
-        sound.playWin();
+        const { pool } = filterEligibleMeals(meals, timeStake, effort, bannedIngredients, diets);
+        if (pool.length === 0) {
+          // Every dish clashes with the household's diets: show nothing rather than a wrong dish.
+          setActiveMealResult(null);
+        } else {
+          const chosen = selectWeightedMeal(pool, pantry, clearoutActive, effort);
+          sound.playReelLock();
+          setActiveMealResult(chosen);
+          sound.playWin();
+        }
       } else if (mode === '3-reel') {
         const newRes = [...customReelResult];
         if (!heldReels[0]) {
@@ -853,6 +885,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       (r) =>
         !hidden.has(r.id) &&
         !inRotation.has(r.id) &&
+        mealFitsDiets(r.ingredients, diets) &&
         !r.ingredients.some((ing) =>
           bannedIngredients.some((b) => b.trim() && ing.toLowerCase().includes(b.toLowerCase()))
         )
@@ -1151,6 +1184,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             takeaways,
             members: householdMembers,
             banned: bannedIngredients,
+            diets,
             voteLogs,
             rescuedItemsCount,
             cookLog,
@@ -1193,6 +1227,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (Array.isArray(payload.banned || payload.bannedIngredients)) {
       setBannedIngredients(payload.banned || payload.bannedIngredients);
     }
+    if (Array.isArray(payload.diets)) setDiets(payload.diets.filter(isDietId));
     if (Array.isArray(payload.voteLogs)) setVoteLogs(payload.voteLogs);
     if (typeof payload.rescuedItemsCount === 'number') setRescuedItemsCount(payload.rescuedItemsCount);
     if (Array.isArray(payload.cookLog)) setCookLog(payload.cookLog);
@@ -1281,7 +1316,111 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setShoppingOnline(null);
   };
 
-  const completeOnboarding = (names: string[], avoid: string[]) => {
+  // ---- Live vote: every phone in the household votes on one proposal -------
+  const [tonight, setTonight] = useState<LiveVote | null>(null);
+  const appliedRound = useRef<number>(loadStored('live_round', 0));
+
+  const refreshTonight = useCallback(async () => {
+    if (!householdRef.current) {
+      setTonight(null);
+      return;
+    }
+    try {
+      const res = await fetch('/api/tonight', { headers: authHeaders() });
+      if (res.ok) setTonight((await res.json()) as LiveVote);
+    } catch {
+      // offline: keep what we last saw
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    refreshTonight();
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') refreshTonight();
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [refreshTonight, household]);
+
+  const sendLive = async (body: Record<string, unknown>): Promise<{ ok: boolean; message?: string }> => {
+    if (!householdRef.current) return { ok: false, message: 'Turn on sharing first.' };
+    try {
+      const res = await fetch('/api/tonight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (json?.status) setTonight(json as LiveVote);
+      else if (json?.tonight?.status) setTonight(json.tonight as LiveVote);
+      if (!res.ok) return { ok: false, message: json?.error || 'That didn’t go through.' };
+      return { ok: true };
+    } catch {
+      return { ok: false, message: 'Couldn’t reach the server.' };
+    }
+  };
+
+  const startLiveVote = async (meal: Meal) => {
+    const people = householdMembers.map((m) => m.name);
+    const r = await sendLive({
+      op: 'propose',
+      meal,
+      people,
+      needed: Math.max(1, Math.ceil(people.length / 2)),
+      by: meName() || '',
+    });
+    if (r.ok) {
+      setProposedMeal(meal);
+      setAgreedMeal(null);
+      setCurrentBallot({});
+      setActiveView(3);
+    }
+    return r;
+  };
+  const castLiveVote = (voter: string, vote: 'yes' | 'no') => sendLive({ op: 'vote', voter, vote });
+  const decideLive = () => sendLive({ op: 'decide' });
+  const clearLive = () => sendLive({ op: 'clear' });
+
+  // A vote opened on another phone shows up here too, ready to vote on.
+  const seenOpenRound = useRef(0);
+  useEffect(() => {
+    if (!tonight || tonight.status !== 'open' || !tonight.meal) return;
+    if (seenOpenRound.current === tonight.round) return;
+    seenOpenRound.current = tonight.round;
+    const local = meals.find((m) => m.id === tonight.meal!.id);
+    setProposedMeal(
+      local || ({ ...tonight.meal, rating: 0, isFavorite: false, cookCount: 0, lastCookedDate: null } as Meal)
+    );
+    setAgreedMeal(null);
+    setCurrentBallot({});
+  }, [tonight]);
+
+  // When the household agrees, every phone lands on the same dinner and timeline.
+  useEffect(() => {
+    if (!tonight || tonight.status !== 'agreed' || !tonight.meal) return;
+    if (appliedRound.current === tonight.round) return;
+    appliedRound.current = tonight.round;
+    try {
+      localStorage.setItem(`${STORAGE_KEY}_live_round`, JSON.stringify(tonight.round));
+    } catch {
+      // ignore
+    }
+    const local = meals.find((m) => m.id === tonight.meal!.id);
+    const meal: Meal =
+      local || ({ ...tonight.meal, rating: 0, isFavorite: false, cookCount: 0, lastCookedDate: null } as Meal);
+    setProposedMeal(meal);
+    setAgreedMeal(meal);
+    setCurrentBallot({});
+    setConsecutiveRejections(0);
+    setTakeawayOverrideActive(false);
+    generateReverseTimers(targetEatingTime, meal);
+  }, [tonight]);
+
+  const toggleDiet = (id: DietId) =>
+    setDiets((prev) => (prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id]));
+
+  const completeOnboarding = (names: string[], avoid: string[], chosenDiets: DietId[] = []) => {
+    setDiets(chosenDiets.filter(isDietId));
     const cleanNames = names.map((n) => n.trim().slice(0, 30)).filter(Boolean).slice(0, 8);
     const avatars = ['🙂', '😋', '🧑‍🍳', '😎', '🤓', '🥳', '🙃', '😊'];
     if (cleanNames.length > 0) {
@@ -1371,6 +1510,10 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         removeStaple,
         likedIngredients,
         bannedIngredients,
+        diets,
+        toggleDiet,
+        servings,
+        setServings,
         toggleBannedIngredient,
         meals,
         addMeal,
@@ -1417,6 +1560,11 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         createHousehold,
         joinHousehold,
         leaveHousehold,
+        tonight,
+        startLiveVote,
+        castLiveVote,
+        decideLive,
+        clearLive,
         onboarded,
         completeOnboarding,
         resetToFactoryDefaults,

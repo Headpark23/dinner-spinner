@@ -7,6 +7,7 @@ import {
   PantryMatchInfo,
   ReverseTimerStep,
 } from '../types';
+import { DietId, mealFitsDiets } from './diets';
 
 /**
  * Returns the meal as the household actually cooks it: the original recipe plus
@@ -124,8 +125,16 @@ export function filterEligibleMeals(
   meals: Meal[],
   timeStake: TimeStake | 'any',
   effort: EffortLevel | 'any',
-  bannedIngredients: string[]
+  bannedIngredients: string[],
+  diets: DietId[] = []
 ): EligiblePoolResult {
+  // Dietary preferences are strict: a vegan household never falls back to a meat dish.
+  if (diets.length > 0) {
+    meals = meals.filter((m) => mealFitsDiets(m.ingredients, diets));
+    if (meals.length === 0) {
+      return { pool: [], exactMatchCount: 0, timeStakeMatchCount: 0, isExactEffortMatch: false };
+    }
+  }
   const nonBannedMeals = meals.filter((meal) => {
     const containsBanned = meal.ingredients.some((ing) =>
       bannedIngredients.some(

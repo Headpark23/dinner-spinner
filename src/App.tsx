@@ -15,6 +15,7 @@ import { ScorecardView } from './components/views/ScorecardView';
 import { ProfileSyncModal } from './components/ProfileSyncModal';
 import { RulesModal } from './components/RulesModal';
 import { WelcomeSheet } from './components/WelcomeSheet';
+import { JoinSheet, LiveVoteBanner } from './components/LiveVote';
 import { Card, FreshDot, Switch, cx } from './components/ui';
 import { ArrowRight, Check } from 'lucide-react';
 
@@ -152,6 +153,7 @@ const MainCabinet: React.FC = () => {
         />
 
         <main id="main" className="flex-1 px-4 pt-4 pb-8">
+          <LiveVoteBanner />
           <div key={activeView} className="fade-up">
             {activeView === 0 && <MachineView />}
             {activeView === 1 && <TakeawayView />}
@@ -169,6 +171,7 @@ const MainCabinet: React.FC = () => {
       <ProfileSyncModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
       <RulesModal isOpen={isRulesOpen} onClose={() => setIsRulesOpen(false)} />
       <WelcomeSheet />
+      <JoinSheet />
     </div>
   );
 };

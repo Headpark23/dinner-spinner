@@ -2,9 +2,10 @@ import React, { useMemo, useState } from 'react';
 import { useDinner } from '../context/DinnerContext';
 import { Meal, MealTweaks } from '../types';
 import { withTweaks } from '../utils/dinnerEngine';
+import { quantityFor, hasQuantities } from '../utils/quantities';
 import { photoFor, PHOTO_CREDITS } from '../data/photos';
 import { Check, Plus, X, Send, Dices, Star, ThumbsDown, Heart, ShoppingBasket } from 'lucide-react';
-import { Button, Chip, IconButton, Sheet, TextInput, cx, timeLabel, effortLabel } from './ui';
+import { Button, Chip, IconButton, Segmented, Sheet, TextInput, cx, timeLabel, effortLabel } from './ui';
 
 const stripTiming = (step: string) => step.replace(/\s*\(-\d+m\)/, '');
 const stepMinutes = (step: string) => Number(step.match(/\(-(\d+)m\)/)?.[1] ?? 0);
@@ -28,6 +29,8 @@ export const RecipeSheet: React.FC<{
     setActiveView,
     toggleFavoriteMeal,
     cookLog,
+    servings,
+    setServings,
   } = useDinner();
 
   // Always show the freshest copy of the dish (tweaks/favourites update live).
@@ -120,6 +123,18 @@ export const RecipeSheet: React.FC<{
           <span className="text-[12px] text-ink-2">{missing.length} to buy</span>
         </div>
         <p className="text-[12px] text-ink-3">Tick what’s in the kitchen. Everything else goes on the shared shopping list.</p>
+        {hasQuantities(current.id) && (
+          <div className="mt-2 flex items-center gap-3">
+            <span className="text-[13px] font-semibold">Serves</span>
+            <Segmented<'2' | '4' | '6' | '8'>
+              label="Servings"
+              size="sm"
+              value={String(servings) as '2' | '4' | '6' | '8'}
+              onChange={(n) => setServings(Number(n))}
+              options={['2', '4', '6', '8'].map((n) => ({ value: n as '2' | '4' | '6' | '8', label: n }))}
+            />
+          </div>
+        )}
         <ul className="mt-2 divide-y divide-line rounded-xl border border-line bg-card">
           {effective.ingredients.map((ing) => {
             const have = has(ing);
@@ -140,7 +155,13 @@ export const RecipeSheet: React.FC<{
                   >
                     {have && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
                   </span>
-                  <span className={cx('flex-1', have && 'text-ink-2')}>{ing}</span>
+                  <span className={cx('flex-1', have && 'text-ink-2')}>
+                    {(() => {
+                      const qty = quantityFor(current.id, ing, servings);
+                      return qty ? <span className="mr-1.5 font-semibold tabular-nums">{qty}</span> : null;
+                    })()}
+                    {ing}
+                  </span>
                   {mine && <Chip tone="neutral">yours</Chip>}
                   {!have && onList(ing) && (
                     <span className="flex items-center gap-1 text-[12px] font-semibold text-tomato">

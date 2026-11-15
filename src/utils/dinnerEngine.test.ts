@@ -399,3 +399,126 @@ test('Eligibility Engine: "any" time and effort keeps the whole non-banned pool'
   const pick = selectWeightedMeal(all.pool, [], false, 'any', Date.now(), () => 0.5);
   assert.ok(pick && pick.id);
 });
+
+test('Server: live tonight vote - majority agrees, any veto ends the round, outsiders refused', async () => {
+  await withServer(async (baseUrl) => {
+    const a = await newHousehold(baseUrl);
+    const b = await newHousehold(baseUrl);
+    const post = (h: any, body: any) =>
+      fetch(`${baseUrl}/api/tonight`, { method: 'POST', headers: authed(h), body: JSON.stringify(body) });
+    const meal = { ...INITIAL_MEALS[0] };
+
+    assert.equal((await fetch(`${baseUrl}/api/tonight`)).status, 401);
+    assert.equal((await (await fetch(`${baseUrl}/api/tonight`, { headers: authed(a) })).json()).status, 'idle');
+
+    // Bad proposals are refused.
+    assert.equal((await post(a, { op: 'propose', meal: { title: 'x' }, people: ['Sam'] })).status, 400);
+    assert.equal((await post(a, { op: 'propose', meal, people: [] })).status, 400);
+
+    // Three people, two yes votes needed.
+    let t = await (await post(a, { op: 'propose', meal, people: ['Sam', 'Jo', 'Alex'], needed: 2, by: 'Sam' })).json();
+    assert.equal(t.status, 'open');
+    assert.equal(t.round, 1);
+    assert.equal((await post(a, { op: 'vote', voter: 'Nobody', vote: 'yes' })).status, 400);
+    t = await (await post(a, { op: 'vote', voter: 'sam', vote: 'yes' })).json();
+    assert.equal(t.status, 'open', 'one yes is not enough');
+    t = await (await post(a, { op: 'vote', voter: 'Jo', vote: 'yes' })).json();
+    assert.equal(t.status, 'agreed');
+    assert.equal((await post(a, { op: 'vote', voter: 'Alex', vote: 'no' })).status, 409, 'closed rounds take no more votes');
+
+    // A veto ends a round straight away.
+    t = await (await post(a, { op: 'propose', meal, people: ['Sam', 'Jo'], needed: 2 })).json();
+    assert.equal(t.round, 2);
+    t = await (await post(a, { op: 'vote', voter: 'Jo', vote: 'no' })).json();
+    assert.equal(t.status, 'vetoed');
+    assert.equal(t.vetoedBy, 'Jo');
+
+    // "Just decide" closes an open vote as agreed.
+    await post(a, { op: 'propose', meal, people: ['Sam', 'Jo'], needed: 2 });
+    assert.equal((await (await post(a, { op: 'decide' })).json()).status, 'agreed');
+
+    // Households never see each other's votes.
+    assert.equal((await (await fetch(`${baseUrl}/api/tonight`, { headers: authed(b) })).json()).status, 'idle');
+    assert.equal((await (await post(a, { op: 'clear' })).json()).status, 'idle');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Diets, quantities and scaling
+// ---------------------------------------------------------------------------
+import { ingredientBreaks, mealFitsDiets } from './diets';
+import { scaleQuantity, quantityFor, baseQuantity } from './quantities';
+import { WORLD_RECIPES } from '../data/worldRecipes';
+import quantityTable from '../data/quantities.json';
+
+test('Diets: obvious breaches are caught and safe look-alikes are not', () => {
+  assert.equal(ingredientBreaks('Chicken Thighs', ['vegetarian']), 'vegetarian');
+  assert.equal(ingredientBreaks('Prawns', ['vegetarian']), 'vegetarian');
+  assert.equal(ingredientBreaks('Prawns', ['pescatarian']), null);
+  assert.equal(ingredientBreaks('Streaky Bacon', ['pescatarian']), 'pescatarian');
+  assert.equal(ingredientBreaks('Honey', ['vegan']), 'vegan');
+  assert.equal(ingredientBreaks('Free-range Eggs', ['vegan']), 'vegan');
+  assert.equal(ingredientBreaks('Aubergine', ['vegan']), null);
+  assert.equal(ingredientBreaks('Eggplant', ['vegan']), null, 'eggplant is not an egg');
+  assert.equal(ingredientBreaks('Coconut Milk', ['dairy-free']), null);
+  assert.equal(ingredientBreaks('Whole Milk', ['dairy-free']), 'dairy-free');
+  assert.equal(ingredientBreaks('Butter Beans', ['dairy-free']), null);
+  assert.equal(ingredientBreaks('Butternut Squash', ['dairy-free']), null);
+  assert.equal(ingredientBreaks('Peanut Butter', ['dairy-free']), null);
+  assert.equal(ingredientBreaks('Plain Flour', ['gluten-free']), 'gluten-free');
+  assert.equal(ingredientBreaks('Rice Noodles', ['gluten-free']), null);
+  assert.equal(ingredientBreaks('Buckwheat', ['gluten-free']), null);
+  assert.equal(ingredientBreaks('Soy Sauce', ['gluten-free']), 'gluten-free');
+  assert.equal(ingredientBreaks('Pine Nuts', ['nut-free']), 'nut-free');
+  assert.equal(ingredientBreaks('Coconut Milk', ['nut-free']), null);
+  assert.equal(ingredientBreaks('Nutmeg', ['nut-free']), null);
+  assert.equal(ingredientBreaks('Minced Garlic', ['vegetarian']), null, 'minced garlic is not mince');
+  assert.equal(mealFitsDiets(['Lamb Mince', 'Onion'], []), true);
+});
+
+test('Diets: the spinner pool is strict and never falls back to a clashing dish', () => {
+  const veg = filterEligibleMeals(INITIAL_MEALS, 'any', 'any', [], ['vegetarian']);
+  assert.ok(veg.pool.length > 0);
+  assert.ok(veg.pool.every((m) => mealFitsDiets(m.ingredients, ['vegetarian'])));
+  const none = filterEligibleMeals(
+    [{ ...INITIAL_MEALS[0], ingredients: ['Beef Mince'] }],
+    'any',
+    'any',
+    [],
+    ['vegan']
+  );
+  assert.equal(none.pool.length, 0, 'an all-meat library yields an empty pool for a vegan household');
+  // Same inputs without diets still behave as before.
+  assert.ok(filterEligibleMeals(INITIAL_MEALS, 'any', 'any', []).pool.length === INITIAL_MEALS.length);
+});
+
+test('Quantities: scaling keeps units, handles counts, ranges and unscalable phrases', () => {
+  assert.equal(scaleQuantity('200g', 2), '400g');
+  assert.equal(scaleQuantity('200g', 0.5), '100g');
+  assert.equal(scaleQuantity('2 x 400g tins', 1.5), '3 x 400g tins');
+  assert.equal(scaleQuantity('1 large', 2), '2 large');
+  assert.equal(scaleQuantity('1/2 tsp', 2), '1 tsp');
+  assert.equal(scaleQuantity('1 tsp', 0.5), '½ tsp');
+  assert.equal(scaleQuantity('1-2 tbsp', 2), '2-4 tbsp');
+  assert.equal(scaleQuantity('to taste', 3), 'to taste');
+  assert.equal(scaleQuantity('a pinch', 0.5), 'a pinch');
+  assert.equal(scaleQuantity('1kg', 1), '1kg');
+  assert.equal(quantityFor('w_fish_chips', 'Plain Flour', 8), '400g');
+  assert.equal(quantityFor('w_fish_chips', 'Plain Flour', 4), '200g');
+  assert.equal(quantityFor('no_such_dish', 'x', 4), null);
+});
+
+test('Quantities: every bundled recipe has a quantity for every ingredient', () => {
+  const table = quantityTable as Record<string, Record<string, string>>;
+  const dishes = [...WORLD_RECIPES, ...INITIAL_MEALS.filter((m) => /^meal_\d+$/.test(m.id))];
+  assert.ok(dishes.length >= 130);
+  const gaps: string[] = [];
+  for (const d of dishes) {
+    for (const ing of d.ingredients) if (baseQuantity(d.id, ing) === null) gaps.push(`${d.id}: ${ing}`);
+  }
+  assert.deepEqual(gaps, []);
+  const odd = Object.values(table)
+    .flatMap((o) => Object.values(o))
+    .filter((v) => !/^\d/.test(v) && !['to taste', 'a pinch', 'a handful', 'to serve', 'to fry'].includes(v));
+  assert.deepEqual(odd, []);
+});
