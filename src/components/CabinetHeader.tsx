@@ -28,7 +28,7 @@ export const CabinetHeader: React.FC<CabinetHeaderProps> = ({ onOpenProfile, onO
       <div className="flex h-14 items-center justify-between px-3">
         <button
           onClick={() => setActiveView(0)}
-          className="flex items-center gap-2.5 rounded-lg px-1 py-1"
+          className="flex min-h-11 items-center gap-2.5 rounded-lg px-1"
           aria-label="Dinner Spinner, go to the spinner"
         >
           <Mark />

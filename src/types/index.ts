@@ -137,3 +137,21 @@ export interface TakeawayLogEntry {
   name: string;
   date: string;
 }
+
+/** The spinner's filters also allow "no preference". */
+export type TimeFilter = TimeStake | 'any';
+export type EffortFilter = EffortLevel | 'any';
+
+/** One household-wide dinner vote, decided by the server so every phone agrees. */
+export interface LiveVote {
+  version: number;
+  round: number;
+  status: 'idle' | 'open' | 'agreed' | 'vetoed';
+  meal: Pick<Meal, 'id' | 'title' | 'description' | 'cuisine' | 'timeStake' | 'effort' | 'ingredients' | 'prepSteps' | 'tags'> | null;
+  people: string[];
+  needed: number;
+  ballot: Record<string, 'yes' | 'no'>;
+  proposedBy: string;
+  vetoedBy: string;
+  openedAt: string;
+}

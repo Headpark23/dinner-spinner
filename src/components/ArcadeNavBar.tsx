@@ -21,7 +21,7 @@ export const ArcadeNavBar: React.FC = () => {
     },
     {
       id: 2,
-      label: 'Pantry',
+      label: 'Kitchen',
       icon: Refrigerator,
       count: redPantryCount > 0 ? redPantryCount : undefined,
       srHint: redPantryCount > 0 ? `${redPantryCount} items to use next` : undefined,

@@ -18,7 +18,7 @@ const variantClass: Record<ButtonVariant, string> = {
 };
 
 const sizeClass: Record<ButtonSize, string> = {
-  sm: 'h-9 px-3 text-[13px] gap-1.5 rounded-lg',
+  sm: 'min-h-11 px-3 text-[13px] gap-1.5 rounded-lg',
   md: 'h-11 px-4 text-[15px] gap-2 rounded-xl',
   lg: 'h-14 px-5 text-[17px] gap-2.5 rounded-2xl',
 };
@@ -54,7 +54,7 @@ export const IconButton: React.FC<
     title={label}
     {...rest}
     className={cx(
-      'inline-flex h-10 w-10 items-center justify-center rounded-xl transition-colors',
+      'inline-flex h-11 w-11 items-center justify-center rounded-xl transition-colors',
       active ? 'text-tomato bg-tomato-soft' : 'text-ink-2 hover:text-ink hover:bg-sunk',
       className
     )}
@@ -127,7 +127,7 @@ export function Segmented<T extends string>({
             onClick={() => onChange(opt.value)}
             className={cx(
               'rounded-lg font-semibold transition-colors duration-150 leading-tight',
-              size === 'sm' ? 'min-h-8 px-2 text-[12px]' : 'min-h-10 px-2 text-[13px]',
+              size === 'sm' ? 'min-h-11 px-2 text-[13px]' : 'min-h-11 px-2 text-[13px]',
               selected
                 ? 'bg-card text-ink shadow-[0_1px_2px_rgba(31,26,21,0.12)]'
                 : 'text-ink-2 hover:text-ink'
@@ -297,7 +297,29 @@ export const Sheet: React.FC<{
     const previouslyFocused = document.activeElement as HTMLElement | null;
     panelRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCloseRef.current();
+      if (e.key === 'Escape') {
+        onCloseRef.current();
+        return;
+      }
+      // Keep keyboard focus inside the dialog while it is open.
+      if (e.key === 'Tab' && panelRef.current) {
+        const focusable = Array.from(
+          panelRef.current.querySelectorAll<HTMLElement>(
+            'a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          )
+        ).filter((el) => el.offsetParent !== null);
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement;
+        if (e.shiftKey && (active === first || active === panelRef.current)) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && active === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     };
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';

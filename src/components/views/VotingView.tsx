@@ -4,6 +4,8 @@ import { Check, X, Copy, UserPlus, Trash2, CircleAlert, RotateCcw, Dices, Clock 
 import confetti from 'canvas-confetti';
 import { AfterDinnerReview } from '../AfterDinnerReview';
 import { RecipeSheet } from '../RecipeSheet';
+import { LiveVoteCard } from '../LiveVote';
+import { quantityFor } from '../../utils/quantities';
 import { HouseholdMember } from '../../types';
 import { Button, Card, Chip, Notice, Segmented, TextInput, cx, timeLabel, effortLabel } from '../ui';
 
@@ -54,14 +56,19 @@ export const VotingView: React.FC = () => {
     setActiveView,
     resetEvening,
     cookLog,
+    tonight,
+    householdCode,
+    startLiveVote,
+    servings,
+    setServings,
   } = useDinner();
 
   const [copied, setCopied] = useState(false);
   const [vetoError, setVetoError] = useState<string | null>(null);
-  const [servings, setServings] = useState<'2' | '4' | '6' | '8'>('4');
   const [showRoster, setShowRoster] = useState(false);
   const [newMemberName, setNewMemberName] = useState('');
   const [recipeOpen, setRecipeOpen] = useState(false);
+  const [liveError, setLiveError] = useState<string | null>(null);
 
   const currentVoter = householdMembers[activeVoterIndex] || householdMembers[0];
   const yesVotesCount = Object.values(currentBallot).filter((v) => v === 'yes').length;
@@ -114,7 +121,6 @@ export const VotingView: React.FC = () => {
 
   const doneCount = reverseTimers.filter((s) => s.done).length;
   const nextIdx = reverseTimers.findIndex((s) => !s.done);
-  const scale = Number(servings) / 4;
 
   // ---------- Empty state ----------
   if (!proposedMeal && !agreedMeal) {
@@ -197,8 +203,8 @@ export const VotingView: React.FC = () => {
               <Segmented<'2' | '4' | '6' | '8'>
                 label="Servings"
                 size="sm"
-                value={servings}
-                onChange={setServings}
+                value={String(servings) as '2' | '4' | '6' | '8'}
+                onChange={(n) => setServings(Number(n))}
                 options={['2', '4', '6', '8'].map((n) => ({ value: n as '2' | '4' | '6' | '8', label: n }))}
               />
             </Card>
@@ -257,14 +263,17 @@ export const VotingView: React.FC = () => {
 
             <section aria-labelledby="ingredients-h">
               <h2 id="ingredients-h" className="mb-2 px-1 text-[15px] font-semibold">
-                Ingredients{scale !== 1 && <span className="font-normal text-ink-2"> · scale recipe ×{scale}</span>}
+                Ingredients <span className="font-normal text-ink-2">· for {servings}</span>
               </h2>
               <ul className="flex flex-wrap gap-1.5">
-                {agreedMeal.ingredients.map((ing, i) => (
-                  <li key={i}>
-                    <Chip tone="outline">{ing}</Chip>
-                  </li>
-                ))}
+                {agreedMeal.ingredients.map((ing, i) => {
+                  const qty = quantityFor(agreedMeal.id, ing, servings);
+                  return (
+                    <li key={i}>
+                      <Chip tone="outline">{qty ? `${qty} ${ing}` : ing}</Chip>
+                    </li>
+                  );
+                })}
               </ul>
             </section>
 
@@ -282,7 +291,9 @@ export const VotingView: React.FC = () => {
 
   // ---------- Voting ----------
   const meal = proposedMeal!;
+  const liveActive = !!tonight && (tonight.status === 'open' || tonight.status === 'vetoed') && tonight.meal?.id === meal.id;
   const voterOutOfVetoes = currentVoter.vetoTokensRemaining <= 0;
+
 
   return (
     <div className="space-y-4">
@@ -295,6 +306,25 @@ export const VotingView: React.FC = () => {
         <p className="mt-2 text-[14px] text-ink-2">{meal.description}</p>
       </div>
 
+      {liveActive ? <LiveVoteCard /> : (<>
+      {householdCode && (
+        <Card className="space-y-2 p-4">
+          <h2 className="text-[15px] font-semibold">Everyone votes on their own phone</h2>
+          <p className="text-[13px] text-ink-2">Sends this dish to the other phones in your household. A veto ends it; enough yeses agree dinner.</p>
+          {liveError && <p role="alert" className="text-[13px] text-tomato">{liveError}</p>}
+          <Button
+            variant="primary"
+            block
+            onClick={async () => {
+              setLiveError(null);
+              const r = await startLiveVote(meal);
+              if (!r.ok) setLiveError(r.message || 'Couldn’t start the vote.');
+            }}
+          >
+            Ask everyone’s phones
+          </Button>
+        </Card>
+      )}
       <Card className="p-4">
         <div className="flex items-baseline justify-between">
           <h2 className="text-[15px] font-semibold">Who’s voting?</h2>
@@ -396,6 +426,8 @@ export const VotingView: React.FC = () => {
             : `${consecutiveRejections} veto${consecutiveRejections > 1 ? 'es' : ''} in a row. ${3 - consecutiveRejections} more and it’s takeaway.`}
         </span>
       </div>
+
+      </>)}
 
       <div className="border-t border-line pt-3">
         <button

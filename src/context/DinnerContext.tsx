@@ -16,17 +16,19 @@ import {
   MealTweaks,
   MealReview,
   ShoppingItem,
+  TimeFilter,
+  EffortFilter,
+  LiveVote,
 } from '../types';
 import { WORLD_RECIPES } from '../data/worldRecipes';
 import { applyShoppingOp, newShoppingId, ShoppingOp } from '../utils/shopping';
 import {
+  STARTER_MEALS,
+  STARTER_TAKEAWAYS,
+  STARTER_MEMBERS,
   INITIAL_MEALS,
-  INITIAL_PANTRY,
-  INITIAL_TAKEAWAYS,
-  INITIAL_MEMBERS,
   INITIAL_STAPLES,
   INITIAL_LIKED_INGREDIENTS,
-  INITIAL_BANNED_INGREDIENTS,
   INITIAL_USER_PROFILE,
   REEL_CARBS,
   REEL_PROTEINS,
@@ -37,6 +39,9 @@ import {
   SUNDAY_VEG_GRAVY,
 } from '../data/initialData';
 import { sound } from '../utils/audio';
+import { checkBackup, BackupCheck } from '../utils/backup';
+import { DietId, isDietId, mealFitsDiets } from '../utils/diets';
+import { WeekPlan, ThemeId, THEMES, StoreId, STORES, nextDays, suggestWeek, tidyPlan, weekShopping } from '../utils/planner';
 import {
   isMealCoolingOff,
   getMealCoolingOffDays,
@@ -51,10 +56,10 @@ interface DinnerContextType {
   // Machine State
   mode: MachineMode;
   setMode: (m: MachineMode) => void;
-  timeStake: TimeStake;
-  setTimeStake: (t: TimeStake) => void;
-  effort: EffortLevel;
-  setEffort: (e: EffortLevel) => void;
+  timeStake: TimeFilter;
+  setTimeStake: (t: TimeFilter) => void;
+  effort: EffortFilter;
+  setEffort: (e: EffortFilter) => void;
   clearoutActive: boolean;
   setClearoutActive: (c: boolean) => void;
   nudgesRemaining: number;
@@ -97,6 +102,21 @@ interface DinnerContextType {
   likedIngredients: string[];
   bannedIngredients: string[];
   toggleBannedIngredient: (name: string) => void;
+  diets: DietId[];
+  toggleDiet: (id: DietId) => void;
+  servings: number;
+  setServings: (n: number) => void;
+
+  // Week planner
+  weekPlan: WeekPlan;
+  weekThemes: Record<number, ThemeId>;
+  setWeekTheme: (weekday: number, theme: ThemeId) => void;
+  setPlanDay: (day: string, meal: Meal | null) => void;
+  planWeek: () => void;
+  clearWeekPlan: () => void;
+  shopForWeek: () => number;
+  store: StoreId;
+  setStore: (id: StoreId) => void;
   meals: Meal[];
   addMeal: (meal: Omit<Meal, 'id' | 'rating' | 'cookCount' | 'lastCookedDate' | 'isFavorite'>) => Meal;
   deleteMeal: (id: string) => void;
@@ -140,8 +160,25 @@ interface DinnerContextType {
   userProfile: UserProfile;
   updateUserProfile: (updates: Partial<UserProfile>) => void;
   syncWithCloud: () => Promise<boolean>;
-  restoreFromCloud: () => Promise<{ success: boolean; message: string }>;
+  fetchCloudSnapshot: () => Promise<{ success: boolean; message: string; check?: BackupCheck }>;
   importBackupData: (rawJson: any) => { success: boolean; message: string };
+
+  // Household sharing (guest-first: nothing is shared until a household is created or joined)
+  householdCode: string | null;
+  createHousehold: () => Promise<{ success: boolean; message: string }>;
+  joinHousehold: (code: string) => Promise<{ success: boolean; message: string }>;
+  leaveHousehold: () => void;
+
+  // Live vote across phones
+  tonight: LiveVote | null;
+  startLiveVote: (meal: Meal) => Promise<{ ok: boolean; message?: string }>;
+  castLiveVote: (voter: string, vote: 'yes' | 'no') => Promise<{ ok: boolean; message?: string }>;
+  decideLive: () => Promise<{ ok: boolean; message?: string }>;
+  clearLive: () => Promise<{ ok: boolean; message?: string }>;
+
+  // First-run setup
+  onboarded: boolean;
+  completeOnboarding: (names: string[], avoid: string[], diets?: DietId[]) => void;
   resetToFactoryDefaults: () => void;
   isSyncing: boolean;
 
@@ -176,6 +213,17 @@ const DinnerContext = createContext<DinnerContextType | null>(null);
 
 const STORAGE_KEY = 'dinner_spinner_state_v1';
 
+const VIEW_PATHS = ['/', '/takeaway', '/kitchen', '/tonight', '/stats'];
+const viewFromPath = (pathname: string): number | null => {
+  const clean = pathname.replace(/\/+$/, '') || '/';
+  const i = VIEW_PATHS.indexOf(clean);
+  return i === -1 ? null : i;
+};
+
+// A built plate needs a concrete time and effort even when the filters say "any".
+const comboTime = (t: TimeFilter): TimeStake => (t === 'any' ? '30m' : t);
+const comboEffort = (e: EffortFilter): EffortLevel => (e === 'any' ? 'standard' : e);
+
 function loadStored<T>(suffix: string, fallback: T): T {
   try {
     const saved = localStorage.getItem(`${STORAGE_KEY}_${suffix}`);
@@ -186,24 +234,43 @@ function loadStored<T>(suffix: string, fallback: T): T {
 }
 
 export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [meals, setMeals] = useState<Meal[]>(() => loadStored('meals', INITIAL_MEALS));
-  const [pantry, setPantry] = useState<PantryItem[]>(() => loadStored('pantry', INITIAL_PANTRY));
+  const [meals, setMeals] = useState<Meal[]>(() => loadStored('meals', STARTER_MEALS));
+  const [pantry, setPantry] = useState<PantryItem[]>(() => loadStored<PantryItem[]>('pantry', []));
   const [takeaways, setTakeaways] = useState<TakeawayOption[]>(() =>
-    loadStored('takeaways', INITIAL_TAKEAWAYS)
+    loadStored('takeaways', STARTER_TAKEAWAYS)
   );
   const [householdMembers, setHouseholdMembers] = useState<HouseholdMember[]>(() =>
-    loadStored('members', INITIAL_MEMBERS)
+    loadStored('members', STARTER_MEMBERS)
   );
   const [staples, setStaples] = useState<string[]>(() => loadStored('staples', INITIAL_STAPLES));
+  const [servings, setServingsState] = useState<number>(() => {
+    const n = Number(loadStored<number>('servings', 4));
+    return [2, 4, 6, 8].includes(n) ? n : 4;
+  });
+  const [weekPlan, setWeekPlan] = useState<WeekPlan>(() => {
+    const stored = loadStored<WeekPlan>('week_plan', {});
+    return stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
+  });
+  const [weekThemes, setWeekThemes] = useState<Record<number, ThemeId>>(() => {
+    const stored = loadStored<Record<number, ThemeId>>('week_themes', {});
+    return stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
+  });
+  const [store, setStoreState] = useState<StoreId>(() => {
+    const v = loadStored<string>('store', 'tesco');
+    return (STORES.some((x) => x.id === v) ? v : 'tesco') as StoreId;
+  });
+  const [diets, setDiets] = useState<DietId[]>(() =>
+    loadStored<unknown[]>('diets', []).filter(isDietId) as DietId[]
+  );
   const [bannedIngredients, setBannedIngredients] = useState<string[]>(() =>
-    loadStored('banned', INITIAL_BANNED_INGREDIENTS)
+    loadStored<string[]>('banned', [])
   );
   const [likedIngredients] = useState<string[]>(INITIAL_LIKED_INGREDIENTS);
   const [userProfile, setUserProfile] = useState<UserProfile>(() =>
     loadStored('profile', INITIAL_USER_PROFILE)
   );
   const [rescuedItemsCount, setRescuedItemsCount] = useState<number>(() =>
-    loadStored('rescued_count', 7)
+    loadStored('rescued_count', 0)
   );
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [rejectedMealIds, setRejectedMealIds] = useState<string[]>(() => loadStored('rejected', []));
@@ -211,6 +278,21 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [shoppingOnline, setShoppingOnline] = useState<boolean | null>(null);
   const pendingShoppingOps = useRef<ShoppingOp[]>(loadStored('shopping_queue', []));
   const [meId, setMeIdState] = useState<string>(() => loadStored('me', ''));
+  const [household, setHousehold] = useState<{ id: string; key: string } | null>(() =>
+    loadStored<{ id: string; key: string } | null>('household', null)
+  );
+  const householdRef = useRef(household);
+  householdRef.current = household;
+  // People who already have saved data skip the welcome screen.
+  const [onboarded, setOnboarded] = useState<boolean>(() => {
+    const saved = loadStored<boolean | null>('onboarded', null);
+    if (saved !== null) return saved;
+    try {
+      return localStorage.getItem(`${STORAGE_KEY}_meals`) !== null;
+    } catch {
+      return true;
+    }
+  });
   const [cookLog, setCookLog] = useState<CookLogEntry[]>(() => loadStored('cook_log', []));
   const [takeawayLog, setTakeawayLog] = useState<TakeawayLogEntry[]>(() =>
     loadStored('takeaway_log', [])
@@ -224,13 +306,13 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
     return 'single';
   });
-  const [timeStake, setTimeStake] = useState<TimeStake>('20m');
-  const [effort, setEffort] = useState<EffortLevel>('one-pot');
+  const [timeStake, setTimeStake] = useState<TimeFilter>('any');
+  const [effort, setEffort] = useState<EffortFilter>('any');
   const [clearoutActive, setClearoutActive] = useState<boolean>(false);
   const [nudgesRemaining, setNudgesRemaining] = useState<number>(3);
   const [heldReels, setHeldReels] = useState<boolean[]>([false, false, false, false]);
   const [isSpinning, setIsSpinning] = useState<boolean>(false);
-  const [activeMealResult, setActiveMealResult] = useState<Meal | null>(INITIAL_MEALS[0]);
+  const [activeMealResult, setActiveMealResult] = useState<Meal | null>(null);
   const [customReelResult, setCustomReelResult] = useState<string[]>([
     'Rigatoni Pasta',
     'Free-Range Chicken',
@@ -246,12 +328,12 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [takeawayOverrideActive, setTakeawayOverrideActive] = useState<boolean>(() =>
     loadStored('takeaway_override', false)
   );
-  const [winningTakeaway, setWinningTakeaway] = useState<TakeawayOption | null>(INITIAL_TAKEAWAYS[0]);
-  const [doorDutyPerson, setDoorDutyPerson] = useState<HouseholdMember | null>(INITIAL_MEMBERS[0]);
+  const [winningTakeaway, setWinningTakeaway] = useState<TakeawayOption | null>(STARTER_TAKEAWAYS[0]);
+  const [doorDutyPerson, setDoorDutyPerson] = useState<HouseholdMember | null>(STARTER_MEMBERS[0]);
   const [isTakeawaySpinning, setIsTakeawaySpinning] = useState<boolean>(false);
 
   // Voting Booth
-  const [proposedMeal, setProposedMeal] = useState<Meal | null>(INITIAL_MEALS[0]);
+  const [proposedMeal, setProposedMeal] = useState<Meal | null>(null);
   const [activeVoterIndex, setActiveVoterIndex] = useState<number>(0);
   const [currentBallot, setCurrentBallot] = useState<Record<string, 'yes' | 'no'>>({});
   const [voteLogs, setVoteLogs] = useState<VoteLog[]>(() => loadStored('vote_logs', []));
@@ -265,18 +347,44 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     loadStored('reverse_timers', [])
   );
 
-  // Navigation View (0: Machine, 1: Takeaway, 2: Pantry, 3: Voting, 4: Scorecard)
-  const [activeView, setActiveView] = useState<number>(() => {
+  // Navigation View (0: Machine, 1: Takeaway, 2: Kitchen, 3: Tonight, 4: Stats).
+  // Each view has a real URL, so the browser Back button and shared links work.
+  const [activeView, setActiveViewState] = useState<number>(() => {
     if (typeof window !== 'undefined') {
+      const fromPath = viewFromPath(window.location.pathname);
+      if (fromPath !== null) return fromPath;
       const v = new URLSearchParams(window.location.search).get('view');
       if (v === '0' || v === 'spinner' || v === 'machine') return 0;
       if (v === '1' || v === 'takeaway') return 1;
-      if (v === '2' || v === 'pantry') return 2;
-      if (v === '3' || v === 'vote' || v === 'voting') return 3;
+      if (v === '2' || v === 'pantry' || v === 'kitchen') return 2;
+      if (v === '3' || v === 'vote' || v === 'voting' || v === 'tonight') return 3;
       if (v === '4' || v === 'stats' || v === 'scorecard') return 4;
     }
     return 0;
   });
+
+  const setActiveView = useCallback((view: number) => {
+    setActiveViewState(view);
+    if (typeof window === 'undefined') return;
+    const path = VIEW_PATHS[view] ?? '/';
+    if (window.location.pathname !== path) {
+      try {
+        window.history.pushState({ view }, '', path);
+      } catch {
+        // history may be unavailable (e.g. sandboxed frames); the view still changes
+      }
+    }
+    window.scrollTo?.(0, 0);
+  }, []);
+
+  useEffect(() => {
+    const onPop = () => {
+      const v = viewFromPath(window.location.pathname);
+      setActiveViewState(v ?? 0);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   // Sync to localStorage
   useEffect(() => {
@@ -302,6 +410,45 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY}_banned`, JSON.stringify(bannedIngredients));
   }, [bannedIngredients]);
+  useEffect(() => {
+    localStorage.setItem(`${STORAGE_KEY}_diets`, JSON.stringify(diets));
+  }, [diets]);
+  useEffect(() => {
+    localStorage.setItem(`${STORAGE_KEY}_servings`, JSON.stringify(servings));
+  }, [servings]);
+  useEffect(() => {
+    localStorage.setItem(`${STORAGE_KEY}_week_plan`, JSON.stringify(weekPlan));
+  }, [weekPlan]);
+  useEffect(() => {
+    localStorage.setItem(`${STORAGE_KEY}_week_themes`, JSON.stringify(weekThemes));
+  }, [weekThemes]);
+  useEffect(() => {
+    localStorage.setItem(`${STORAGE_KEY}_store`, JSON.stringify(store));
+  }, [store]);
+  const setStore = (id: StoreId) => setStoreState(id);
+  const setWeekTheme = (weekday: number, theme: ThemeId) =>
+    setWeekThemes((prev) => ({ ...prev, [weekday]: theme }));
+  const setPlanDay = (day: string, meal: Meal | null) =>
+    setWeekPlan((prev) => {
+      const next = { ...prev };
+      if (meal) next[day] = { mealId: meal.id, title: meal.title };
+      else delete next[day];
+      return next;
+    });
+  const planWeek = () => {
+    const today = new Date();
+    const days = nextDays(today, 7);
+    const themes: Record<string, ThemeId> = {};
+    days.forEach((d) => {
+      const wd = new Date(d + 'T12:00:00').getDay();
+      if (weekThemes[wd] && THEMES.some((t) => t.id === weekThemes[wd])) themes[d] = weekThemes[wd];
+    });
+    setWeekPlan((prev) =>
+      suggestWeek(meals, { days, plan: tidyPlan(prev, today, meals), themes, diets, banned: bannedIngredients })
+    );
+  };
+  const clearWeekPlan = () => setWeekPlan({});
+  const setServings = (n: number) => setServingsState([2, 4, 6, 8].includes(n) ? n : 4);
 
   useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY}_profile`, JSON.stringify(userProfile));
@@ -350,16 +497,26 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  const authHeaders = (): Record<string, string> => {
+    const h = householdRef.current;
+    return h ? { 'x-household-id': h.id, 'x-household-key': h.key } : {};
+  };
+
   const syncShopping = useCallback(async () => {
+    // Without a household the list stays on this phone; changes queue until one is set up.
+    if (!householdRef.current) {
+      setShoppingOnline(null);
+      return;
+    }
     try {
       const queued = pendingShoppingOps.current;
       const res = queued.length
         ? await fetch('/api/shopping/ops', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...authHeaders() },
             body: JSON.stringify({ ops: queued }),
           })
-        : await fetch('/api/shopping');
+        : await fetch('/api/shopping', { headers: authHeaders() });
       if (!res.ok) throw new Error('shopping sync failed');
       const json = await res.json();
       if (queued.length) {
@@ -381,7 +538,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (document.visibilityState === 'visible') syncShopping();
     }, 5000);
     return () => clearInterval(timer);
-  }, [syncShopping]);
+  }, [syncShopping, household]);
 
   const queueShopping = (ops: ShoppingOp[]) => {
     if (ops.length === 0) return;
@@ -408,7 +565,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (nextMode === '3-reel') {
       const initial3 = [REEL_CARBS[0].label, REEL_PROTEINS[0].label, REEL_SAUCES[0].label];
       setCustomReelResult(initial3);
-      setActiveMealResult(buildComboMeal('3-reel', initial3, timeStake, effort));
+      setActiveMealResult(buildComboMeal('3-reel', initial3, comboTime(timeStake), comboEffort(effort)));
     } else if (nextMode === 'sunday') {
       const initial4 = [
         SUNDAY_MEATS[0].label,
@@ -419,7 +576,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setCustomReelResult(initial4);
       setActiveMealResult(buildComboMeal('sunday', initial4, 'all-day', 'chef-mode'));
     } else {
-      const { pool } = filterEligibleMeals(meals, timeStake, effort, bannedIngredients);
+      const { pool } = filterEligibleMeals(meals, timeStake, effort, bannedIngredients, diets);
       if (pool.length > 0) {
         setActiveMealResult(pool[0]);
       }
@@ -447,7 +604,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   // Eligible pool computation for current filters
-  const eligibleInfo = filterEligibleMeals(meals, timeStake, effort, bannedIngredients);
+  const eligibleInfo = filterEligibleMeals(meals, timeStake, effort, bannedIngredients, diets);
   const eligiblePoolCount = eligibleInfo.pool.length;
   const exactEffortMatchCount = eligibleInfo.exactMatchCount;
 
@@ -477,7 +634,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const nextReels = [...customReelResult];
       nextReels[reelIndex] = list[nextIndex].label;
       setCustomReelResult(nextReels);
-      setActiveMealResult(buildComboMeal('3-reel', nextReels, timeStake, effort));
+      setActiveMealResult(buildComboMeal('3-reel', nextReels, comboTime(timeStake), comboEffort(effort)));
     } else if (mode === 'sunday') {
       const lists = [SUNDAY_MEATS, SUNDAY_POTATOES, SUNDAY_STAR_SIDES, SUNDAY_VEG_GRAVY];
       const list = lists[reelIndex] || SUNDAY_MEATS;
@@ -510,11 +667,16 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       clearInterval(tickInterval);
 
       if (mode === 'single') {
-        const { pool } = filterEligibleMeals(meals, timeStake, effort, bannedIngredients);
-        const chosen = selectWeightedMeal(pool, pantry, clearoutActive, effort);
-        sound.playReelLock();
-        setActiveMealResult(chosen);
-        sound.playWin();
+        const { pool } = filterEligibleMeals(meals, timeStake, effort, bannedIngredients, diets);
+        if (pool.length === 0) {
+          // Every dish clashes with the household's diets: show nothing rather than a wrong dish.
+          setActiveMealResult(null);
+        } else {
+          const chosen = selectWeightedMeal(pool, pantry, clearoutActive, effort);
+          sound.playReelLock();
+          setActiveMealResult(chosen);
+          sound.playWin();
+        }
       } else if (mode === '3-reel') {
         const newRes = [...customReelResult];
         if (!heldReels[0]) {
@@ -527,7 +689,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           newRes[2] = REEL_SAUCES[Math.floor(Math.random() * REEL_SAUCES.length)].label;
         }
         setCustomReelResult(newRes);
-        const comboMeal = buildComboMeal('3-reel', newRes, timeStake, effort);
+        const comboMeal = buildComboMeal('3-reel', newRes, comboTime(timeStake), comboEffort(effort));
         setActiveMealResult(comboMeal);
         sound.playReelLock();
         sound.playWin();
@@ -754,6 +916,17 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         .filter(Boolean)
         .map((name) => ({ type: 'add' as const, item: { id: newShoppingId(), name, forMeal, addedBy: meName() } }))
     );
+  const shopForWeek = (): number => {
+    const names = weekShopping(
+      tidyPlan(weekPlan, new Date(), meals),
+      meals,
+      pantry,
+      staples,
+      shoppingList.map((i) => i.name)
+    );
+    if (names.length) addShoppingItems(names, 'this week’s plan');
+    return names.length;
+  };
   const removeShoppingByName = (name: string) => queueShopping([{ type: 'removeByName', name }]);
   const toggleShoppingItem = (id: string) => queueShopping([{ type: 'toggle', id, by: meName() }]);
   const removeShoppingItem = (id: string) => queueShopping([{ type: 'remove', id }]);
@@ -779,6 +952,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       (r) =>
         !hidden.has(r.id) &&
         !inRotation.has(r.id) &&
+        mealFitsDiets(r.ingredients, diets) &&
         !r.ingredients.some((ing) =>
           bannedIngredients.some((b) => b.trim() && ing.toLowerCase().includes(b.toLowerCase()))
         )
@@ -933,10 +1107,10 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const newMeal: Meal = {
       ...newMealData,
       id: 'meal_' + Date.now(),
-      rating: 5,
+      rating: 0,
       cookCount: 0,
       lastCookedDate: null,
-      isFavorite: true,
+      isFavorite: false,
     };
     setMeals((prev) => [newMeal, ...prev]);
     return newMeal;
@@ -1064,9 +1238,10 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const syncWithCloud = async (): Promise<boolean> => {
     setIsSyncing(true);
     try {
+      if (!householdRef.current) return false;
       const res = await fetch('/api/sync/cloud', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({
           data: {
             userProfile,
@@ -1076,6 +1251,9 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             takeaways,
             members: householdMembers,
             banned: bannedIngredients,
+            diets,
+            weekPlan,
+            weekThemes,
             voteLogs,
             rescuedItemsCount,
             cookLog,
@@ -1101,90 +1279,264 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const importBackupData = (rawData: any): { success: boolean; message: string } => {
-    try {
-      const payload = rawData?.data || rawData;
-      if (!payload || typeof payload !== 'object') {
-        return { success: false, message: 'Invalid backup format.' };
-      }
-      let restoredCount = 0;
-      if (Array.isArray(payload.meals) && payload.meals.length > 0) {
-        setMeals(payload.meals);
-        restoredCount += payload.meals.length;
-      }
-      if (Array.isArray(payload.pantry)) {
-        setPantry(payload.pantry);
-      }
-      if (Array.isArray(payload.staples)) {
-        setStaples(payload.staples);
-      }
-      if (Array.isArray(payload.takeaways)) {
-        setTakeaways(payload.takeaways);
-      }
-      if (Array.isArray(payload.members || payload.householdMembers)) {
-        setHouseholdMembers(payload.members || payload.householdMembers);
-      }
-      if (Array.isArray(payload.banned || payload.bannedIngredients)) {
-        setBannedIngredients(payload.banned || payload.bannedIngredients);
-      }
-      if (Array.isArray(payload.voteLogs)) {
-        setVoteLogs(payload.voteLogs);
-      }
-      if (typeof payload.rescuedItemsCount === 'number') {
-        setRescuedItemsCount(payload.rescuedItemsCount);
-      }
-      if (Array.isArray(payload.cookLog)) {
-        setCookLog(payload.cookLog);
-      }
-      if (Array.isArray(payload.takeawayLog)) {
-        setTakeawayLog(payload.takeawayLog);
-      }
-      if (Array.isArray(payload.rejectedMealIds)) {
-        setRejectedMealIds(payload.rejectedMealIds);
-      }
-      setUserProfile((prev) => ({
-        ...prev,
-        ...(payload.userProfile || {}),
-        lastSyncedAt: new Date().toISOString(),
-      }));
-      sound.playWin();
-      return {
-        success: true,
-        message: `Restored ${restoredCount || meals.length} meals and your kitchen inventory.`,
-      };
-    } catch (err: any) {
-      return { success: false, message: err?.message || 'Failed to parse backup data.' };
+    const check = checkBackup(rawData);
+    if (!check.ok) return { success: false, message: check.error };
+    const payload = check.payload;
+    let restoredCount = 0;
+    if (Array.isArray(payload.meals) && payload.meals.length > 0) {
+      setMeals(payload.meals);
+      restoredCount += payload.meals.length;
     }
+    if (Array.isArray(payload.pantry)) setPantry(payload.pantry);
+    if (Array.isArray(payload.staples)) setStaples(payload.staples);
+    if (Array.isArray(payload.takeaways)) setTakeaways(payload.takeaways);
+    if (Array.isArray(payload.members || payload.householdMembers)) {
+      setHouseholdMembers(payload.members || payload.householdMembers);
+    }
+    if (Array.isArray(payload.banned || payload.bannedIngredients)) {
+      setBannedIngredients(payload.banned || payload.bannedIngredients);
+    }
+    if (Array.isArray(payload.diets)) setDiets(payload.diets.filter(isDietId));
+    if (payload.weekPlan && typeof payload.weekPlan === 'object' && !Array.isArray(payload.weekPlan)) {
+      setWeekPlan(
+        Object.fromEntries(
+          Object.entries(payload.weekPlan as Record<string, any>).filter(
+            ([k, v]) => /^\d{4}-\d{2}-\d{2}$/.test(k) && v && typeof v.mealId === 'string' && typeof v.title === 'string'
+          )
+        ) as WeekPlan
+      );
+    }
+    if (payload.weekThemes && typeof payload.weekThemes === 'object' && !Array.isArray(payload.weekThemes)) {
+      setWeekThemes(
+        Object.fromEntries(
+          Object.entries(payload.weekThemes as Record<string, any>).filter(
+            ([k, v]) => /^[0-6]$/.test(k) && THEMES.some((t) => t.id === v)
+          )
+        ) as Record<number, ThemeId>
+      );
+    }
+    if (Array.isArray(payload.voteLogs)) setVoteLogs(payload.voteLogs);
+    if (typeof payload.rescuedItemsCount === 'number') setRescuedItemsCount(payload.rescuedItemsCount);
+    if (Array.isArray(payload.cookLog)) setCookLog(payload.cookLog);
+    if (Array.isArray(payload.takeawayLog)) setTakeawayLog(payload.takeawayLog);
+    if (Array.isArray(payload.rejectedMealIds)) setRejectedMealIds(payload.rejectedMealIds);
+    // Keep this device's own identity; only the display name and last-saved time carry over.
+    setUserProfile((prev) => ({
+      ...prev,
+      name: typeof payload.userProfile?.name === 'string' ? payload.userProfile.name.slice(0, 60) : prev.name,
+      lastSyncedAt: new Date().toISOString(),
+    }));
+    // Voting state refers to the old household, so start tonight afresh.
+    setActiveVoterIndex(0);
+    setCurrentBallot({});
+    sound.playWin();
+    return {
+      success: true,
+      message: `Restored ${restoredCount || meals.length} recipes and your kitchen inventory.`,
+    };
   };
 
-  const restoreFromCloud = async (): Promise<{ success: boolean; message: string }> => {
+  /** Fetches the household's saved copy and checks it. Nothing on this device changes until the caller applies it. */
+  const fetchCloudSnapshot = async (): Promise<{ success: boolean; message: string; check?: BackupCheck }> => {
+    if (!householdRef.current) {
+      return { success: false, message: 'Turn on household sharing first, then save a copy.' };
+    }
     setIsSyncing(true);
     try {
-      const res = await fetch('/api/sync/cloud');
-      if (!res.ok) {
-        return { success: false, message: 'Could not reach Cloud Sync endpoint.' };
-      }
+      const res = await fetch('/api/sync/cloud', { headers: authHeaders() });
+      if (res.status === 401) return { success: false, message: 'This household code is no longer valid.' };
+      if (!res.ok) return { success: false, message: 'Couldn’t reach the server.' };
       const json = await res.json();
       if (!json?.data) {
-        return {
-          success: false,
-          message: 'No cloud snapshot found yet. Click "Sync Now to Cloud" first or upload a JSON backup file.',
-        };
+        return { success: false, message: 'No saved copy yet. Press “Save copy” on the phone that has your recipes.' };
       }
-      return importBackupData(json.data);
+      const check = checkBackup(json.data);
+      if (!check.ok) return { success: false, message: check.error };
+      return { success: true, message: 'ok', check };
     } catch {
-      return { success: false, message: 'Network error while restoring from cloud.' };
+      return { success: false, message: 'Network error while contacting the server.' };
     } finally {
       setIsSyncing(false);
     }
   };
 
+  const saveHousehold = (h: { id: string; key: string } | null) => {
+    setHousehold(h);
+    householdRef.current = h;
+    try {
+      if (h) localStorage.setItem(`${STORAGE_KEY}_household`, JSON.stringify(h));
+      else localStorage.removeItem(`${STORAGE_KEY}_household`);
+    } catch {
+      // storage blocked; the code still works for this session
+    }
+  };
+
+  const createHousehold = async (): Promise<{ success: boolean; message: string }> => {
+    try {
+      const res = await fetch('/api/households', { method: 'POST' });
+      if (res.status === 429) return { success: false, message: 'Too many attempts. Try again in a while.' };
+      if (!res.ok) return { success: false, message: 'Couldn’t reach the server.' };
+      const json = await res.json();
+      saveHousehold({ id: json.householdId, key: json.key });
+      return { success: true, message: 'Sharing is on.' };
+    } catch {
+      return { success: false, message: 'Couldn’t reach the server.' };
+    }
+  };
+
+  const joinHousehold = async (code: string): Promise<{ success: boolean; message: string }> => {
+    const [id, key] = code.trim().split('.');
+    if (!id || !key) return { success: false, message: 'That code doesn’t look right.' };
+    try {
+      const res = await fetch('/api/households/me', { headers: { 'x-household-id': id, 'x-household-key': key } });
+      if (res.status === 401) return { success: false, message: 'That code wasn’t recognised.' };
+      if (!res.ok) return { success: false, message: 'Couldn’t reach the server.' };
+      saveHousehold({ id, key });
+      return { success: true, message: 'Joined. The shopping list is now shared.' };
+    } catch {
+      return { success: false, message: 'Couldn’t reach the server.' };
+    }
+  };
+
+  const leaveHousehold = () => {
+    saveHousehold(null);
+    setShoppingOnline(null);
+  };
+
+  // ---- Live vote: every phone in the household votes on one proposal -------
+  const [tonight, setTonight] = useState<LiveVote | null>(null);
+  const appliedRound = useRef<number>(loadStored('live_round', 0));
+
+  const refreshTonight = useCallback(async () => {
+    if (!householdRef.current) {
+      setTonight(null);
+      return;
+    }
+    try {
+      const res = await fetch('/api/tonight', { headers: authHeaders() });
+      if (res.ok) setTonight((await res.json()) as LiveVote);
+    } catch {
+      // offline: keep what we last saw
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    refreshTonight();
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') refreshTonight();
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [refreshTonight, household]);
+
+  const sendLive = async (body: Record<string, unknown>): Promise<{ ok: boolean; message?: string }> => {
+    if (!householdRef.current) return { ok: false, message: 'Turn on sharing first.' };
+    try {
+      const res = await fetch('/api/tonight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (json?.status) setTonight(json as LiveVote);
+      else if (json?.tonight?.status) setTonight(json.tonight as LiveVote);
+      if (!res.ok) return { ok: false, message: json?.error || 'That didn’t go through.' };
+      return { ok: true };
+    } catch {
+      return { ok: false, message: 'Couldn’t reach the server.' };
+    }
+  };
+
+  const startLiveVote = async (meal: Meal) => {
+    const people = householdMembers.map((m) => m.name);
+    const r = await sendLive({
+      op: 'propose',
+      meal,
+      people,
+      needed: Math.max(1, Math.ceil(people.length / 2)),
+      by: meName() || '',
+    });
+    if (r.ok) {
+      setProposedMeal(meal);
+      setAgreedMeal(null);
+      setCurrentBallot({});
+      setActiveView(3);
+    }
+    return r;
+  };
+  const castLiveVote = (voter: string, vote: 'yes' | 'no') => sendLive({ op: 'vote', voter, vote });
+  const decideLive = () => sendLive({ op: 'decide' });
+  const clearLive = () => sendLive({ op: 'clear' });
+
+  // A vote opened on another phone shows up here too, ready to vote on.
+  const seenOpenRound = useRef(0);
+  useEffect(() => {
+    if (!tonight || tonight.status !== 'open' || !tonight.meal) return;
+    if (seenOpenRound.current === tonight.round) return;
+    seenOpenRound.current = tonight.round;
+    const local = meals.find((m) => m.id === tonight.meal!.id);
+    setProposedMeal(
+      local || ({ ...tonight.meal, rating: 0, isFavorite: false, cookCount: 0, lastCookedDate: null } as Meal)
+    );
+    setAgreedMeal(null);
+    setCurrentBallot({});
+  }, [tonight]);
+
+  // When the household agrees, every phone lands on the same dinner and timeline.
+  useEffect(() => {
+    if (!tonight || tonight.status !== 'agreed' || !tonight.meal) return;
+    if (appliedRound.current === tonight.round) return;
+    appliedRound.current = tonight.round;
+    try {
+      localStorage.setItem(`${STORAGE_KEY}_live_round`, JSON.stringify(tonight.round));
+    } catch {
+      // ignore
+    }
+    const local = meals.find((m) => m.id === tonight.meal!.id);
+    const meal: Meal =
+      local || ({ ...tonight.meal, rating: 0, isFavorite: false, cookCount: 0, lastCookedDate: null } as Meal);
+    setProposedMeal(meal);
+    setAgreedMeal(meal);
+    setCurrentBallot({});
+    setConsecutiveRejections(0);
+    setTakeawayOverrideActive(false);
+    generateReverseTimers(targetEatingTime, meal);
+  }, [tonight]);
+
+  const toggleDiet = (id: DietId) =>
+    setDiets((prev) => (prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id]));
+
+  const completeOnboarding = (names: string[], avoid: string[], chosenDiets: DietId[] = []) => {
+    setDiets(chosenDiets.filter(isDietId));
+    const cleanNames = names.map((n) => n.trim().slice(0, 30)).filter(Boolean).slice(0, 8);
+    const avatars = ['🙂', '😋', '🧑‍🍳', '😎', '🤓', '🥳', '🙃', '😊'];
+    if (cleanNames.length > 0) {
+      const members = cleanNames.map((name, i) => ({
+        id: 'm_' + Date.now() + '_' + i,
+        name,
+        avatar: avatars[i % avatars.length],
+        vetoTokensRemaining: 3,
+      }));
+      setHouseholdMembers(members);
+      setDoorDutyPerson(members[0]);
+    }
+    const cleanAvoid = Array.from(new Set(avoid.map((a) => a.trim().slice(0, 40)).filter(Boolean))).slice(0, 20);
+    if (cleanAvoid.length > 0) setBannedIngredients(cleanAvoid);
+    setOnboarded(true);
+    try {
+      localStorage.setItem(`${STORAGE_KEY}_onboarded`, 'true');
+    } catch {
+      // ignore
+    }
+  };
+
   const resetToFactoryDefaults = () => {
-    setMeals(INITIAL_MEALS);
-    setPantry(INITIAL_PANTRY);
-    setTakeaways(INITIAL_TAKEAWAYS);
-    setHouseholdMembers(INITIAL_MEMBERS);
+    setMeals(STARTER_MEALS);
+    setPantry([]);
+    setTakeaways(STARTER_TAKEAWAYS);
+    setHouseholdMembers(STARTER_MEMBERS);
     setStaples(INITIAL_STAPLES);
-    setBannedIngredients(INITIAL_BANNED_INGREDIENTS);
+    setBannedIngredients([]);
     setVoteLogs([]);
     setCookLog([]);
     setTakeawayLog([]);
@@ -1193,7 +1545,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setAgreedMeal(null);
     setConsecutiveRejections(0);
     setTakeawayOverrideActive(false);
-    setRescuedItemsCount(7);
+    setRescuedItemsCount(0);
     sound.playHold();
   };
 
@@ -1245,6 +1597,19 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         removeStaple,
         likedIngredients,
         bannedIngredients,
+        diets,
+        toggleDiet,
+        servings,
+        setServings,
+        weekPlan,
+        weekThemes,
+        setWeekTheme,
+        setPlanDay,
+        planWeek,
+        clearWeekPlan,
+        shopForWeek,
+        store,
+        setStore,
         toggleBannedIngredient,
         meals,
         addMeal,
@@ -1285,8 +1650,19 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         userProfile,
         updateUserProfile,
         syncWithCloud,
-        restoreFromCloud,
+        fetchCloudSnapshot,
         importBackupData,
+        householdCode: household ? `${household.id}.${household.key}` : null,
+        createHousehold,
+        joinHousehold,
+        leaveHousehold,
+        tonight,
+        startLiveVote,
+        castLiveVote,
+        decideLive,
+        clearLive,
+        onboarded,
+        completeOnboarding,
         resetToFactoryDefaults,
         isSyncing,
 

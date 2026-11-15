@@ -22,7 +22,14 @@ export const ScorecardView: React.FC = () => {
     setActiveMealResult,
     cookLog,
     takeawayLog,
+    sendToVote,
   } = useDinner();
+  const [showAllHistory, setShowAllHistory] = useState(false);
+  const history = [
+    ...cookLog.map((c) => ({ id: c.id, date: c.date, title: c.title, kind: 'cooked' as const, mealId: c.mealId })),
+    ...takeawayLog.map((t) => ({ id: t.id, date: t.date, title: t.name, kind: 'takeaway' as const, mealId: '' })),
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const shownHistory = showAllHistory ? history.slice(0, 60) : history.slice(0, 10);
 
   // --- This week, from the real logs ---
   const cookedDays = new Set(cookLog.map((c) => dayKey(new Date(c.date))));
@@ -200,6 +207,47 @@ export const ScorecardView: React.FC = () => {
           </div>
         </Card>
       )}
+
+      {/* Recent dinners */}
+      <section aria-labelledby="recent-dinners">
+        <h2 id="recent-dinners" className="mb-2 px-1 text-[15px] font-semibold">
+          Recent dinners
+        </h2>
+        {history.length === 0 ? (
+          <Card className="p-4 text-[14px] text-ink-2">Nothing logged yet. Dinners you finish show up here.</Card>
+        ) : (
+          <Card as="div" className="p-1">
+            <ul className="divide-y divide-line">
+              {shownHistory.map((h) => {
+                const again = h.kind === 'cooked' ? meals.find((m) => m.id === h.mealId) : undefined;
+                return (
+                  <li key={h.id} className="flex items-center gap-3 px-3 py-2.5">
+                    <span className="w-16 shrink-0 text-[13px] text-ink-2 tabular-nums">
+                      {new Date(h.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-[14px] font-semibold">{h.title}</span>
+                    {h.kind === 'takeaway' ? (
+                      <span className="text-[12px] text-ink-3">Takeaway</span>
+                    ) : again ? (
+                      <Button variant="secondary" size="sm" onClick={() => sendToVote(again)}>
+                        Cook again
+                      </Button>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
+        )}
+        {history.length > 10 && (
+          <button
+            onClick={() => setShowAllHistory((v) => !v)}
+            className="mt-2 min-h-11 px-1 text-[14px] font-semibold text-ink-2 hover:text-ink"
+          >
+            {showAllHistory ? 'Show fewer' : `Show more (${Math.min(history.length, 60) - 10})`}
+          </button>
+        )}
+      </section>
 
       {/* Most cooked */}
       <section aria-labelledby="most-cooked">

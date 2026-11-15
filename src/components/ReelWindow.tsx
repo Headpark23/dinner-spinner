@@ -280,14 +280,14 @@ export const ReelWindow: React.FC<ReelWindowProps> = ({ onSpin }) => {
               <button
                 onClick={() => nudgeReel(0)}
                 disabled={isSpinning}
-                className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg bg-white/8 px-3 text-[13px] font-semibold text-on-enamel ring-1 ring-white/15 hover:bg-white/12 disabled:opacity-40"
+                className="inline-flex h-11 shrink-0 items-center gap-1 rounded-lg bg-white/8 px-3 text-[13px] font-semibold text-on-enamel ring-1 ring-white/15 hover:bg-white/12 disabled:opacity-40"
               >
                 <ChevronDown className="h-4 w-4" /> Nudge
               </button>
             ) : (
               <button
                 onClick={resetNudges}
-                className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-3 text-[13px] font-semibold text-brass hover:bg-white/8"
+                className="inline-flex h-11 shrink-0 items-center gap-1 rounded-lg px-3 text-[13px] font-semibold text-brass hover:bg-white/8"
               >
                 <RotateCcw className="h-3.5 w-3.5" /> Refill nudges
               </button>
@@ -308,7 +308,7 @@ export const ReelWindow: React.FC<ReelWindowProps> = ({ onSpin }) => {
                     aria-pressed={isHeld}
                     aria-label={`Hold ${REEL_HEADERS[mode][idx]} reel`}
                     className={cx(
-                      'inline-flex h-9 items-center justify-center gap-1 rounded-lg text-[13px] font-semibold transition-colors disabled:opacity-40',
+                      'inline-flex h-11 items-center justify-center gap-1 rounded-lg text-[13px] font-semibold transition-colors disabled:opacity-40',
                       isHeld
                         ? 'bg-brass text-enamel'
                         : 'bg-white/8 text-on-enamel ring-1 ring-white/15 hover:bg-white/12'
@@ -321,7 +321,7 @@ export const ReelWindow: React.FC<ReelWindowProps> = ({ onSpin }) => {
                     onClick={() => nudgeReel(idx)}
                     disabled={nudgesRemaining <= 0 || isSpinning}
                     aria-label={`Nudge ${REEL_HEADERS[mode][idx]} reel`}
-                    className="inline-flex h-8 items-center justify-center gap-0.5 rounded-lg text-[12px] font-medium text-on-enamel-2 hover:bg-white/8 hover:text-on-enamel disabled:opacity-30 disabled:hover:bg-transparent"
+                    className="inline-flex h-11 items-center justify-center gap-0.5 rounded-lg text-[12px] font-medium text-on-enamel-2 hover:bg-white/8 hover:text-on-enamel disabled:opacity-30 disabled:hover:bg-transparent"
                   >
                     <ChevronDown className="h-3.5 w-3.5" /> Nudge
                   </button>

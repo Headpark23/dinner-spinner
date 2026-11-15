@@ -1,5 +1,8 @@
 import React, { useRef, useState } from 'react';
 import { useDinner } from '../../context/DinnerContext';
+import { DietPicker } from '../DietPicker';
+import { mealFitsDiets } from '../../utils/diets';
+import { STORES, StoreId } from '../../utils/planner';
 import {
   Camera,
   Receipt,
@@ -19,6 +22,7 @@ import {
   Sparkles,
   Copy,
   LoaderCircle,
+  ExternalLink,
 } from 'lucide-react';
 import { FreshnessLevel, Meal, TimeStake, EffortLevel } from '../../types';
 import { RecipeSheet } from '../RecipeSheet';
@@ -67,6 +71,8 @@ export const PantryView: React.FC = () => {
     addStaple,
     removeStaple,
     bannedIngredients,
+    diets,
+    toggleDiet,
     toggleBannedIngredient,
     meals,
     addMeal,
@@ -89,9 +95,20 @@ export const PantryView: React.FC = () => {
     toggleShoppingItem,
     removeShoppingItem,
     clearCheckedShopping,
+    store,
+    setStore,
   } = useDinner();
+  const storeInfo = STORES.find((x) => x.id === store) || STORES[0];
 
-  const [recipeScope, setRecipeScope] = useState<'ours' | 'world'>('ours');
+  const [recipeScope, setRecipeScope] = useState<'ours' | 'world'>(() => {
+    try {
+      const v = sessionStorage.getItem('ds_pantry_scope');
+      sessionStorage.removeItem('ds_pantry_scope');
+      return v === 'world' ? 'world' : 'ours';
+    } catch {
+      return 'ours';
+    }
+  });
   const [worldCuisine, setWorldCuisine] = useState('all');
   const [sheetMeal, setSheetMeal] = useState<Meal | null>(null);
   const [newShopName, setNewShopName] = useState('');
@@ -230,6 +247,7 @@ export const PantryView: React.FC = () => {
   const filteredWorld = worldRecipes.filter((r) => {
     if (worldCuisine !== 'all' && r.cuisine !== worldCuisine) return false;
     if (rejectedMealIds.includes(r.id)) return false;
+    if (!mealFitsDiets(r.ingredients, diets)) return false;
     const q = vaultSearch.trim().toLowerCase();
     return (
       !q ||
@@ -354,7 +372,7 @@ export const PantryView: React.FC = () => {
       />
 
       <div>
-        <h1 className="font-display text-[28px] leading-tight font-semibold">Pantry</h1>
+        <h1 className="font-display text-[28px] leading-tight font-semibold">Kitchen</h1>
         <p className="mt-1 text-[14px] text-ink-2">
           {redCount > 0
             ? `${redCount} ${redCount === 1 ? 'thing needs' : 'things need'} using up. The spinner can favour them.`
@@ -362,7 +380,7 @@ export const PantryView: React.FC = () => {
         </p>
       </div>
 
-      <div role="tablist" aria-label="Pantry sections" className="-mx-4 flex gap-1 overflow-x-auto px-4 scrollbar-none">
+      <div role="tablist" aria-label="Kitchen sections" className="-mx-4 flex gap-1 overflow-x-auto px-4 scrollbar-none">
         {tabs.map((tab) => {
           const selected = activeTab === tab.id;
           return (
@@ -374,7 +392,7 @@ export const PantryView: React.FC = () => {
               aria-controls={`panel-${tab.id}`}
               onClick={() => setActiveTab(tab.id)}
               className={cx(
-                'h-9 shrink-0 rounded-full px-3.5 text-[14px] font-semibold transition-colors',
+                'h-11 shrink-0 rounded-full px-4 text-[14px] font-semibold transition-colors',
                 selected ? 'bg-ink text-paper' : 'text-ink-2 hover:bg-sunk hover:text-ink'
               )}
             >
@@ -637,7 +655,7 @@ export const PantryView: React.FC = () => {
                   ? 'Shared with everyone in the household'
                   : shoppingOnline === false
                   ? 'Offline. Changes sync when you’re back'
-                  : 'Connecting…'}
+                  : 'Only on this phone. Turn on sharing in Household & backup'}
               </span>
               <label className="flex shrink-0 items-center gap-1.5">
                 <span className="text-ink-2">I’m</span>
@@ -684,6 +702,20 @@ export const PantryView: React.FC = () => {
               </Card>
             ) : (
               <>
+                {toBuy.length > 0 && (
+                  <div className="flex items-center justify-between gap-3 px-1">
+                    <label htmlFor="store-pick" className="text-[13px] text-ink-2">
+                      Search items at
+                    </label>
+                    <Select id="store-pick" value={store} onChange={(e) => setStore(e.target.value as StoreId)} className="!text-[14px]">
+                      {STORES.map((x) => (
+                        <option key={x.id} value={x.id}>
+                          {x.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                )}
                 {[
                   { title: 'To buy', items: toBuy },
                   { title: 'In the basket', items: gotIt },
@@ -724,6 +756,17 @@ export const PantryView: React.FC = () => {
                                   </span>
                                 </span>
                               </button>
+                              {!item.checked && (
+                                <a
+                                  href={storeInfo.url(item.name)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  aria-label={`Find ${item.name} at ${storeInfo.label} (opens a new tab)`}
+                                  className="flex h-11 w-11 items-center justify-center rounded-xl text-ink-3 hover:bg-sunk hover:text-ink"
+                                >
+                                  <ExternalLink className="h-4 w-4" />
+                                </a>
+                              )}
                               <IconButton label={`Remove ${item.name}`} onClick={() => removeShoppingItem(item.id)}>
                                 <X className="h-4 w-4" />
                               </IconButton>
@@ -868,6 +911,9 @@ export const PantryView: React.FC = () => {
         {/* AVOID */}
         {activeTab === 'banned' && (
           <Card className="space-y-3 p-4">
+            <p className="text-[15px] font-semibold">Diets</p>
+            <DietPicker value={diets} onToggle={toggleDiet} />
+            <p className="pt-2 text-[15px] font-semibold">Never</p>
             <p className="text-[14px] text-ink-2">The spinner will never land on a dish containing these.</p>
             {bannedIngredients.length === 0 ? (
               <p className="text-[14px] text-ink-3">Nothing on the list.</p>

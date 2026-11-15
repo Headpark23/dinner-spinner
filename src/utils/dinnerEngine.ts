@@ -7,6 +7,7 @@ import {
   PantryMatchInfo,
   ReverseTimerStep,
 } from '../types';
+import { DietId, mealFitsDiets } from './diets';
 
 /**
  * Returns the meal as the household actually cooks it: the original recipe plus
@@ -122,10 +123,18 @@ export interface EligiblePoolResult {
  */
 export function filterEligibleMeals(
   meals: Meal[],
-  timeStake: TimeStake,
-  effort: EffortLevel,
-  bannedIngredients: string[]
+  timeStake: TimeStake | 'any',
+  effort: EffortLevel | 'any',
+  bannedIngredients: string[],
+  diets: DietId[] = []
 ): EligiblePoolResult {
+  // Dietary preferences are strict: a vegan household never falls back to a meat dish.
+  if (diets.length > 0) {
+    meals = meals.filter((m) => mealFitsDiets(m.ingredients, diets));
+    if (meals.length === 0) {
+      return { pool: [], exactMatchCount: 0, timeStakeMatchCount: 0, isExactEffortMatch: false };
+    }
+  }
   const nonBannedMeals = meals.filter((meal) => {
     const containsBanned = meal.ingredients.some((ing) =>
       bannedIngredients.some(
@@ -139,8 +148,8 @@ export function filterEligibleMeals(
 
   const baseMeals = nonBannedMeals.length > 0 ? nonBannedMeals : meals;
 
-  const timeMatched = baseMeals.filter((m) => m.timeStake === timeStake);
-  const exactMatched = timeMatched.filter((m) => m.effort === effort);
+  const timeMatched = timeStake === 'any' ? baseMeals : baseMeals.filter((m) => m.timeStake === timeStake);
+  const exactMatched = effort === 'any' ? timeMatched : timeMatched.filter((m) => m.effort === effort);
 
   if (exactMatched.length > 0) {
     return {
@@ -189,7 +198,7 @@ export function selectWeightedMeal(
   pool: Meal[],
   pantry: PantryItem[],
   clearoutActive: boolean,
-  effort: EffortLevel,
+  effort: EffortLevel | 'any',
   nowMs: number = Date.now(),
   randomFn: () => number = Math.random
 ): Meal {
@@ -284,10 +293,10 @@ export function buildComboMeal(
         `Rest ${meat} under foil while baking ${starSide} (-25m)`,
         `Finish ${vegGravy}, carve at the table, and serve (-0m)`,
       ],
-      rating: 5,
-      isFavorite: true,
+      rating: 0,
+      isFavorite: false,
       lastCookedDate: null,
-      cookCount: 1,
+      cookCount: 0,
       tags: ['Sunday Jackpot', '4-Reel Custom Roast', 'British Heritage'],
       servings: 4,
     };
@@ -324,10 +333,10 @@ export function buildComboMeal(
       `Pour in ${sauce} and simmer gently to infuse flavours (-8m)`,
       `Combine with ${carb}, garnish, and plate up (-0m)`,
     ],
-    rating: 4,
+    rating: 0,
     isFavorite: false,
     lastCookedDate: null,
-    cookCount: 1,
+    cookCount: 0,
     tags: ['3-Reel Custom Combo', inferredCuisine],
     servings: 4,
   };

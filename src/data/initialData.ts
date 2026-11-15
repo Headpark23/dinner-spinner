@@ -473,11 +473,33 @@ export const INITIAL_BANNED_INGREDIENTS = [
 ];
 
 export const INITIAL_USER_PROFILE: UserProfile = {
-  id: 'usr_uk_master',
-  name: 'Head Chef',
-  email: 'headpark@gmail.com',
-  avatarUrl: 'https://api.dicebear.com/7.x/bottts/svg?seed=dinner-spinner-chef&backgroundColor=e76f51',
-  provider: 'google',
-  cloudSyncEnabled: true,
+  id: 'guest',
+  name: 'Our kitchen',
+  email: '',
+  avatarUrl: '',
+  provider: 'guest',
+  cloudSyncEnabled: false,
   lastSyncedAt: '', // never saved to the server yet
 };
+
+// ---------------------------------------------------------------------------
+// What a brand-new household starts with. The INITIAL_* sample data above is kept
+// for tests and the "Try a sample" demos; it is never shown to a real user as if
+// it were theirs: no invented cook history, ratings, fridge, family or dislikes.
+// ---------------------------------------------------------------------------
+export const STARTER_MEALS: Meal[] = INITIAL_MEALS.map((m) => ({
+  ...m,
+  rating: 0,
+  isFavorite: false,
+  cookCount: 0,
+  lastCookedDate: null,
+}));
+export const STARTER_MEMBERS: HouseholdMember[] = [
+  { id: 'm1', name: 'Me', avatar: '🙂', vetoTokensRemaining: 3 },
+];
+export const STARTER_TAKEAWAYS: TakeawayOption[] = INITIAL_TAKEAWAYS.map((t) => ({
+  ...t,
+  usualOrders: [],
+  orderCount: 0,
+  lastOrderedDate: null,
+}));

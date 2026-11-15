@@ -120,75 +120,204 @@ test('Weighted Selection Engine: deterministic boundary selection', () => {
   assert.ok(firstPick && firstPick.id);
 });
 
-test('Server API Endpoints: health, cloud sync roundtrip, and AI kitchen analysis fallback', async () => {
+async function withServer(run: (baseUrl: string) => Promise<void>) {
   const { app } = await import('../../server');
   const server = http.createServer(app);
-
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const address = server.address() as { port: number };
-  const baseUrl = `http://127.0.0.1:${address.port}`;
-
+  const { port } = server.address() as { port: number };
   try {
-    // 1. Health endpoint
-    const healthRes = await fetch(`${baseUrl}/api/health`);
-    assert.equal(healthRes.status, 200);
-    const healthJson = await healthRes.json();
-    assert.equal(healthJson.status, 'ok');
-    assert.equal(healthJson.demoFallbackReady, true);
-
-    // 2. Cloud Sync POST + GET roundtrip
-    const syncPost = await fetch(`${baseUrl}/api/sync/cloud`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        data: { meals: INITIAL_MEALS.slice(0, 2), pantry: INITIAL_PANTRY.slice(0, 2) },
-      }),
-    });
-    assert.equal(syncPost.status, 200);
-    const syncPostJson = await syncPost.json();
-    assert.equal(syncPostJson.success, true);
-    assert.equal(syncPostJson.itemCount, 2);
-
-    const syncGet = await fetch(`${baseUrl}/api/sync/cloud`);
-    assert.equal(syncGet.status, 200);
-    const syncGetJson = await syncGet.json();
-    assert.equal(syncGetJson.hasSnapshot, true);
-    assert.equal(syncGetJson.data.meals.length, 2);
-
-    // 3. Pantry analyze fallback (recipe-text)
-    const analyzeRes = await fetch(`${baseUrl}/api/pantry/analyze`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'recipe-text',
-        textPrompt: 'Smoky Chorizo Bean Casserole',
-      }),
-    });
-    assert.equal(analyzeRes.status, 200);
-    const analyzeJson = await analyzeRes.json();
-    assert.ok(analyzeJson.meal);
-    assert.equal(analyzeJson.meal.title, 'Smoky Chorizo Bean Casserole');
-
-    // 4. "Try a sample" requests are always served locally, even when a live key exists
-    const sampleRes = await fetch(`${baseUrl}/api/pantry/analyze`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'snap-fridge', textPrompt: 'Sample', demo: true }),
-    });
-    const sampleJson = await sampleRes.json();
-    assert.equal(sampleJson.demoMode, true);
-    assert.ok(sampleJson.detectedItems.length > 0);
+    await run(`http://127.0.0.1:${port}`);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
+}
+
+const json = { 'Content-Type': 'application/json' };
+const authed = (h: { householdId: string; key: string }) => ({
+  ...json,
+  'x-household-id': h.householdId,
+  'x-household-key': h.key,
+});
+async function newHousehold(baseUrl: string) {
+  const res = await fetch(`${baseUrl}/api/households`, { method: 'POST' });
+  assert.equal(res.status, 201);
+  return (await res.json()) as { householdId: string; key: string; code: string };
+}
+
+test('Server: health reveals nothing sensitive', async () => {
+  await withServer(async (baseUrl) => {
+    const body = await (await fetch(`${baseUrl}/api/health`)).json();
+    assert.equal(body.status, 'ok');
+    assert.equal(body.hasGeminiKey, undefined);
+    assert.equal(body.hasCloudSnapshot, undefined);
+  });
+});
+
+test('Server: data routes refuse callers without a valid household code', async () => {
+  await withServer(async (baseUrl) => {
+    for (const [method, path] of [
+      ['GET', '/api/sync/cloud'],
+      ['POST', '/api/sync/cloud'],
+      ['GET', '/api/shopping'],
+      ['POST', '/api/shopping/ops'],
+      ['GET', '/api/households/me'],
+    ]) {
+      const res = await fetch(`${baseUrl}${path}`, {
+        method,
+        headers: json,
+        body: method === 'POST' ? JSON.stringify({ data: { meals: [] }, ops: [{ type: 'clearChecked' }] }) : undefined,
+      });
+      assert.equal(res.status, 401, `${method} ${path} should be 401`);
+    }
+    const h = await newHousehold(baseUrl);
+    const wrongKey = await fetch(`${baseUrl}/api/sync/cloud`, {
+      headers: { 'x-household-id': h.householdId, 'x-household-key': 'nope' },
+    });
+    assert.equal(wrongKey.status, 401);
+    // Prototype keys must not be treated as households.
+    const proto = await fetch(`${baseUrl}/api/sync/cloud`, {
+      headers: { 'x-household-id': '__proto__', 'x-household-key': 'x' },
+    });
+    assert.equal(proto.status, 401);
+  });
+});
+
+test('Server: cloud copy round trip, isolated per household', async () => {
+  await withServer(async (baseUrl) => {
+    const a = await newHousehold(baseUrl);
+    const b = await newHousehold(baseUrl);
+
+    const post = await fetch(`${baseUrl}/api/sync/cloud`, {
+      method: 'POST',
+      headers: authed(a),
+      body: JSON.stringify({ data: { meals: INITIAL_MEALS.slice(0, 2), pantry: INITIAL_PANTRY.slice(0, 2) } }),
+    });
+    assert.equal(post.status, 200);
+    assert.equal((await post.json()).itemCount, 2);
+
+    const getA = await (await fetch(`${baseUrl}/api/sync/cloud`, { headers: authed(a) })).json();
+    assert.equal(getA.hasSnapshot, true);
+    assert.equal(getA.data.meals.length, 2);
+
+    // Household B never sees A's copy, and cannot overwrite it.
+    const getB = await (await fetch(`${baseUrl}/api/sync/cloud`, { headers: authed(b) })).json();
+    assert.equal(getB.hasSnapshot, false);
+    await fetch(`${baseUrl}/api/sync/cloud`, {
+      method: 'POST',
+      headers: authed(b),
+      body: JSON.stringify({ data: { meals: [] } }),
+    });
+    const getA2 = await (await fetch(`${baseUrl}/api/sync/cloud`, { headers: authed(a) })).json();
+    assert.equal(getA2.data.meals.length, 2);
+
+    const bad = await fetch(`${baseUrl}/api/sync/cloud`, {
+      method: 'POST',
+      headers: authed(a),
+      body: JSON.stringify({ data: [1, 2] }),
+    });
+    assert.equal(bad.status, 400);
+  });
+});
+
+test('Server: shared shopping list round trip, isolated per household', async () => {
+  await withServer(async (baseUrl) => {
+    const a = await newHousehold(baseUrl);
+    const b = await newHousehold(baseUrl);
+    const post = await fetch(`${baseUrl}/api/shopping/ops`, {
+      method: 'POST',
+      headers: authed(a),
+      body: JSON.stringify({ ops: [{ type: 'add', item: { id: 'x1', name: 'Saffron' } }, { type: 'toggle', id: 'x1', by: 'Dad' }] }),
+    });
+    const body = await post.json();
+    assert.equal(body.items.find((i: any) => i.id === 'x1').checkedBy, 'Dad');
+    const get = await (await fetch(`${baseUrl}/api/shopping`, { headers: authed(a) })).json();
+    assert.equal(get.version, body.version);
+    const other = await (await fetch(`${baseUrl}/api/shopping`, { headers: authed(b) })).json();
+    assert.equal(other.items.length, 0);
+  });
+});
+
+test('Server: scanning never invents a result for something the user asked for', async () => {
+  await withServer(async (baseUrl) => {
+    // No AI key in tests: a real request is refused honestly...
+    const real = await fetch(`${baseUrl}/api/pantry/analyze`, {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({ type: 'recipe-text', textPrompt: 'Beef and Guinness stew' }),
+    });
+    assert.equal(real.status, 503);
+    assert.match((await real.json()).error, /Try a sample/);
+
+    // ...while "Try a sample" is served locally, flagged as sample data, ignoring typed text.
+    const sample = await (
+      await fetch(`${baseUrl}/api/pantry/analyze`, {
+        method: 'POST',
+        headers: json,
+        body: JSON.stringify({ type: 'recipe-text', textPrompt: 'Beef stew', demo: true }),
+      })
+    ).json();
+    assert.equal(sample.demoMode, true);
+    assert.notEqual(sample.meal.title, 'Beef stew');
+
+    const fridge = await (
+      await fetch(`${baseUrl}/api/pantry/analyze`, {
+        method: 'POST',
+        headers: json,
+        body: JSON.stringify({ type: 'snap-fridge', demo: true }),
+      })
+    ).json();
+    assert.equal(fridge.demoMode, true);
+    assert.ok(fridge.detectedItems.length > 0);
+  });
+});
+
+test('Server: the old fake sign-in endpoint is gone and large bodies are refused', async () => {
+  await withServer(async (baseUrl) => {
+    const fake = await fetch(`${baseUrl}/api/auth/profile`, { method: 'POST', headers: json, body: '{}' });
+    assert.notEqual(fake.status, 200);
+    const h = await newHousehold(baseUrl);
+    const big = await fetch(`${baseUrl}/api/sync/cloud`, {
+      method: 'POST',
+      headers: authed(h),
+      body: JSON.stringify({ data: { blob: 'x'.repeat(1_200_000) } }),
+    });
+    assert.equal(big.status, 413);
+  });
+});
+
+test('Backup check: rejects damaged files, accepts real ones', async () => {
+  const { checkBackup } = await import('./backup');
+  assert.equal(checkBackup(null).ok, false);
+  assert.equal(checkBackup({ hello: 'world' }).ok, false);
+  assert.equal(checkBackup({ meals: [{ id: 'x' }] }).ok, false, 'meal missing fields');
+  assert.equal(checkBackup({ members: [] }).ok, false, 'empty household');
+  assert.equal(checkBackup({ staples: [1, 2] }).ok, false);
+  const good = checkBackup({ data: { meals: INITIAL_MEALS, pantry: INITIAL_PANTRY, members: [{ id: 'm', name: 'A', vetoTokensRemaining: 3 }] } });
+  assert.equal(good.ok, true);
+  if (good.ok) assert.equal(good.summary.recipes, INITIAL_MEALS.length);
+});
+
+test('Fresh start: a new household sees no invented history, family, fridge or dislikes', async () => {
+  const { STARTER_MEALS, STARTER_MEMBERS, STARTER_TAKEAWAYS, INITIAL_USER_PROFILE } = await import('../data/initialData');
+  assert.ok(STARTER_MEALS.length > 0);
+  for (const m of STARTER_MEALS) {
+    assert.equal(m.cookCount, 0);
+    assert.equal(m.lastCookedDate, null);
+    assert.equal(m.rating, 0);
+    assert.equal(m.isFavorite, false);
+  }
+  assert.equal(STARTER_MEMBERS.length, 1);
+  assert.ok(STARTER_TAKEAWAYS.every((t) => t.usualOrders.length === 0));
+  assert.equal(INITIAL_USER_PROFILE.email, '');
+  assert.equal(INITIAL_USER_PROFILE.avatarUrl, '');
 });
 
 test('React UI Component Suite: renders all 5 Cabinet Views and Modals cleanly without error', () => {
   const views = [
     { name: 'MachineView', el: React.createElement(MachineView), expectedText: 'What’s for dinner?' },
     { name: 'TakeawayView', el: React.createElement(TakeawayView), expectedText: 'Spin for takeaway' },
-    { name: 'PantryView', el: React.createElement(PantryView), expectedText: '>Pantry</h1>' },
-    { name: 'VotingView', el: React.createElement(VotingView), expectedText: 'Who’s voting?' },
+    { name: 'PantryView', el: React.createElement(PantryView), expectedText: '>Kitchen</h1>' },
+    { name: 'VotingView', el: React.createElement(VotingView), expectedText: 'Nothing on the table yet' },
     { name: 'ScorecardView', el: React.createElement(ScorecardView), expectedText: 'Your kitchen' },
     {
       name: 'RulesModal',
@@ -255,22 +384,331 @@ test('Shopping list ops: add dedupes, ticks record who, clear removes ticked', a
   assert.equal(items.length, 0);
 });
 
-test('Server: shared shopping list round trip', async () => {
-  const { app } = await import('../../server');
-  const server = http.createServer(app);
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+
+test('Eligibility Engine: "any" time and effort keeps the whole non-banned pool', () => {
+  const all = filterEligibleMeals(INITIAL_MEALS, 'any', 'any', []);
+  assert.equal(all.pool.length, INITIAL_MEALS.length);
+  assert.equal(all.isExactEffortMatch, true);
+
+  const anyTime = filterEligibleMeals(INITIAL_MEALS, 'any', 'one-pot', []);
+  assert.ok(anyTime.pool.length > 0 && anyTime.pool.every((m) => m.effort === 'one-pot'));
+
+  const banned = filterEligibleMeals(INITIAL_MEALS, 'any', 'any', ['Halloumi']);
+  assert.equal(banned.pool.some((m) => m.title.includes('Halloumi')), false);
+
+  const pick = selectWeightedMeal(all.pool, [], false, 'any', Date.now(), () => 0.5);
+  assert.ok(pick && pick.id);
+});
+
+test('Server: live tonight vote - majority agrees, any veto ends the round, outsiders refused', async () => {
+  await withServer(async (baseUrl) => {
+    const a = await newHousehold(baseUrl);
+    const b = await newHousehold(baseUrl);
+    const post = (h: any, body: any) =>
+      fetch(`${baseUrl}/api/tonight`, { method: 'POST', headers: authed(h), body: JSON.stringify(body) });
+    const meal = { ...INITIAL_MEALS[0] };
+
+    assert.equal((await fetch(`${baseUrl}/api/tonight`)).status, 401);
+    assert.equal((await (await fetch(`${baseUrl}/api/tonight`, { headers: authed(a) })).json()).status, 'idle');
+
+    // Bad proposals are refused.
+    assert.equal((await post(a, { op: 'propose', meal: { title: 'x' }, people: ['Sam'] })).status, 400);
+    assert.equal((await post(a, { op: 'propose', meal, people: [] })).status, 400);
+
+    // Three people, two yes votes needed.
+    let t = await (await post(a, { op: 'propose', meal, people: ['Sam', 'Jo', 'Alex'], needed: 2, by: 'Sam' })).json();
+    assert.equal(t.status, 'open');
+    assert.equal(t.round, 1);
+    assert.equal((await post(a, { op: 'vote', voter: 'Nobody', vote: 'yes' })).status, 400);
+    t = await (await post(a, { op: 'vote', voter: 'sam', vote: 'yes' })).json();
+    assert.equal(t.status, 'open', 'one yes is not enough');
+    t = await (await post(a, { op: 'vote', voter: 'Jo', vote: 'yes' })).json();
+    assert.equal(t.status, 'agreed');
+    assert.equal((await post(a, { op: 'vote', voter: 'Alex', vote: 'no' })).status, 409, 'closed rounds take no more votes');
+
+    // A veto ends a round straight away.
+    t = await (await post(a, { op: 'propose', meal, people: ['Sam', 'Jo'], needed: 2 })).json();
+    assert.equal(t.round, 2);
+    t = await (await post(a, { op: 'vote', voter: 'Jo', vote: 'no' })).json();
+    assert.equal(t.status, 'vetoed');
+    assert.equal(t.vetoedBy, 'Jo');
+
+    // "Just decide" closes an open vote as agreed.
+    await post(a, { op: 'propose', meal, people: ['Sam', 'Jo'], needed: 2 });
+    assert.equal((await (await post(a, { op: 'decide' })).json()).status, 'agreed');
+
+    // Households never see each other's votes.
+    assert.equal((await (await fetch(`${baseUrl}/api/tonight`, { headers: authed(b) })).json()).status, 'idle');
+    assert.equal((await (await post(a, { op: 'clear' })).json()).status, 'idle');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Diets, quantities and scaling
+// ---------------------------------------------------------------------------
+import { ingredientBreaks, mealFitsDiets } from './diets';
+import { scaleQuantity, quantityFor, baseQuantity } from './quantities';
+import { WORLD_RECIPES } from '../data/worldRecipes';
+import quantityTable from '../data/quantities.json';
+
+test('Diets: obvious breaches are caught and safe look-alikes are not', () => {
+  assert.equal(ingredientBreaks('Chicken Thighs', ['vegetarian']), 'vegetarian');
+  assert.equal(ingredientBreaks('Prawns', ['vegetarian']), 'vegetarian');
+  assert.equal(ingredientBreaks('Prawns', ['pescatarian']), null);
+  assert.equal(ingredientBreaks('Streaky Bacon', ['pescatarian']), 'pescatarian');
+  assert.equal(ingredientBreaks('Honey', ['vegan']), 'vegan');
+  assert.equal(ingredientBreaks('Free-range Eggs', ['vegan']), 'vegan');
+  assert.equal(ingredientBreaks('Aubergine', ['vegan']), null);
+  assert.equal(ingredientBreaks('Eggplant', ['vegan']), null, 'eggplant is not an egg');
+  assert.equal(ingredientBreaks('Coconut Milk', ['dairy-free']), null);
+  assert.equal(ingredientBreaks('Whole Milk', ['dairy-free']), 'dairy-free');
+  assert.equal(ingredientBreaks('Butter Beans', ['dairy-free']), null);
+  assert.equal(ingredientBreaks('Butternut Squash', ['dairy-free']), null);
+  assert.equal(ingredientBreaks('Peanut Butter', ['dairy-free']), null);
+  assert.equal(ingredientBreaks('Plain Flour', ['gluten-free']), 'gluten-free');
+  assert.equal(ingredientBreaks('Rice Noodles', ['gluten-free']), null);
+  assert.equal(ingredientBreaks('Buckwheat', ['gluten-free']), null);
+  assert.equal(ingredientBreaks('Soy Sauce', ['gluten-free']), 'gluten-free');
+  assert.equal(ingredientBreaks('Pine Nuts', ['nut-free']), 'nut-free');
+  assert.equal(ingredientBreaks('Coconut Milk', ['nut-free']), null);
+  assert.equal(ingredientBreaks('Nutmeg', ['nut-free']), null);
+  assert.equal(ingredientBreaks('Minced Garlic', ['vegetarian']), null, 'minced garlic is not mince');
+  assert.equal(mealFitsDiets(['Lamb Mince', 'Onion'], []), true);
+});
+
+test('Diets: the spinner pool is strict and never falls back to a clashing dish', () => {
+  const veg = filterEligibleMeals(INITIAL_MEALS, 'any', 'any', [], ['vegetarian']);
+  assert.ok(veg.pool.length > 0);
+  assert.ok(veg.pool.every((m) => mealFitsDiets(m.ingredients, ['vegetarian'])));
+  const none = filterEligibleMeals(
+    [{ ...INITIAL_MEALS[0], ingredients: ['Beef Mince'] }],
+    'any',
+    'any',
+    [],
+    ['vegan']
+  );
+  assert.equal(none.pool.length, 0, 'an all-meat library yields an empty pool for a vegan household');
+  // Same inputs without diets still behave as before.
+  assert.ok(filterEligibleMeals(INITIAL_MEALS, 'any', 'any', []).pool.length === INITIAL_MEALS.length);
+});
+
+test('Quantities: scaling keeps units, handles counts, ranges and unscalable phrases', () => {
+  assert.equal(scaleQuantity('200g', 2), '400g');
+  assert.equal(scaleQuantity('200g', 0.5), '100g');
+  assert.equal(scaleQuantity('2 x 400g tins', 1.5), '3 x 400g tins');
+  assert.equal(scaleQuantity('1 large', 2), '2 large');
+  assert.equal(scaleQuantity('1/2 tsp', 2), '1 tsp');
+  assert.equal(scaleQuantity('1 tsp', 0.5), '½ tsp');
+  assert.equal(scaleQuantity('1-2 tbsp', 2), '2-4 tbsp');
+  assert.equal(scaleQuantity('to taste', 3), 'to taste');
+  assert.equal(scaleQuantity('a pinch', 0.5), 'a pinch');
+  assert.equal(scaleQuantity('1kg', 1), '1kg');
+  assert.equal(quantityFor('w_fish_chips', 'Plain Flour', 8), '400g');
+  assert.equal(quantityFor('w_fish_chips', 'Plain Flour', 4), '200g');
+  assert.equal(quantityFor('no_such_dish', 'x', 4), null);
+});
+
+test('Quantities: every bundled recipe has a quantity for every ingredient', () => {
+  const table = quantityTable as Record<string, Record<string, string>>;
+  const dishes = [...WORLD_RECIPES, ...INITIAL_MEALS.filter((m) => /^meal_\d+$/.test(m.id))];
+  assert.ok(dishes.length >= 130);
+  const gaps: string[] = [];
+  for (const d of dishes) {
+    for (const ing of d.ingredients) if (baseQuantity(d.id, ing) === null) gaps.push(`${d.id}: ${ing}`);
+  }
+  assert.deepEqual(gaps, []);
+  const odd = Object.values(table)
+    .flatMap((o) => Object.values(o))
+    .filter((v) => !/^\d/.test(v) && !['to taste', 'a pinch', 'a handful', 'to serve', 'to fry'].includes(v));
+  assert.deepEqual(odd, []);
+});
+
+// ---------------------------------------------------------------------------
+// Week planner
+// ---------------------------------------------------------------------------
+import { nextDays, suggestWeek, tidyPlan, weekShopping, themeFits, STORES } from './planner';
+
+test('Planner: seven distinct dishes, diets and themes respected, existing nights kept', () => {
+  const pool = [...INITIAL_MEALS, ...WORLD_RECIPES.slice(0, 40)];
+  const days = nextDays(new Date(2026, 10, 15), 7);
+  assert.equal(days.length, 7);
+  assert.equal(days[0], '2026-11-15');
+  assert.equal(days[6], '2026-11-21');
+
+  const kept = { [days[2]]: { mealId: pool[0].id, title: pool[0].title } };
+  const plan = suggestWeek(pool, { days, plan: kept, themes: { [days[0]]: 'meatless' }, diets: ['vegetarian'], banned: [] });
+  assert.equal(Object.keys(plan).length, 7);
+  assert.equal(plan[days[2]].mealId, pool[0].id, 'a night you already chose is untouched');
+  const ids = Object.values(plan).map((p) => p.mealId);
+  assert.equal(new Set(ids).size, ids.length, 'no repeats in a week');
+  for (const [day, v] of Object.entries(plan)) {
+    if (day === days[2]) continue;
+    const meal = pool.find((m) => m.id === v.mealId)!;
+    assert.ok(mealFitsDiets(meal.ingredients, ['vegetarian']), `${meal.title} suits a vegetarian household`);
+  }
+
+  const fish = suggestWeek(pool, { days: [days[0]], plan: {}, themes: { [days[0]]: 'fish' }, diets: [], banned: [] });
+  const fishMeal = pool.find((m) => m.id === fish[days[0]].mealId)!;
+  assert.ok(themeFits('fish', fishMeal), 'a fish night gets a fish dish when one exists');
+
+  const nothing = suggestWeek([], { days, plan: {}, themes: {}, diets: [], banned: [] });
+  assert.deepEqual(nothing, {});
+});
+
+test('Planner: old days and deleted dishes are dropped; shopping is merged once', () => {
+  const meals = INITIAL_MEALS.slice(0, 3);
+  const old = { '2020-01-01': { mealId: meals[0].id, title: 'x' } };
+  const gone = { '2999-01-01': { mealId: 'nope', title: 'y' } };
+  assert.deepEqual(tidyPlan({ ...old, ...gone }, new Date(2026, 10, 15), meals), {});
+
+  const plan = {
+    '2026-11-16': { mealId: meals[0].id, title: meals[0].title },
+    '2026-11-17': { mealId: meals[0].id, title: meals[0].title },
+    '2026-11-18': { mealId: meals[1].id, title: meals[1].title },
+  };
+  const list = weekShopping(plan, meals, [], [], []);
+  assert.equal(new Set(list.map((x) => x.toLowerCase())).size, list.length, 'each item once');
+  const onList = weekShopping(plan, meals, [], [], [list[0]]);
+  assert.ok(!onList.includes(list[0]), 'anything already on the list is skipped');
+  const stocked = weekShopping(plan, meals, [], meals[0].ingredients, []);
+  assert.ok(meals[0].ingredients.every((i) => !stocked.includes(i)), 'staples are never bought');
+});
+
+test('Planner: supermarket links encode the search term', () => {
+  for (const s of STORES) {
+    const url = s.url('chilli flakes & oil');
+    assert.ok(url.startsWith('https://'));
+    assert.ok(!url.includes(' ') && !url.includes('&oil'), `${s.id} escapes the term`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Hosted storage: the same server behaviour on a Redis-style store, including
+// two phones writing at the same moment.
+// ---------------------------------------------------------------------------
+import { createRedisStore, mutate, Store } from '../server/store';
+
+/** A stand-in for Upstash's REST API that understands GET, SET and the compare-and-set script. */
+async function withFakeRedis(run: (url: string, data: Map<string, string>) => Promise<void>) {
+  const data = new Map<string, string>();
+  const server = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      if (req.headers.authorization !== 'Bearer tok') {
+        res.statusCode = 401;
+        return res.end(JSON.stringify({ error: 'unauthorized' }));
+      }
+      const [cmd, ...a] = JSON.parse(body) as (string | number)[];
+      let result: unknown = null;
+      if (cmd === 'GET') result = data.get(String(a[0])) ?? null;
+      else if (cmd === 'SET') {
+        data.set(String(a[1 - 1]), String(a[1]));
+        result = 'OK';
+      } else if (cmd === 'EVAL') {
+        const key = String(a[2]);
+        const expected = Number(a[3]);
+        const cur = data.get(key);
+        const rev = cur ? JSON.parse(cur)._rev || 0 : 0;
+        if ((cur && rev !== expected) || (!cur && expected !== 0)) result = 0;
+        else {
+          data.set(key, String(a[4]));
+          result = 1;
+        }
+      }
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ result }));
+    });
+  });
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   const { port } = server.address() as { port: number };
   try {
-    const post = await fetch(`http://127.0.0.1:${port}/api/shopping/ops`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ops: [{ type: 'add', item: { id: 'x1', name: 'Saffron' } }, { type: 'toggle', id: 'x1', by: 'Dad' }] }),
-    });
-    const json = await post.json();
-    assert.equal(json.items.find((i: any) => i.id === 'x1').checkedBy, 'Dad');
-    const get = await (await fetch(`http://127.0.0.1:${port}/api/shopping`)).json();
-    assert.equal(get.version, json.version);
+    await run(`http://127.0.0.1:${port}`, data);
   } finally {
-    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await new Promise<void>((r) => server.close(() => r()));
   }
+}
+
+test('Hosted storage: households, shopping, saved copy and live vote work on a Redis-style store', async () => {
+  await withFakeRedis(async (redisUrl, data) => {
+    const { useStore } = await import('../../server');
+    const store = createRedisStore(redisUrl, 'tok');
+    useStore(store);
+    await withServer(async (baseUrl) => {
+      const a = await newHousehold(baseUrl);
+      const b = await newHousehold(baseUrl);
+      assert.equal((await fetch(`${baseUrl}/api/households/me`, { headers: authed(a) })).status, 200);
+      assert.equal(
+        (await fetch(`${baseUrl}/api/households/me`, { headers: { ...authed(a), 'x-household-key': 'wrong' } })).status,
+        401
+      );
+      assert.equal(
+        (await fetch(`${baseUrl}/api/households/me`, { headers: { ...json, 'x-household-id': '__proto__', 'x-household-key': 'x' } })).status,
+        401
+      );
+
+      await fetch(`${baseUrl}/api/shopping/ops`, {
+        method: 'POST',
+        headers: authed(a),
+        body: JSON.stringify({ ops: [{ type: 'add', item: { id: 's1', name: 'Milk' } }] }),
+      });
+      const list = await (await fetch(`${baseUrl}/api/shopping`, { headers: authed(a) })).json();
+      assert.equal(list.items.length, 1);
+      assert.equal((await (await fetch(`${baseUrl}/api/shopping`, { headers: authed(b) })).json()).items.length, 0);
+
+      const save = await fetch(`${baseUrl}/api/sync/cloud`, {
+        method: 'POST',
+        headers: authed(a),
+        body: JSON.stringify({ data: { meals: [{ id: 'x' }] } }),
+      });
+      assert.equal((await save.json()).itemCount, 1);
+      const got = await (await fetch(`${baseUrl}/api/sync/cloud`, { headers: authed(a) })).json();
+      assert.equal(got.hasSnapshot, true);
+      assert.equal((await (await fetch(`${baseUrl}/api/households/me`, { headers: authed(a) })).json()).hasSnapshot, true);
+      // The big saved copy lives under its own key, so polling never drags it along.
+      assert.ok(data.has(`hh:${a.householdId}:snap`));
+      assert.ok(!data.get(`hh:${a.householdId}`)!.includes('"meals"'));
+      assert.equal((await (await fetch(`${baseUrl}/api/sync/cloud`, { headers: authed(b) })).json()).hasSnapshot, false);
+
+      const meal = {
+        id: 'meal_1', title: 'Pasta', timeStake: '20m', effort: 'one-pot', ingredients: ['Pasta'], prepSteps: ['Boil (-10m)'],
+      };
+      const post = (h: any, body: object) =>
+        fetch(`${baseUrl}/api/tonight`, { method: 'POST', headers: authed(h), body: JSON.stringify(body) });
+      await post(a, { op: 'propose', meal, people: ['Sam', 'Jo', 'Pat'], needed: 3 });
+      // Three phones vote at the same moment: nobody's vote may be lost.
+      await Promise.all(['Sam', 'Jo', 'Pat'].map((voter) => post(a, { op: 'vote', voter, vote: 'yes' })));
+      const t = await (await fetch(`${baseUrl}/api/tonight`, { headers: authed(a) })).json();
+      assert.deepEqual(Object.keys(t.ballot).sort(), ['Jo', 'Pat', 'Sam']);
+      assert.equal(t.status, 'agreed');
+      assert.equal((await (await fetch(`${baseUrl}/api/tonight`, { headers: authed(b) })).json()).status, 'idle');
+    });
+  });
+});
+
+test('Hosted storage: a failing store gives a calm error, not a crash', async () => {
+  const broken: Store = {
+    async get() {
+      throw new Error('down');
+    },
+    async put() {
+      throw new Error('down');
+    },
+    async getSnapshot() {
+      throw new Error('down');
+    },
+    async putSnapshot() {
+      throw new Error('down');
+    },
+  };
+  const { useStore } = await import('../../server');
+  useStore(broken);
+  await withServer(async (baseUrl) => {
+    const r = await fetch(`${baseUrl}/api/households`, { method: 'POST' });
+    assert.equal(r.status, 503);
+    const me = await fetch(`${baseUrl}/api/tonight`, { headers: { 'x-household-id': 'h_aaaaaaaaaaaa', 'x-household-key': 'k' } });
+    assert.equal(me.status, 503);
+    assert.ok(typeof (await me.json()).error === 'string');
+  });
+  await assert.rejects(mutate(broken, 'h_aaaaaaaaaaaa', () => 1));
 });
