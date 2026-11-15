@@ -637,7 +637,7 @@ export const PantryView: React.FC = () => {
                   ? 'Shared with everyone in the household'
                   : shoppingOnline === false
                   ? 'Offline. Changes sync when you’re back'
-                  : 'Connecting…'}
+                  : 'Only on this phone. Turn on sharing in Household & backup'}
               </span>
               <label className="flex shrink-0 items-center gap-1.5">
                 <span className="text-ink-2">I’m</span>

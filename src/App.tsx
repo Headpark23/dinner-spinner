@@ -14,6 +14,7 @@ import { VotingView } from './components/views/VotingView';
 import { ScorecardView } from './components/views/ScorecardView';
 import { ProfileSyncModal } from './components/ProfileSyncModal';
 import { RulesModal } from './components/RulesModal';
+import { WelcomeSheet } from './components/WelcomeSheet';
 import { Card, FreshDot, Switch, cx } from './components/ui';
 import { ArrowRight, Check } from 'lucide-react';
 
@@ -167,6 +168,7 @@ const MainCabinet: React.FC = () => {
 
       <ProfileSyncModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
       <RulesModal isOpen={isRulesOpen} onClose={() => setIsRulesOpen(false)} />
+      <WelcomeSheet />
     </div>
   );
 };

@@ -120,67 +120,196 @@ test('Weighted Selection Engine: deterministic boundary selection', () => {
   assert.ok(firstPick && firstPick.id);
 });
 
-test('Server API Endpoints: health, cloud sync roundtrip, and AI kitchen analysis fallback', async () => {
+async function withServer(run: (baseUrl: string) => Promise<void>) {
   const { app } = await import('../../server');
   const server = http.createServer(app);
-
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const address = server.address() as { port: number };
-  const baseUrl = `http://127.0.0.1:${address.port}`;
-
+  const { port } = server.address() as { port: number };
   try {
-    // 1. Health endpoint
-    const healthRes = await fetch(`${baseUrl}/api/health`);
-    assert.equal(healthRes.status, 200);
-    const healthJson = await healthRes.json();
-    assert.equal(healthJson.status, 'ok');
-    assert.equal(healthJson.demoFallbackReady, true);
-
-    // 2. Cloud Sync POST + GET roundtrip
-    const syncPost = await fetch(`${baseUrl}/api/sync/cloud`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        data: { meals: INITIAL_MEALS.slice(0, 2), pantry: INITIAL_PANTRY.slice(0, 2) },
-      }),
-    });
-    assert.equal(syncPost.status, 200);
-    const syncPostJson = await syncPost.json();
-    assert.equal(syncPostJson.success, true);
-    assert.equal(syncPostJson.itemCount, 2);
-
-    const syncGet = await fetch(`${baseUrl}/api/sync/cloud`);
-    assert.equal(syncGet.status, 200);
-    const syncGetJson = await syncGet.json();
-    assert.equal(syncGetJson.hasSnapshot, true);
-    assert.equal(syncGetJson.data.meals.length, 2);
-
-    // 3. Pantry analyze fallback (recipe-text)
-    const analyzeRes = await fetch(`${baseUrl}/api/pantry/analyze`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'recipe-text',
-        textPrompt: 'Smoky Chorizo Bean Casserole',
-      }),
-    });
-    assert.equal(analyzeRes.status, 200);
-    const analyzeJson = await analyzeRes.json();
-    assert.ok(analyzeJson.meal);
-    assert.equal(analyzeJson.meal.title, 'Smoky Chorizo Bean Casserole');
-
-    // 4. "Try a sample" requests are always served locally, even when a live key exists
-    const sampleRes = await fetch(`${baseUrl}/api/pantry/analyze`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'snap-fridge', textPrompt: 'Sample', demo: true }),
-    });
-    const sampleJson = await sampleRes.json();
-    assert.equal(sampleJson.demoMode, true);
-    assert.ok(sampleJson.detectedItems.length > 0);
+    await run(`http://127.0.0.1:${port}`);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
+}
+
+const json = { 'Content-Type': 'application/json' };
+const authed = (h: { householdId: string; key: string }) => ({
+  ...json,
+  'x-household-id': h.householdId,
+  'x-household-key': h.key,
+});
+async function newHousehold(baseUrl: string) {
+  const res = await fetch(`${baseUrl}/api/households`, { method: 'POST' });
+  assert.equal(res.status, 201);
+  return (await res.json()) as { householdId: string; key: string; code: string };
+}
+
+test('Server: health reveals nothing sensitive', async () => {
+  await withServer(async (baseUrl) => {
+    const body = await (await fetch(`${baseUrl}/api/health`)).json();
+    assert.equal(body.status, 'ok');
+    assert.equal(body.hasGeminiKey, undefined);
+    assert.equal(body.hasCloudSnapshot, undefined);
+  });
+});
+
+test('Server: data routes refuse callers without a valid household code', async () => {
+  await withServer(async (baseUrl) => {
+    for (const [method, path] of [
+      ['GET', '/api/sync/cloud'],
+      ['POST', '/api/sync/cloud'],
+      ['GET', '/api/shopping'],
+      ['POST', '/api/shopping/ops'],
+      ['GET', '/api/households/me'],
+    ]) {
+      const res = await fetch(`${baseUrl}${path}`, {
+        method,
+        headers: json,
+        body: method === 'POST' ? JSON.stringify({ data: { meals: [] }, ops: [{ type: 'clearChecked' }] }) : undefined,
+      });
+      assert.equal(res.status, 401, `${method} ${path} should be 401`);
+    }
+    const h = await newHousehold(baseUrl);
+    const wrongKey = await fetch(`${baseUrl}/api/sync/cloud`, {
+      headers: { 'x-household-id': h.householdId, 'x-household-key': 'nope' },
+    });
+    assert.equal(wrongKey.status, 401);
+    // Prototype keys must not be treated as households.
+    const proto = await fetch(`${baseUrl}/api/sync/cloud`, {
+      headers: { 'x-household-id': '__proto__', 'x-household-key': 'x' },
+    });
+    assert.equal(proto.status, 401);
+  });
+});
+
+test('Server: cloud copy round trip, isolated per household', async () => {
+  await withServer(async (baseUrl) => {
+    const a = await newHousehold(baseUrl);
+    const b = await newHousehold(baseUrl);
+
+    const post = await fetch(`${baseUrl}/api/sync/cloud`, {
+      method: 'POST',
+      headers: authed(a),
+      body: JSON.stringify({ data: { meals: INITIAL_MEALS.slice(0, 2), pantry: INITIAL_PANTRY.slice(0, 2) } }),
+    });
+    assert.equal(post.status, 200);
+    assert.equal((await post.json()).itemCount, 2);
+
+    const getA = await (await fetch(`${baseUrl}/api/sync/cloud`, { headers: authed(a) })).json();
+    assert.equal(getA.hasSnapshot, true);
+    assert.equal(getA.data.meals.length, 2);
+
+    // Household B never sees A's copy, and cannot overwrite it.
+    const getB = await (await fetch(`${baseUrl}/api/sync/cloud`, { headers: authed(b) })).json();
+    assert.equal(getB.hasSnapshot, false);
+    await fetch(`${baseUrl}/api/sync/cloud`, {
+      method: 'POST',
+      headers: authed(b),
+      body: JSON.stringify({ data: { meals: [] } }),
+    });
+    const getA2 = await (await fetch(`${baseUrl}/api/sync/cloud`, { headers: authed(a) })).json();
+    assert.equal(getA2.data.meals.length, 2);
+
+    const bad = await fetch(`${baseUrl}/api/sync/cloud`, {
+      method: 'POST',
+      headers: authed(a),
+      body: JSON.stringify({ data: [1, 2] }),
+    });
+    assert.equal(bad.status, 400);
+  });
+});
+
+test('Server: shared shopping list round trip, isolated per household', async () => {
+  await withServer(async (baseUrl) => {
+    const a = await newHousehold(baseUrl);
+    const b = await newHousehold(baseUrl);
+    const post = await fetch(`${baseUrl}/api/shopping/ops`, {
+      method: 'POST',
+      headers: authed(a),
+      body: JSON.stringify({ ops: [{ type: 'add', item: { id: 'x1', name: 'Saffron' } }, { type: 'toggle', id: 'x1', by: 'Dad' }] }),
+    });
+    const body = await post.json();
+    assert.equal(body.items.find((i: any) => i.id === 'x1').checkedBy, 'Dad');
+    const get = await (await fetch(`${baseUrl}/api/shopping`, { headers: authed(a) })).json();
+    assert.equal(get.version, body.version);
+    const other = await (await fetch(`${baseUrl}/api/shopping`, { headers: authed(b) })).json();
+    assert.equal(other.items.length, 0);
+  });
+});
+
+test('Server: scanning never invents a result for something the user asked for', async () => {
+  await withServer(async (baseUrl) => {
+    // No AI key in tests: a real request is refused honestly...
+    const real = await fetch(`${baseUrl}/api/pantry/analyze`, {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({ type: 'recipe-text', textPrompt: 'Beef and Guinness stew' }),
+    });
+    assert.equal(real.status, 503);
+    assert.match((await real.json()).error, /Try a sample/);
+
+    // ...while "Try a sample" is served locally, flagged as sample data, ignoring typed text.
+    const sample = await (
+      await fetch(`${baseUrl}/api/pantry/analyze`, {
+        method: 'POST',
+        headers: json,
+        body: JSON.stringify({ type: 'recipe-text', textPrompt: 'Beef stew', demo: true }),
+      })
+    ).json();
+    assert.equal(sample.demoMode, true);
+    assert.notEqual(sample.meal.title, 'Beef stew');
+
+    const fridge = await (
+      await fetch(`${baseUrl}/api/pantry/analyze`, {
+        method: 'POST',
+        headers: json,
+        body: JSON.stringify({ type: 'snap-fridge', demo: true }),
+      })
+    ).json();
+    assert.equal(fridge.demoMode, true);
+    assert.ok(fridge.detectedItems.length > 0);
+  });
+});
+
+test('Server: the old fake sign-in endpoint is gone and large bodies are refused', async () => {
+  await withServer(async (baseUrl) => {
+    const fake = await fetch(`${baseUrl}/api/auth/profile`, { method: 'POST', headers: json, body: '{}' });
+    assert.notEqual(fake.status, 200);
+    const h = await newHousehold(baseUrl);
+    const big = await fetch(`${baseUrl}/api/sync/cloud`, {
+      method: 'POST',
+      headers: authed(h),
+      body: JSON.stringify({ data: { blob: 'x'.repeat(1_200_000) } }),
+    });
+    assert.equal(big.status, 413);
+  });
+});
+
+test('Backup check: rejects damaged files, accepts real ones', async () => {
+  const { checkBackup } = await import('./backup');
+  assert.equal(checkBackup(null).ok, false);
+  assert.equal(checkBackup({ hello: 'world' }).ok, false);
+  assert.equal(checkBackup({ meals: [{ id: 'x' }] }).ok, false, 'meal missing fields');
+  assert.equal(checkBackup({ members: [] }).ok, false, 'empty household');
+  assert.equal(checkBackup({ staples: [1, 2] }).ok, false);
+  const good = checkBackup({ data: { meals: INITIAL_MEALS, pantry: INITIAL_PANTRY, members: [{ id: 'm', name: 'A', vetoTokensRemaining: 3 }] } });
+  assert.equal(good.ok, true);
+  if (good.ok) assert.equal(good.summary.recipes, INITIAL_MEALS.length);
+});
+
+test('Fresh start: a new household sees no invented history, family, fridge or dislikes', async () => {
+  const { STARTER_MEALS, STARTER_MEMBERS, STARTER_TAKEAWAYS, INITIAL_USER_PROFILE } = await import('../data/initialData');
+  assert.ok(STARTER_MEALS.length > 0);
+  for (const m of STARTER_MEALS) {
+    assert.equal(m.cookCount, 0);
+    assert.equal(m.lastCookedDate, null);
+    assert.equal(m.rating, 0);
+    assert.equal(m.isFavorite, false);
+  }
+  assert.equal(STARTER_MEMBERS.length, 1);
+  assert.ok(STARTER_TAKEAWAYS.every((t) => t.usualOrders.length === 0));
+  assert.equal(INITIAL_USER_PROFILE.email, '');
+  assert.equal(INITIAL_USER_PROFILE.avatarUrl, '');
 });
 
 test('React UI Component Suite: renders all 5 Cabinet Views and Modals cleanly without error', () => {
@@ -188,7 +317,7 @@ test('React UI Component Suite: renders all 5 Cabinet Views and Modals cleanly w
     { name: 'MachineView', el: React.createElement(MachineView), expectedText: 'What’s for dinner?' },
     { name: 'TakeawayView', el: React.createElement(TakeawayView), expectedText: 'Spin for takeaway' },
     { name: 'PantryView', el: React.createElement(PantryView), expectedText: '>Pantry</h1>' },
-    { name: 'VotingView', el: React.createElement(VotingView), expectedText: 'Who’s voting?' },
+    { name: 'VotingView', el: React.createElement(VotingView), expectedText: 'Nothing on the table yet' },
     { name: 'ScorecardView', el: React.createElement(ScorecardView), expectedText: 'Your kitchen' },
     {
       name: 'RulesModal',
@@ -255,22 +384,3 @@ test('Shopping list ops: add dedupes, ticks record who, clear removes ticked', a
   assert.equal(items.length, 0);
 });
 
-test('Server: shared shopping list round trip', async () => {
-  const { app } = await import('../../server');
-  const server = http.createServer(app);
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const { port } = server.address() as { port: number };
-  try {
-    const post = await fetch(`http://127.0.0.1:${port}/api/shopping/ops`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ops: [{ type: 'add', item: { id: 'x1', name: 'Saffron' } }, { type: 'toggle', id: 'x1', by: 'Dad' }] }),
-    });
-    const json = await post.json();
-    assert.equal(json.items.find((i: any) => i.id === 'x1').checkedBy, 'Dad');
-    const get = await (await fetch(`http://127.0.0.1:${port}/api/shopping`)).json();
-    assert.equal(get.version, json.version);
-  } finally {
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-  }
-});

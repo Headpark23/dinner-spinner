@@ -2,6 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
 import { applyShoppingOp } from './src/utils/shopping';
@@ -14,9 +15,21 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
-const SYNC_CACHE_PATH = path.resolve(__dirname, '.cloud-sync-cache.json');
+const IS_TEST = process.env.NODE_ENV === 'test';
+// Everything a household has shared lives here. Never written during tests.
+const HOUSEHOLDS_PATH = IS_TEST ? null : path.resolve(__dirname, '.households.json');
 
-app.use(express.json({ limit: '25mb' }));
+app.disable('x-powered-by');
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('X-Frame-Options', 'DENY');
+  next();
+});
+
+// Small JSON bodies everywhere; only image scans may be large.
+const smallJson = express.json({ limit: '1mb' });
+const imageJson = express.json({ limit: '12mb' });
 
 // Server-side Gemini client (validates that key is not the default placeholder)
 const rawApiKey = process.env.GEMINI_API_KEY?.trim() || '';
@@ -33,131 +46,166 @@ const ai = hasRealGeminiKey
     })
   : null;
 
-// In-memory + disk cloud sync store
-let cloudSyncStore: {
-  syncedAt: string;
-  syncId: string;
-  data: any;
-} | null = null;
+// ---------------------------------------------------------------------------
+// Tiny in-memory rate limiter (fixed window, per client address).
+// ---------------------------------------------------------------------------
+function rateLimit(name: string, max: number, windowMs: number): express.RequestHandler {
+  const hits = new Map<string, { count: number; resetAt: number }>();
+  return (req, res, next) => {
+    if (IS_TEST && process.env.RATE_LIMIT_IN_TEST !== '1') return next();
+    const now = Date.now();
+    const key = req.ip || 'unknown';
+    const entry = hits.get(key);
+    if (!entry || entry.resetAt <= now) {
+      hits.set(key, { count: 1, resetAt: now + windowMs });
+      if (hits.size > 5000) for (const [k, v] of hits) if (v.resetAt <= now) hits.delete(k);
+      return next();
+    }
+    entry.count += 1;
+    if (entry.count > max) {
+      res.setHeader('Retry-After', String(Math.ceil((entry.resetAt - now) / 1000)));
+      return res.status(429).json({ error: `Too many ${name} requests. Please wait a moment.` });
+    }
+    next();
+  };
+}
+app.use('/api', rateLimit('API', 600, 60_000));
 
+// ---------------------------------------------------------------------------
+// Households. A household is created with a random id and secret key; the two
+// together form the "household code" people share to join. Only a hash of the
+// key is stored. Every data route below requires it, so one household can never
+// read or overwrite another's data.
+// ---------------------------------------------------------------------------
+type Household = {
+  keyHash: string;
+  createdAt: string;
+  snapshot: { syncedAt: string; syncId: string; data: any } | null;
+  shopping: { version: number; items: ShoppingItem[] };
+};
+
+let households: Record<string, Household> = {};
 try {
-  if (fs.existsSync(SYNC_CACHE_PATH)) {
-    cloudSyncStore = JSON.parse(fs.readFileSync(SYNC_CACHE_PATH, 'utf-8'));
+  if (HOUSEHOLDS_PATH && fs.existsSync(HOUSEHOLDS_PATH)) {
+    households = JSON.parse(fs.readFileSync(HOUSEHOLDS_PATH, 'utf-8'));
   }
 } catch {
-  cloudSyncStore = null;
+  households = {};
 }
 
-// Health check
+let persistTimer: NodeJS.Timeout | null = null;
+function persistHouseholds() {
+  if (!HOUSEHOLDS_PATH || persistTimer) return;
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    try {
+      fs.writeFileSync(HOUSEHOLDS_PATH, JSON.stringify(households), 'utf-8');
+    } catch {
+      // Read-only filesystem: data still lives in memory.
+    }
+  }, 300);
+}
+
+const sha256 = (v: string) => crypto.createHash('sha256').update(v).digest();
+
+function authenticate(req: express.Request): { id: string; household: Household } | null {
+  const id = String(req.header('x-household-id') || '');
+  const key = String(req.header('x-household-key') || '');
+  const household = Object.prototype.hasOwnProperty.call(households, id) ? households[id] : undefined;
+  if (!household || !key) return null;
+  const given = sha256(key);
+  const stored = Buffer.from(household.keyHash, 'hex');
+  if (given.length !== stored.length || !crypto.timingSafeEqual(given, stored)) return null;
+  return { id, household };
+}
+
+type AuthedRequest = express.Request & { household?: Household; householdId?: string };
+const requireHousehold: express.RequestHandler = (req, res, next) => {
+  const auth = authenticate(req);
+  if (!auth) return res.status(401).json({ error: 'Household code missing or wrong.' });
+  (req as AuthedRequest).household = auth.household;
+  (req as AuthedRequest).householdId = auth.id;
+  next();
+};
+
+// Health check (nothing sensitive)
 app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
     appName: 'Dinner Spinner',
-    hasGeminiKey: hasRealGeminiKey,
-    demoFallbackReady: true,
-    hasCloudSnapshot: Boolean(cloudSyncStore),
+    aiEnabled: hasRealGeminiKey,
     timestamp: new Date().toISOString(),
   });
 });
 
-// OAuth Profile & Cloud Syncing endpoint
-app.post('/api/auth/profile', (req, res) => {
-  const { provider = 'google', email = 'user@example.co.uk', name = 'Family Chef' } = req.body || {};
-  res.json({
-    success: true,
-    user: {
-      id: 'usr_uk_' + Math.random().toString(36).substring(2, 9),
-      name: String(name || 'Family Chef').slice(0, 60),
-      email: String(email || 'family.chef@googlemail.com').slice(0, 100),
-      avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
-        name || 'chef'
-      )}&backgroundColor=ffb703`,
-      provider,
-      cloudSyncEnabled: true,
-      lastSyncedAt: new Date().toISOString(),
-      tokenExpiresIn: 3600,
-    },
-  });
+app.post('/api/households', rateLimit('household', 10, 60 * 60_000), (_req, res) => {
+  const id = 'h_' + crypto.randomBytes(6).toString('hex');
+  const key = crypto.randomBytes(16).toString('hex');
+  households[id] = {
+    keyHash: sha256(key).toString('hex'),
+    createdAt: new Date().toISOString(),
+    snapshot: null,
+    shopping: { version: 0, items: [] },
+  };
+  persistHouseholds();
+  res.status(201).json({ householdId: id, key, code: `${id}.${key}` });
 });
 
-app.post('/api/sync/cloud', (req, res) => {
+app.get('/api/households/me', requireHousehold, (req, res) => {
+  const h = (req as AuthedRequest).household!;
+  res.json({ ok: true, hasSnapshot: Boolean(h.snapshot), createdAt: h.createdAt });
+});
+
+app.post('/api/sync/cloud', smallJson, requireHousehold, (req, res) => {
   const { data } = req.body || {};
-  if (!data || typeof data !== 'object') {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
     return res.status(400).json({ error: 'Invalid sync payload' });
   }
-
-  const snapshot = {
+  const h = (req as AuthedRequest).household!;
+  h.snapshot = {
     syncedAt: new Date().toISOString(),
     syncId: 'sync_' + Date.now(),
     data,
   };
-  cloudSyncStore = snapshot;
-
-  try {
-    fs.writeFileSync(SYNC_CACHE_PATH, JSON.stringify(snapshot, null, 2), 'utf-8');
-  } catch {
-    // Non-fatal if read-only filesystem
-  }
-
+  persistHouseholds();
   res.json({
     success: true,
-    syncedAt: snapshot.syncedAt,
+    syncedAt: h.snapshot.syncedAt,
     itemCount: Array.isArray(data?.meals) ? data.meals.length : 0,
-    syncId: snapshot.syncId,
+    syncId: h.snapshot.syncId,
   });
 });
 
-app.get('/api/sync/cloud', (_req, res) => {
-  if (!cloudSyncStore) {
-    return res.json({
-      success: true,
-      hasSnapshot: false,
-      data: null,
-    });
+app.get('/api/sync/cloud', requireHousehold, (req, res) => {
+  const h = (req as AuthedRequest).household!;
+  if (!h.snapshot) {
+    return res.json({ success: true, hasSnapshot: false, data: null });
   }
   return res.json({
     success: true,
     hasSnapshot: true,
-    syncedAt: cloudSyncStore.syncedAt,
-    syncId: cloudSyncStore.syncId,
-    data: cloudSyncStore.data,
+    syncedAt: h.snapshot.syncedAt,
+    syncId: h.snapshot.syncId,
+    data: h.snapshot.data,
   });
 });
 
 // ---------------------------------------------------------------------------
-// Shared household shopping list. Everyone using this server sees one list, so
-// whoever is at the shop can tick items off and the rest of the family sees it.
-// Clients send small operations; the server applies them in order and bumps a
-// version number that clients poll.
+// Shared household shopping list. Clients send small operations; the server
+// applies them in order and bumps a version number that clients poll.
 // ---------------------------------------------------------------------------
-const SHOPPING_PATH = process.env.NODE_ENV === 'test' ? null : path.resolve(__dirname, '.shopping-list.json');
-
-let shopping: { version: number; items: ShoppingItem[] } = { version: 0, items: [] };
-try {
-  if (SHOPPING_PATH && fs.existsSync(SHOPPING_PATH)) {
-    shopping = JSON.parse(fs.readFileSync(SHOPPING_PATH, 'utf-8'));
-  }
-} catch {
-  shopping = { version: 0, items: [] };
-}
-
-app.get('/api/shopping', (_req, res) => {
-  res.json(shopping);
+app.get('/api/shopping', requireHousehold, (req, res) => {
+  res.json((req as AuthedRequest).household!.shopping);
 });
 
-app.post('/api/shopping/ops', (req, res) => {
+app.post('/api/shopping/ops', smallJson, requireHousehold, (req, res) => {
   const ops = Array.isArray(req.body?.ops) ? req.body.ops.slice(0, 200) : [];
   if (ops.length === 0) return res.status(400).json({ error: 'No operations' });
-  shopping.items = ops.reduce(applyShoppingOp, shopping.items);
-  shopping.version += 1;
-  if (SHOPPING_PATH) {
-    try {
-      fs.writeFileSync(SHOPPING_PATH, JSON.stringify(shopping, null, 2), 'utf-8');
-    } catch {
-      // Read-only filesystem: the list still lives in memory.
-    }
-  }
-  res.json(shopping);
+  const h = (req as AuthedRequest).household!;
+  h.shopping.items = ops.reduce(applyShoppingOp, h.shopping.items);
+  h.shopping.version += 1;
+  persistHouseholds();
+  res.json(h.shopping);
 });
 
 // Live model calls must never leave the UI hanging: give up after GEMINI_TIMEOUT_MS
@@ -279,7 +327,7 @@ function getSimulatedVisionResponse(type: string, textPrompt?: string) {
 }
 
 // Multimodal Gemini Vision & Text API endpoint for Fridge, Receipt & Meal Grab
-app.post('/api/pantry/analyze', async (req, res) => {
+app.post('/api/pantry/analyze', imageJson, rateLimit('scan', 20, 10 * 60_000), async (req, res) => {
   try {
     const { type, imageBase64, mimeType = 'image/jpeg', textPrompt, demo } = req.body || {};
 
@@ -287,14 +335,26 @@ app.post('/api/pantry/analyze', async (req, res) => {
       return res.status(400).json({ error: `Unsupported analysis type: ${type}` });
     }
 
+    // Explicit demo requests (the "Try a sample" buttons) never call the live model and are
+    // always labelled as sample data. They ignore any text the user typed.
+    if (demo === true) {
+      return res.json(getSimulatedVisionResponse(type));
+    }
+
     if (!imageBase64 && !textPrompt) {
       return res.status(400).json({ error: 'Missing image or text prompt' });
     }
 
-    // If no live Gemini API key is configured, return the smart simulation fallback seamlessly
-    // Explicit demo requests (the "Try a sample" buttons) never call the live model.
-    if (!ai || demo === true) {
-      return res.json(getSimulatedVisionResponse(type, textPrompt));
+    // Never invent a result for something the user actually asked for.
+    if (!ai) {
+      return res.status(503).json({
+        error: 'Scanning isn’t switched on for this app. Try a sample, or add the recipe by hand.',
+      });
+    }
+
+    // Live model calls cost money, so only household members may make them.
+    if (!authenticate(req)) {
+      return res.status(401).json({ error: 'Turn on household sharing before using scanning.' });
     }
 
     const cleanBase64 = imageBase64 ? imageBase64.replace(/^data:[^;]+;base64,/, '') : '';
@@ -462,10 +522,9 @@ Fields:
       return res.json({ meal: parsed });
     }
   } catch (error: any) {
-    console.warn('Gemini API error, using kitchen simulation fallback:', error?.message);
-    return res.json({
-      ...getSimulatedVisionResponse(req.body?.type || 'recipe-photo', req.body?.textPrompt),
-      fallbackReason: 'live-model-unavailable',
+    console.warn('Gemini API error:', error?.message);
+    return res.status(502).json({
+      error: 'The scanner couldn’t read that just now. Try again, or add it by hand.',
     });
   }
 });
