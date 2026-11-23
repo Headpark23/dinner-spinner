@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { DinnerProvider, useDinner } from './context/DinnerContext';
 import { CabinetHeader } from './components/CabinetHeader';
 import { ArcadeNavBar } from './components/ArcadeNavBar';
@@ -12,10 +12,12 @@ import { TakeawayView } from './components/views/TakeawayView';
 import { PantryView } from './components/views/PantryView';
 import { VotingView } from './components/views/VotingView';
 import { ScorecardView } from './components/views/ScorecardView';
+import { MoreView } from './components/views/MoreView';
+import { DinnerSteps, InProgressBanner, useDinnerStage } from './components/DinnerSteps';
 import { ProfileSyncModal } from './components/ProfileSyncModal';
 import { RulesModal } from './components/RulesModal';
 import { Card, FreshDot, Switch, cx } from './components/ui';
-import { ArrowRight, Check } from 'lucide-react';
+import { ArrowRight, Check, ChevronLeft } from 'lucide-react';
 
 /** Desktop-only companion column: what matters for tonight at a glance. */
 const TonightPanel: React.FC = () => {
@@ -137,26 +139,62 @@ const TonightPanel: React.FC = () => {
   );
 };
 
+/** Takeaway and History are reached from More, so they say so and offer the way back. */
+const BackToMore: React.FC = () => {
+  const { setActiveView } = useDinner();
+  return (
+    <button
+      onClick={() => setActiveView(7)}
+      className="-ml-2 mb-2 inline-flex h-10 items-center gap-0.5 rounded-lg px-2 text-[14px] font-semibold text-ink-2 hover:text-ink"
+    >
+      <ChevronLeft className="h-5 w-5" /> More
+    </button>
+  );
+};
+
 const MainCabinet: React.FC = () => {
   const { activeView } = useDinner();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isRulesOpen, setIsRulesOpen] = useState(false);
 
+  // A new tab, or a new step of the evening, always opens at its top.
+  const stage = useDinnerStage();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [activeView, stage]);
+
   return (
     <div className="min-h-screen bg-paper text-ink lg:flex lg:justify-center lg:gap-8 lg:px-6">
       <div className="mx-auto flex min-h-screen w-full max-w-[480px] flex-col lg:mx-0 lg:border-x lg:border-line">
-        <CabinetHeader
-          onOpenProfile={() => setIsProfileOpen(true)}
-          onOpenRules={() => setIsRulesOpen(true)}
-        />
+        <CabinetHeader onOpenRules={() => setIsRulesOpen(true)} />
 
-        <main id="main" className="flex-1 px-4 pt-4 pb-8">
+        <main id="main" className="flex-1 px-4 pt-5 pb-10">
           <div key={activeView} className="fade-up">
-            {activeView === 0 && <MachineView />}
-            {activeView === 1 && <TakeawayView />}
-            {activeView === 2 && <PantryView />}
-            {activeView === 3 && <VotingView />}
-            {activeView === 4 && <ScorecardView />}
+            {(activeView === 0 || activeView === 3) && (
+              <div className="space-y-4">
+                <DinnerSteps />
+                <InProgressBanner />
+                {activeView === 0 ? <MachineView /> : <VotingView />}
+              </div>
+            )}
+            {activeView === 1 && (
+              <>
+                <BackToMore />
+                <TakeawayView />
+              </>
+            )}
+            {activeView === 2 && <PantryView scope="fridge" />}
+            {activeView === 4 && (
+              <>
+                <BackToMore />
+                <ScorecardView />
+              </>
+            )}
+            {activeView === 5 && <PantryView scope="recipes" />}
+            {activeView === 6 && <PantryView scope="shop" />}
+            {activeView === 7 && (
+              <MoreView onOpenProfile={() => setIsProfileOpen(true)} onOpenRules={() => setIsRulesOpen(true)} />
+            )}
           </div>
         </main>
 

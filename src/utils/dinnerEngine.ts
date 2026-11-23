@@ -109,6 +109,9 @@ export function calculateMealPantryMatch(
   };
 }
 
+const TIME_RANK: Record<TimeStake, number> = { '20m': 0, '30m': 1, '60m': 2, 'all-day': 3 };
+const EFFORT_RANK: Record<EffortLevel, number> = { 'one-pot': 0, standard: 1, 'chef-mode': 2 };
+
 export interface EligiblePoolResult {
   pool: Meal[];
   exactMatchCount: number;
@@ -117,7 +120,7 @@ export interface EligiblePoolResult {
 }
 
 /**
- * Filters meals matching TimeStake, EffortLevel, and excluding Banned Ingredients.
+ * Filters meals that fit within the chosen time and effort ("up to"), excluding Banned Ingredients.
  * Gracefully falls back if exact (timeStake + effort) pool is empty while preserving banned exclusions.
  */
 export function filterEligibleMeals(
@@ -139,6 +142,20 @@ export function filterEligibleMeals(
 
   const baseMeals = nonBannedMeals.length > 0 ? nonBannedMeals : meals;
 
+  // "Up to": 30 min also allows 20 min dishes, and Standard also allows one-pot dishes.
+  const withinLimits = baseMeals.filter(
+    (m) => TIME_RANK[m.timeStake] <= TIME_RANK[timeStake] && EFFORT_RANK[m.effort] <= EFFORT_RANK[effort]
+  );
+  if (withinLimits.length > 0) {
+    return {
+      pool: withinLimits,
+      exactMatchCount: withinLimits.length,
+      timeStakeMatchCount: withinLimits.length,
+      isExactEffortMatch: true,
+    };
+  }
+
+  // Nothing fits (everything is longer or fussier than asked): fall back to the closest matches.
   const timeMatched = baseMeals.filter((m) => m.timeStake === timeStake);
   const exactMatched = timeMatched.filter((m) => m.effort === effort);
 

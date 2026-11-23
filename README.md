@@ -4,6 +4,18 @@ A pub fruit machine for deciding what's for dinner. Spin your household's recipe
 
 Built with React 19, TypeScript, Tailwind CSS v4 and Vite, served by a small Express server (which also handles the shared shopping list and optional Gemini photo scanning).
 
+## Where things are
+
+Five tabs, each named for what you'll find there:
+
+| Tab | What's inside |
+|---|---|
+| **Dinner** | The evening in four steps: Pick (spin) → Vote → Cook (timeline) → Rate |
+| **Recipes** | Your dishes, the 119 World Kitchen classics, add or scan a recipe, hidden dishes |
+| **Shopping** | The shared household list |
+| **Fridge** | What you have, always-have staples, never-use ingredients, scan a fridge or receipt |
+| **More** | Takeaway, history and ratings, household and backup, how it works, sound |
+
 ## What it does
 
 - **Spin**: three machines (your recipes, build-a-plate from 3 reels, or a 4-reel Sunday roast), with hold, nudge and a lever. You can filter by time and washing-up, and the spinner can favour dishes that use up "use next" fridge items.

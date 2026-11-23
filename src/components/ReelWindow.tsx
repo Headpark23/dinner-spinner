@@ -136,8 +136,8 @@ export const ReelWindow: React.FC<ReelWindowProps> = ({ onSpin }) => {
 
   // Neighbours on the single-reel drum, so the window reads as a physical reel.
   const currentIdx = pool.findIndex((m) => m.id === activeMealResult?.id);
-  const prevMeal = pool.length > 1 ? pool[(currentIdx - 1 + pool.length) % pool.length] : null;
-  const nextMeal = pool.length > 1 ? pool[(currentIdx + 1) % pool.length] : null;
+  const prevMeal = activeMealResult && pool.length > 1 ? pool[(currentIdx - 1 + pool.length) % pool.length] : null;
+  const nextMeal = activeMealResult && pool.length > 1 ? pool[(currentIdx + 1) % pool.length] : null;
 
   const drumCaption =
     mode === 'single'

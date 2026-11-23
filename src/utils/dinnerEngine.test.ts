@@ -17,6 +17,8 @@ import { DinnerProvider } from '../context/DinnerContext';
 import { MachineView } from '../components/views/MachineView';
 import { TakeawayView } from '../components/views/TakeawayView';
 import { PantryView } from '../components/views/PantryView';
+import { MoreView } from '../components/views/MoreView';
+import { DinnerSteps } from '../components/DinnerSteps';
 import { VotingView } from '../components/views/VotingView';
 import { ScorecardView } from '../components/views/ScorecardView';
 import { RulesModal } from '../components/RulesModal';
@@ -58,6 +60,19 @@ test('Eligibility Engine: respects timeStake, effort, and bannedIngredients', ()
     withBan.pool.some((m) => m.title.includes('Halloumi')),
     false
   );
+});
+
+test('Eligibility Engine: time and effort mean "up to", so wider limits widen the reel', () => {
+  const tight = filterEligibleMeals(INITIAL_MEALS, '20m', 'one-pot', []);
+  const wide = filterEligibleMeals(INITIAL_MEALS, '30m', 'standard', []);
+  assert.ok(wide.pool.length > tight.pool.length);
+  for (const m of tight.pool) assert.ok(wide.pool.some((w) => w.id === m.id));
+  for (const m of wide.pool) {
+    assert.ok(['20m', '30m'].includes(m.timeStake));
+    assert.notEqual(m.effort, 'chef-mode');
+  }
+  const everything = filterEligibleMeals(INITIAL_MEALS, 'all-day', 'chef-mode', []);
+  assert.equal(everything.pool.length, INITIAL_MEALS.length);
 });
 
 test('Pantry Match Engine: detects stock percentage and Red rescue items', () => {
@@ -183,13 +198,21 @@ test('Server API Endpoints: health, cloud sync roundtrip, and AI kitchen analysi
   }
 });
 
-test('React UI Component Suite: renders all 5 Cabinet Views and Modals cleanly without error', () => {
+test('React UI Component Suite: renders every screen and modal cleanly without error', () => {
   const views = [
     { name: 'MachineView', el: React.createElement(MachineView), expectedText: 'What’s for dinner?' },
     { name: 'TakeawayView', el: React.createElement(TakeawayView), expectedText: 'Spin for takeaway' },
-    { name: 'PantryView', el: React.createElement(PantryView), expectedText: '>Pantry</h1>' },
-    { name: 'VotingView', el: React.createElement(VotingView), expectedText: 'Who’s voting?' },
-    { name: 'ScorecardView', el: React.createElement(ScorecardView), expectedText: 'Your kitchen' },
+    { name: 'Fridge', el: React.createElement(PantryView, { scope: 'fridge' }), expectedText: '>Fridge</h1>' },
+    { name: 'Recipes', el: React.createElement(PantryView, { scope: 'recipes' }), expectedText: '>Recipes</h1>' },
+    { name: 'Shopping', el: React.createElement(PantryView, { scope: 'shop' }), expectedText: '>Shopping</h1>' },
+    {
+      name: 'MoreView',
+      el: React.createElement(MoreView, { onOpenProfile: () => {}, onOpenRules: () => {} }),
+      expectedText: 'Order takeaway',
+    },
+    { name: 'DinnerSteps', el: React.createElement(DinnerSteps), expectedText: 'Pick' },
+    { name: 'VotingView (nothing proposed yet)', el: React.createElement(VotingView), expectedText: 'Nothing on the table yet' },
+    { name: 'ScorecardView', el: React.createElement(ScorecardView), expectedText: '>History</h1>' },
     {
       name: 'RulesModal',
       el: React.createElement(RulesModal, { isOpen: true, onClose: () => {} }),

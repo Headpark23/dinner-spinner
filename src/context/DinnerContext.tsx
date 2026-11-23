@@ -224,13 +224,13 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
     return 'single';
   });
-  const [timeStake, setTimeStake] = useState<TimeStake>('20m');
-  const [effort, setEffort] = useState<EffortLevel>('one-pot');
+  const [timeStake, setTimeStake] = useState<TimeStake>('30m');
+  const [effort, setEffort] = useState<EffortLevel>('standard');
   const [clearoutActive, setClearoutActive] = useState<boolean>(false);
   const [nudgesRemaining, setNudgesRemaining] = useState<number>(3);
   const [heldReels, setHeldReels] = useState<boolean[]>([false, false, false, false]);
   const [isSpinning, setIsSpinning] = useState<boolean>(false);
-  const [activeMealResult, setActiveMealResult] = useState<Meal | null>(INITIAL_MEALS[0]);
+  const [activeMealResult, setActiveMealResult] = useState<Meal | null>(null);
   const [customReelResult, setCustomReelResult] = useState<string[]>([
     'Rigatoni Pasta',
     'Free-Range Chicken',
@@ -251,7 +251,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [isTakeawaySpinning, setIsTakeawaySpinning] = useState<boolean>(false);
 
   // Voting Booth
-  const [proposedMeal, setProposedMeal] = useState<Meal | null>(INITIAL_MEALS[0]);
+  const [proposedMeal, setProposedMeal] = useState<Meal | null>(null);
   const [activeVoterIndex, setActiveVoterIndex] = useState<number>(0);
   const [currentBallot, setCurrentBallot] = useState<Record<string, 'yes' | 'no'>>({});
   const [voteLogs, setVoteLogs] = useState<VoteLog[]>(() => loadStored('vote_logs', []));
@@ -265,7 +265,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     loadStored('reverse_timers', [])
   );
 
-  // Navigation View (0: Machine, 1: Takeaway, 2: Pantry, 3: Voting, 4: Scorecard)
+  // Navigation View (0: Spin, 1: Takeaway, 2: Fridge, 3: Vote/Cook, 4: History, 5: Recipes, 6: Shopping, 7: More)
   const [activeView, setActiveView] = useState<number>(() => {
     if (typeof window !== 'undefined') {
       const v = new URLSearchParams(window.location.search).get('view');
@@ -274,6 +274,9 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (v === '2' || v === 'pantry') return 2;
       if (v === '3' || v === 'vote' || v === 'voting') return 3;
       if (v === '4' || v === 'stats' || v === 'scorecard') return 4;
+      if (v === '5' || v === 'recipes') return 5;
+      if (v === '6' || v === 'shopping') return 6;
+      if (v === '7' || v === 'more') return 7;
     }
     return 0;
   });
