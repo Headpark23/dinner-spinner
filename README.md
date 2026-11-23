@@ -24,9 +24,11 @@ Five tabs, each named for what you'll find there:
 - **Make it yours**: add your own ingredients, steps (with timing) and a note to any recipe. The original is kept, and your additions show up in the cooking timeline.
 - **Not for us**: hide a dish for good, and a similar one from the World Kitchen replaces it automatically. Hidden dishes can be brought back.
 - **Your own recipes**: add them by hand, or scan a recipe page or plate photo.
-- **Tonight**: the household votes on one phone, with vetoes. Three vetoes in a row closes the kitchen and sends you to the takeaway spinner. A majority yes builds a timeline back from when you want to eat.
+- **Tonight**: the household votes on one phone, or each person votes on their own phone by joining a shared room (More, then Vote on your own phones), with vetoes. Three vetoes in a row closes the kitchen and sends you to the takeaway spinner. A majority yes builds a timeline back from when you want to eat.
 - **After dinner**: everyone gives the dish stars and a quick comment. The average becomes the dish's rating.
 - **Shared shopping list**: one list for the whole household. Whoever's at the shop ticks items off ("Got it · Mum") and everyone else sees it within seconds. "Put away" moves ticked items into the fridge.
+- **Shopping links and reminders**: pick a supermarket (Tesco, Sainsbury's, Asda, Ocado, Aldi) to search each item, and turn on cooking reminders for a notification when each step is due.
+- **Install it**: in a production build the app can be added to a phone home screen and still opens offline. This needs HTTPS.
 - **Stats**: built only from what you've actually logged.
 
 ## Run locally
@@ -39,6 +41,8 @@ npm run dev
 ```
 
 To share the shopping list across the household, open the app from each phone using the computer's local network address (for example `http://192.168.1.20:3000`) or a hosted copy. Everyone using the same server shares one list.
+
+Voting rooms live in server memory and expire after a day or on restart. Phones stay in step only while the app is open.
 
 Optional: set `GEMINI_API_KEY` in `.env` for live fridge, receipt and recipe scanning. Without it, the "Try a sample" buttons and the fallback still work.
 
