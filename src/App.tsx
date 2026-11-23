@@ -16,6 +16,7 @@ import { MoreView } from './components/views/MoreView';
 import { DinnerSteps, InProgressBanner, useDinnerStage } from './components/DinnerSteps';
 import { ProfileSyncModal } from './components/ProfileSyncModal';
 import { RulesModal } from './components/RulesModal';
+import { WelcomeSheet, hasSeenWelcome } from './components/WelcomeSheet';
 import { Card, FreshDot, Switch, cx } from './components/ui';
 import { ArrowRight, Check, ChevronLeft } from 'lucide-react';
 
@@ -156,6 +157,9 @@ const MainCabinet: React.FC = () => {
   const { activeView } = useDinner();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isRulesOpen, setIsRulesOpen] = useState(false);
+  const { cookLog } = useDinner();
+  // First launch only: people who have already logged dinners never see it.
+  const [isWelcomeOpen, setIsWelcomeOpen] = useState(() => !hasSeenWelcome() && cookLog.length === 0);
 
   // A new tab, or a new step of the evening, always opens at its top.
   const stage = useDinnerStage();
@@ -205,6 +209,7 @@ const MainCabinet: React.FC = () => {
 
       <ProfileSyncModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
       <RulesModal isOpen={isRulesOpen} onClose={() => setIsRulesOpen(false)} />
+      <WelcomeSheet isOpen={isWelcomeOpen} onClose={() => setIsWelcomeOpen(false)} />
     </div>
   );
 };

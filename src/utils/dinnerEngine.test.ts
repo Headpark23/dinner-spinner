@@ -19,6 +19,7 @@ import { TakeawayView } from '../components/views/TakeawayView';
 import { PantryView } from '../components/views/PantryView';
 import { MoreView } from '../components/views/MoreView';
 import { DinnerSteps } from '../components/DinnerSteps';
+import { WelcomeSheet } from '../components/WelcomeSheet';
 import { VotingView } from '../components/views/VotingView';
 import { ScorecardView } from '../components/views/ScorecardView';
 import { RulesModal } from '../components/RulesModal';
@@ -219,6 +220,11 @@ test('React UI Component Suite: renders every screen and modal cleanly without e
       name: 'MoreView',
       el: React.createElement(MoreView, { onOpenProfile: () => {}, onOpenRules: () => {} }),
       expectedText: 'Order takeaway',
+    },
+    {
+      name: 'WelcomeSheet',
+      el: React.createElement(WelcomeSheet, { isOpen: true, onClose: () => {} }),
+      expectedText: 'Dinner decided in a minute',
     },
     { name: 'DinnerSteps', el: React.createElement(DinnerSteps), expectedText: 'Pick' },
     { name: 'VotingView (nothing proposed yet)', el: React.createElement(VotingView), expectedText: 'Nothing on the table yet' },
