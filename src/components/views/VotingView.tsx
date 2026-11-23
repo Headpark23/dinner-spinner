@@ -56,6 +56,8 @@ export const VotingView: React.FC = () => {
     resetEvening,
     cookLog,
     roomCode,
+    meId,
+    setMeId,
   } = useDinner();
 
   const [copied, setCopied] = useState(false);
@@ -355,6 +357,25 @@ export const VotingView: React.FC = () => {
         </p>
         <p className="mt-2 text-[14px] text-ink-2">{meal.description}</p>
       </div>
+
+      {roomCode && !householdMembers.some((m) => m.id === meId) && (
+        <label className="flex items-center justify-between gap-3 rounded-xl bg-saffron-soft px-4 py-3 text-[14px]">
+          <span className="font-semibold">Who are you?</span>
+          <select
+            value=""
+            onChange={(e) => setMeId(e.target.value)}
+            aria-label="Who are you on this phone?"
+            className="rounded-lg border border-line bg-card px-2 py-1.5 text-[14px] font-semibold"
+          >
+            <option value="">Choose…</option>
+            {householdMembers.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       <Card className="p-4">
         <div className="flex items-baseline justify-between">

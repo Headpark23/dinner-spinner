@@ -222,7 +222,7 @@ export const ReelWindow: React.FC<ReelWindowProps> = ({ onSpin }) => {
                           <span
                             className={cx(
                               'mt-1.5 font-display font-semibold leading-tight text-on-enamel line-clamp-3',
-                              mode === '3-reel' ? 'text-[15px]' : 'text-[13px]'
+                              mode === '3-reel' ? 'text-[15px]' : 'text-[12px]'
                             )}
                           >
                             {customReelResult[idx]}
