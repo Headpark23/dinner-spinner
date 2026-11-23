@@ -18,7 +18,7 @@ const variantClass: Record<ButtonVariant, string> = {
 };
 
 const sizeClass: Record<ButtonSize, string> = {
-  sm: 'h-9 px-3 text-[13px] gap-1.5 rounded-lg',
+  sm: 'h-10 px-3 text-[13px] gap-1.5 rounded-lg',
   md: 'h-11 px-4 text-[15px] gap-2 rounded-xl',
   lg: 'h-14 px-5 text-[17px] gap-2.5 rounded-2xl',
 };
@@ -143,7 +143,7 @@ export function Segmented<T extends string>({
             onClick={() => onChange(opt.value)}
             className={cx(
               'rounded-lg font-semibold transition-colors duration-150 leading-tight',
-              size === 'sm' ? 'min-h-8 px-2 text-[12px]' : 'min-h-10 px-2 text-[13px]',
+              size === 'sm' ? 'min-h-10 px-2 text-[12px]' : 'min-h-11 px-2 text-[13px]',
               selected
                 ? 'bg-card text-ink shadow-[0_1px_2px_rgba(31,26,21,0.12)]'
                 : 'text-ink-2 hover:text-ink'

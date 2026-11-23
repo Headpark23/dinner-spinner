@@ -317,7 +317,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
                 aria-label={`${item.name}: ${freshnessLabel(item.freshness)}. Tap to change`}
                 title="Tap to change: Fresh → Eat soon → Use next"
                 className={cx(
-                  'h-9 shrink-0 rounded-lg px-2.5 text-[12px] font-semibold',
+                  'h-10 shrink-0 rounded-lg px-2.5 text-[12px] font-semibold',
                   item.freshness === 'red' && 'bg-tomato-soft text-tomato',
                   item.freshness === 'amber' && 'bg-saffron-soft text-saffron',
                   item.freshness === 'green' && 'bg-sage-soft text-sage'
@@ -633,7 +633,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
                     aria-checked={vaultFilter === id}
                     onClick={() => setVaultFilter(id)}
                     className={cx(
-                      'h-8 shrink-0 rounded-full border px-3 text-[13px] font-medium transition-colors',
+                      'h-10 shrink-0 rounded-full border px-3.5 text-[13px] font-medium transition-colors',
                       vaultFilter === id ? 'border-ink bg-ink text-paper' : 'border-line text-ink-2 hover:border-line-strong'
                     )}
                   >

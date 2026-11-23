@@ -191,7 +191,7 @@ export const VotingView: React.FC = () => {
               <Check className="h-3 w-3" /> Agreed for tonight
             </Chip>
             {!loggedEntry && (
-              <button onClick={() => setAgreedMeal(null)} className="text-[13px] font-semibold text-ink-2 hover:text-ink">
+              <button onClick={() => setAgreedMeal(null)} className="inline-flex min-h-10 items-center text-[13px] font-semibold text-ink-2 hover:text-ink">
                 Reopen the vote
               </button>
             )}
@@ -200,7 +200,7 @@ export const VotingView: React.FC = () => {
           <p className="mt-1 text-[14px] text-ink-2">{agreedMeal.description}</p>
           <button
             onClick={() => setRecipeOpen(true)}
-            className="mt-2 text-[14px] font-semibold text-tomato underline-offset-2 hover:underline"
+            className="mt-1 inline-flex min-h-10 items-center text-[14px] font-semibold text-tomato underline-offset-2 hover:underline"
           >
             Full recipe, tweaks and shopping
           </button>
@@ -262,7 +262,7 @@ export const VotingView: React.FC = () => {
                     onClick={toggleReminders}
                     aria-pressed={remind}
                     className={cx(
-                      'inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-[13px] font-semibold transition-colors',
+                      'inline-flex h-10 items-center gap-1.5 rounded-full px-3 text-[13px] font-semibold transition-colors',
                       remind ? 'bg-sage-soft text-sage' : 'bg-sunk text-ink-2 hover:text-ink'
                     )}
                   >

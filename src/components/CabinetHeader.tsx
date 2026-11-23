@@ -27,7 +27,7 @@ export const CabinetHeader: React.FC<CabinetHeaderProps> = ({ onOpenRules }) => 
       <div className="flex h-14 items-center justify-between px-4">
         <button
           onClick={() => setActiveView(0)}
-          className="flex items-center gap-2.5 rounded-lg py-1"
+          className="flex min-h-10 items-center gap-2.5 rounded-lg py-1"
           aria-label="Dinner Spinner, go to Dinner"
         >
           <Mark />
