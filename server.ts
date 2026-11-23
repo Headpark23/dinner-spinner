@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
 import { applyShoppingOp } from './src/utils/shopping';
 import type { ShoppingItem } from './src/types';
+import { RoomStore, cleanState } from './src/utils/rooms';
 
 dotenv.config();
 
@@ -140,6 +141,31 @@ try {
 } catch {
   shopping = { version: 0, items: [] };
 }
+
+// Shared voting rooms (in memory, expire after a day)
+const rooms = new RoomStore();
+
+app.post('/api/rooms', (req, res) => {
+  const state = cleanState(req.body?.state);
+  if (!state) return res.status(400).json({ error: 'Bad room state' });
+  const room = rooms.create(state);
+  if (!room) return res.status(503).json({ error: 'Too many rooms right now' });
+  res.json({ code: room.code, version: room.version, state: room.state });
+});
+
+app.get('/api/rooms/:code', (req, res) => {
+  const room = rooms.get(req.params.code);
+  if (!room) return res.status(404).json({ error: 'Room not found' });
+  res.json({ code: room.code, version: room.version, state: room.state });
+});
+
+app.put('/api/rooms/:code', (req, res) => {
+  const state = cleanState(req.body?.state);
+  if (!state) return res.status(400).json({ error: 'Bad room state' });
+  const room = rooms.update(req.params.code, state);
+  if (!room) return res.status(404).json({ error: 'Room not found' });
+  res.json({ code: room.code, version: room.version, state: room.state });
+});
 
 app.get('/api/shopping', (_req, res) => {
   res.json(shopping);

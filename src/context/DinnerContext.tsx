@@ -162,6 +162,11 @@ interface DinnerContextType {
   shoppingOnline: boolean | null;
   meId: string;
   setMeId: (id: string) => void;
+  roomCode: string;
+  roomError: string | null;
+  createRoom: () => Promise<boolean>;
+  joinRoom: (code: string) => Promise<boolean>;
+  leaveRoom: () => void;
   addShoppingItems: (names: string[], forMeal?: string) => void;
   removeShoppingByName: (name: string) => void;
   toggleShoppingItem: (id: string) => void;
@@ -700,6 +705,148 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     return { allowed: true };
   };
+
+  // Shared voting room: phones with the same code see one proposed dinner and one ballot.
+  const [roomCode, setRoomCode] = useState<string>(() => loadStored('room', ''));
+  const [roomError, setRoomError] = useState<string | null>(null);
+  const roomVersion = useRef(0);
+  const roomSynced = useRef('');
+
+  const roomPayload = () => ({ members: householdMembers, proposedMeal, agreedMeal, ballot: currentBallot, targetTime: targetEatingTime });
+
+  const rememberRoom = (code: string) => {
+    setRoomCode(code);
+    try {
+      localStorage.setItem(`${STORAGE_KEY}_room`, JSON.stringify(code));
+    } catch {
+      // ignore
+    }
+  };
+
+  const createRoom = async (): Promise<boolean> => {
+    setRoomError(null);
+    try {
+      const payload = roomPayload();
+      const res = await fetch('/api/rooms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ state: payload }) });
+      if (!res.ok) throw new Error('create failed');
+      const data = await res.json();
+      roomVersion.current = data.version;
+      roomSynced.current = JSON.stringify(payload);
+      rememberRoom(data.code);
+      return true;
+    } catch {
+      setRoomError('Could not start a room. Check your connection and try again.');
+      return false;
+    }
+  };
+
+  const joinRoom = async (rawCode: string): Promise<boolean> => {
+    setRoomError(null);
+    const code = rawCode.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+    if (code.length !== 4) {
+      setRoomError('Room codes are 4 characters.');
+      return false;
+    }
+    try {
+      const res = await fetch(`/api/rooms/${code}`);
+      if (res.status === 404) {
+        setRoomError('No room with that code. It may have expired.');
+        return false;
+      }
+      if (!res.ok) throw new Error('join failed');
+      const data = await res.json();
+      roomVersion.current = 0; // force the poll below to apply this state
+      applyRoom(data);
+      rememberRoom(data.code);
+      return true;
+    } catch {
+      setRoomError('Could not reach the room. Check your connection and try again.');
+      return false;
+    }
+  };
+
+  const leaveRoom = () => {
+    roomVersion.current = 0;
+    roomSynced.current = '';
+    setRoomError(null);
+    rememberRoom('');
+  };
+
+  const applyRoom = (data: { version: number; state: any }) => {
+    const st = data.state || {};
+    roomVersion.current = data.version;
+    roomSynced.current = JSON.stringify({
+      members: st.members ?? [],
+      proposedMeal: st.proposedMeal ?? null,
+      agreedMeal: st.agreedMeal ?? null,
+      ballot: st.ballot ?? {},
+      targetTime: st.targetTime,
+    });
+    if (Array.isArray(st.members) && st.members.length > 0) setHouseholdMembers(st.members);
+    const newProposal = st.proposedMeal?.id && st.proposedMeal.id !== proposedMeal?.id;
+    setProposedMeal(st.proposedMeal ?? null);
+    setCurrentBallot(st.ballot ?? {});
+    if (st.targetTime) setTargetEatingTime(st.targetTime);
+    if (st.agreedMeal) {
+      if (agreedMeal?.id !== st.agreedMeal.id) generateReverseTimers(st.targetTime || targetEatingTime, st.agreedMeal);
+      setAgreedMeal(st.agreedMeal);
+    } else {
+      setAgreedMeal(null);
+    }
+    if (newProposal && !st.agreedMeal) setActiveView(3);
+  };
+
+  // Push local changes to the room.
+  useEffect(() => {
+    if (!roomCode) return;
+    const payload = roomPayload();
+    const json = JSON.stringify(payload);
+    if (json === roomSynced.current) return;
+    roomSynced.current = json;
+    fetch(`/api/rooms/${roomCode}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ state: payload }) })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data) roomVersion.current = data.version;
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomCode, householdMembers, proposedMeal, agreedMeal, currentBallot, targetEatingTime]);
+
+  // Pull other phones' changes every couple of seconds.
+  useEffect(() => {
+    if (!roomCode) return;
+    let stopped = false;
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/rooms/${roomCode}`);
+        if (stopped) return;
+        if (res.status === 404) {
+          setRoomError('That room has expired. You are voting on this phone only again.');
+          leaveRoom();
+          return;
+        }
+        if (!res.ok) return;
+        const data = await res.json();
+        // Don't overwrite a change of ours that hasn't been sent yet.
+        if (data.version > roomVersion.current && JSON.stringify(roomPayload()) === roomSynced.current) applyRoom(data);
+      } catch {
+        // offline: try again next tick
+      }
+    };
+    const id = window.setInterval(poll, 2000);
+    return () => {
+      stopped = true;
+      window.clearInterval(id);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomCode, householdMembers, proposedMeal, agreedMeal, currentBallot, targetEatingTime]);
+
+  // In a room everyone votes as themselves on their own phone.
+  useEffect(() => {
+    if (!roomCode || !meId) return;
+    const idx = householdMembers.findIndex((m) => m.id === meId);
+    if (idx !== -1) setActiveVoterIndex(idx);
+  }, [roomCode, meId, householdMembers, currentBallot]);
 
   const meName = () => householdMembers.find((m) => m.id === meId)?.name;
 
@@ -1269,6 +1416,11 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         shoppingOnline,
         meId,
         setMeId,
+        roomCode,
+        roomError,
+        createRoom,
+        joinRoom,
+        leaveRoom,
         addShoppingItems,
         removeShoppingByName,
         toggleShoppingItem,

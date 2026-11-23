@@ -279,6 +279,25 @@ test('Tweaks: extra ingredients count for stock and extra steps slot into the ti
   assert.ok(steps.some((s) => s.label === 'Toast breadcrumbs' && s.timeString === '18:21'));
 });
 
+test('Rooms: create, join, update, sanitise and expire', async () => {
+  const { RoomStore, cleanState, normaliseCode } = await import('./rooms');
+  let t = 1000;
+  const store = new RoomStore(() => t, () => 0.5);
+  const state = cleanState({ members: [{ id: 'a' }], proposedMeal: { id: 'm1' }, agreedMeal: null, ballot: { a: 'yes', b: 'maybe' } });
+  assert.ok(state);
+  assert.deepEqual(state!.ballot, { a: 'yes' }, 'invalid votes are dropped');
+  assert.equal(cleanState('nope'), null);
+  const room = store.create(state!)!;
+  assert.equal(room.code.length, 4);
+  assert.equal(store.get(room.code.toLowerCase())?.version, 1);
+  const updated = store.update(room.code, { ...state!, ballot: { a: 'yes', b: 'no' } })!;
+  assert.equal(updated.version, 2);
+  assert.equal(store.get('ZZZZ'), null);
+  assert.equal(normaliseCode(' ab-c1d9 '), 'ABC1');
+  t += 25 * 60 * 60 * 1000;
+  assert.equal(store.get(room.code), null, 'rooms expire after a day');
+});
+
 test('Supermarket links: every store builds a safe, encoded search URL', async () => {
   const { STORES } = await import('./stores');
   assert.ok(STORES.length >= 4);

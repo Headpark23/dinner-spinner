@@ -1,7 +1,8 @@
-import React from 'react';
-import { Bike, BarChart3, Users, CircleHelp, Volume2, VolumeX, ChevronRight } from 'lucide-react';
+import React, { useState } from 'react';
+import { Bike, BarChart3, Users, Smartphone, CircleHelp, Volume2, VolumeX, ChevronRight } from 'lucide-react';
 import { useDinner } from '../../context/DinnerContext';
 import { Card, PageHeader, cx } from '../ui';
+import { RoomSheet } from '../RoomSheet';
 
 interface Row {
   key: string;
@@ -17,7 +18,8 @@ export const MoreView: React.FC<{ onOpenProfile: () => void; onOpenRules: () => 
   onOpenProfile,
   onOpenRules,
 }) => {
-  const { setActiveView, takeawayOverrideActive, soundMuted, toggleSound, householdMembers, cookLog } = useDinner();
+  const { setActiveView, takeawayOverrideActive, soundMuted, toggleSound, householdMembers, cookLog, roomCode } = useDinner();
+  const [roomOpen, setRoomOpen] = useState(false);
 
   const rows: Row[] = [
     {
@@ -34,6 +36,14 @@ export const MoreView: React.FC<{ onOpenProfile: () => void; onOpenRules: () => 
       title: 'History and ratings',
       body: cookLog.length > 0 ? `${cookLog.length} dinners logged. See what you cook and love.` : 'What you cook, rate and rescue from the fridge.',
       onClick: () => setActiveView(4),
+    },
+    {
+      key: 'room',
+      icon: <Smartphone className="h-5 w-5" />,
+      title: 'Vote on your own phones',
+      body: roomCode ? 'Everyone votes from their own phone in this room.' : 'Start or join a room so each person votes on their phone.',
+      onClick: () => setRoomOpen(true),
+      flag: roomCode ? 'Room ' + roomCode : undefined,
     },
     {
       key: 'household',
@@ -90,6 +100,8 @@ export const MoreView: React.FC<{ onOpenProfile: () => void; onOpenRules: () => 
           </span>
         </button>
       </Card>
+
+      <RoomSheet isOpen={roomOpen} onClose={() => setRoomOpen(false)} />
     </div>
   );
 };

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
+import { RoomSheet } from '../RoomSheet';
 import { useDinner } from '../../context/DinnerContext';
-import { Check, X, Copy, UserPlus, Trash2, CircleAlert, RotateCcw, Dices, Clock, Bell, BellOff } from 'lucide-react';
+import { Check, X, Copy, UserPlus, Trash2, CircleAlert, RotateCcw, Dices, Clock, Bell, BellOff, Smartphone } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { AfterDinnerReview } from '../AfterDinnerReview';
 import { RecipeSheet } from '../RecipeSheet';
@@ -54,9 +55,11 @@ export const VotingView: React.FC = () => {
     setActiveView,
     resetEvening,
     cookLog,
+    roomCode,
   } = useDinner();
 
   const [copied, setCopied] = useState(false);
+  const [roomOpen, setRoomOpen] = useState(false);
   const [vetoError, setVetoError] = useState<string | null>(null);
   const [servings, setServings] = useState<'2' | '4' | '6' | '8'>('4');
   const [showRoster, setShowRoster] = useState(false);
@@ -355,7 +358,7 @@ export const VotingView: React.FC = () => {
 
       <Card className="p-4">
         <div className="flex items-baseline justify-between">
-          <h2 className="text-[15px] font-semibold">Who’s voting?</h2>
+          <h2 className="text-[15px] font-semibold">{roomCode ? 'Votes in the room' : 'Who’s voting?'}</h2>
           <span className="text-[13px] text-ink-2 tabular-nums">
             {yesVotesCount} of {majorityNeeded} yes needed
           </span>
@@ -441,6 +444,15 @@ export const VotingView: React.FC = () => {
           {copied ? 'Copied' : 'Copy for group chat'}
         </button>
       </div>
+
+      <button
+        onClick={() => setRoomOpen(true)}
+        className="inline-flex items-center gap-1.5 px-1 text-[14px] font-semibold text-ink-2 hover:text-ink"
+      >
+        <Smartphone className="h-4 w-4" />
+        {roomCode ? 'Room ' + roomCode : 'Vote on separate phones'}
+      </button>
+      <RoomSheet isOpen={roomOpen} onClose={() => setRoomOpen(false)} />
 
       <div className="flex items-center gap-3 rounded-xl bg-sunk px-4 py-3 text-[13px] text-ink-2">
         <span className="flex gap-1" aria-hidden="true">
