@@ -29,6 +29,7 @@ Five tabs, each named for what you'll find there:
 - **Shared shopping list**: one list for the whole household. Whoever's at the shop ticks items off ("Got it · Mum") and everyone else sees it within seconds. "Put away" moves ticked items into the fridge.
 - **Shopping links and reminders**: pick a supermarket (Tesco, Sainsbury's, Asda, Ocado, Aldi) to search each item, and turn on cooking reminders for a notification when each step is due.
 - **Install it**: in a production build the app can be added to a phone home screen and still opens offline. This needs HTTPS.
+- **Shared fridge**: the fridge lives on the server too, so adding, removing or changing freshness on one phone shows on the others within seconds. The first phone to open a fresh server shares its fridge.
 - **Stats**: built only from what you've actually logged.
 
 ## Run locally

@@ -25,6 +25,7 @@ import { FreshnessLevel, Meal, TimeStake, EffortLevel } from '../../types';
 import { RecipeSheet } from '../RecipeSheet';
 import { PageHeader } from '../ui';
 import { STORES, loadStoreId, saveStoreId } from '../../utils/stores';
+import { itemIcon } from '../../utils/itemIcon';
 import { photoFor } from '../../data/photos';
 import { INITIAL_MEALS } from '../../data/initialData';
 import {
@@ -824,8 +825,17 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
                                 >
                                   {item.checked && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
                                 </span>
+                                <span
+                                  aria-hidden="true"
+                                  className={cx(
+                                    'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sunk text-[19px] leading-none',
+                                    item.checked && 'opacity-40 grayscale'
+                                  )}
+                                >
+                                  {itemIcon(item.name)}
+                                </span>
                                 <span className="min-w-0">
-                                  <span className={cx('block truncate text-[15px]', item.checked && 'text-ink-3 line-through')}>
+                                  <span className={cx('block line-clamp-2 text-[15px] leading-snug', item.checked && 'text-ink-3 line-through')}>
                                     {item.name}
                                   </span>
                                   <span className="block truncate text-[12px] text-ink-3">

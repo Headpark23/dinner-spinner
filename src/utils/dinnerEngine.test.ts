@@ -279,6 +279,34 @@ test('Tweaks: extra ingredients count for stock and extra steps slot into the ti
   assert.ok(steps.some((s) => s.label === 'Toast breadcrumbs' && s.timeString === '18:21'));
 });
 
+test('Fridge ops: seed once, add, cycle freshness, remove, rescue use-next items', async () => {
+  const { applyFridgeOp } = await import('./fridge');
+  const mk = (id: string, name: string, freshness: any) => ({ id, name, category: 'Fridge', freshness, addedDate: '2026-01-01' });
+  let st: any = { version: 0, seeded: false, items: [] };
+  st = applyFridgeOp(st, { type: 'seed', items: [mk('a', 'Milk', 'green'), mk('b', 'Courgettes', 'red')] });
+  assert.equal(st.items.length, 2);
+  const again = applyFridgeOp(st, { type: 'seed', items: [mk('z', 'Other', 'green')] });
+  assert.equal(again.items.length, 2, 'a second seed is ignored');
+  st = applyFridgeOp(st, { type: 'add', item: mk('c', 'Eggs', 'green') });
+  assert.equal(st.items[0].name, 'Eggs');
+  assert.equal(applyFridgeOp(st, { type: 'add', item: mk('c', 'Eggs', 'green') }).items.length, 3, 'same id is not duplicated');
+  st = applyFridgeOp(st, { type: 'cycle', id: 'a' });
+  assert.equal(st.items.find((i: any) => i.id === 'a').freshness, 'amber');
+  st = applyFridgeOp(st, { type: 'removeUseNextByNames', names: ['courgettes'] });
+  assert.equal(st.items.some((i: any) => i.name === 'Courgettes'), false);
+  st = applyFridgeOp(st, { type: 'remove', id: 'c' });
+  assert.equal(st.items.length, 1);
+  assert.equal(applyFridgeOp(st, { type: 'nonsense' }), st);
+});
+
+test('Item icons: keywords map to graphics with a basket fallback', async () => {
+  const { itemIcon } = await import('./itemIcon');
+  assert.equal(itemIcon('Semi-Skimmed Milk'), '🥛');
+  assert.equal(itemIcon('Free-Range Chicken Thighs'), '🍗');
+  assert.equal(itemIcon('Greek yoghurt'), '🥣');
+  assert.equal(itemIcon('Mystery thing'), '🛒');
+});
+
 test('Rooms: create, join, update, sanitise and expire', async () => {
   const { RoomStore, cleanState, normaliseCode } = await import('./rooms');
   let t = 1000;

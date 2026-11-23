@@ -19,6 +19,7 @@ import {
 } from '../types';
 import { WORLD_RECIPES } from '../data/worldRecipes';
 import { applyShoppingOp, newShoppingId, ShoppingOp } from '../utils/shopping';
+import { applyFridgeOp, FridgeOp } from '../utils/fridge';
 import {
   INITIAL_MEALS,
   INITIAL_PANTRY,
@@ -215,6 +216,11 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [rejectedMealIds, setRejectedMealIds] = useState<string[]>(() => loadStored('rejected', []));
   const [shoppingList, setShoppingList] = useState<ShoppingItem[]>(() => loadStored('shopping', []));
   const [shoppingOnline, setShoppingOnline] = useState<boolean | null>(null);
+  const pendingFridgeOps = useRef<FridgeOp[]>(loadStored('fridge_queue', []));
+  const fridgeBusy = useRef(false);
+  const fridgeDirty = useRef(false);
+  const pantryRef = useRef<PantryItem[]>([]);
+  pantryRef.current = pantry;
   const pendingShoppingOps = useRef<ShoppingOp[]>(loadStored('shopping_queue', []));
   const [meId, setMeIdState] = useState<string>(() => loadStored('me', ''));
   const [cookLog, setCookLog] = useState<CookLogEntry[]>(() => loadStored('cook_log', []));
@@ -391,6 +397,68 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }, 5000);
     return () => clearInterval(timer);
   }, [syncShopping]);
+
+  // ---------- Shared fridge sync (same idea as the shopping list) ----------
+  const postFridgeOps = (ops: FridgeOp[]) =>
+    fetch('/api/fridge/ops', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ops }) });
+
+  const saveFridgeQueue = () => {
+    try {
+      localStorage.setItem(`${STORAGE_KEY}_fridge_queue`, JSON.stringify(pendingFridgeOps.current));
+    } catch {
+      // storage full or blocked; the queue still lives in memory
+    }
+  };
+
+  const syncFridge = useCallback(async () => {
+    if (fridgeBusy.current) {
+      fridgeDirty.current = true;
+      return;
+    }
+    fridgeBusy.current = true;
+    try {
+      do {
+        fridgeDirty.current = false;
+        const queued = pendingFridgeOps.current;
+        let res = queued.length ? await postFridgeOps(queued) : await fetch('/api/fridge');
+        if (!res.ok) throw new Error('fridge sync failed');
+        let json = await res.json();
+        if (queued.length) {
+          pendingFridgeOps.current = pendingFridgeOps.current.slice(queued.length);
+          saveFridgeQueue();
+        }
+        if (!json.seeded) {
+          // First phone to arrive shares what it has; the server ignores this if someone beat us to it.
+          res = await postFridgeOps([{ type: 'seed', items: pantryRef.current }]);
+          if (!res.ok) throw new Error('fridge seed failed');
+          json = await res.json();
+        }
+        // Re-apply anything queued meanwhile so local edits never flicker away.
+        const merged = pendingFridgeOps.current.reduce(applyFridgeOp, { version: json.version, seeded: true, items: json.items });
+        setPantry(merged.items);
+      } while (fridgeDirty.current);
+    } catch {
+      // offline: changes stay queued and go out next time
+    } finally {
+      fridgeBusy.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    syncFridge();
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') syncFridge();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [syncFridge]);
+
+  const queueFridge = (ops: FridgeOp[]) => {
+    if (ops.length === 0) return;
+    setPantry((prev) => ops.reduce(applyFridgeOp, { version: 0, seeded: true, items: prev }).items);
+    pendingFridgeOps.current = [...pendingFridgeOps.current, ...ops];
+    saveFridgeQueue();
+    syncFridge();
+  };
 
   const queueShopping = (ops: ShoppingOp[]) => {
     if (ops.length === 0) return;
@@ -994,20 +1062,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Pantry freshness toggle
   const togglePantryFreshness = (id: string) => {
     sound.playHold();
-    setPantry((prev) =>
-      prev.map((item) => {
-        if (item.id === id) {
-          const nextFreshness =
-            item.freshness === 'green'
-              ? 'amber'
-              : item.freshness === 'amber'
-              ? 'red'
-              : 'green';
-          return { ...item, freshness: nextFreshness };
-        }
-        return item;
-      })
-    );
+    queueFridge([{ type: 'cycle', id }]);
   };
 
   const addPantryItem = (item: Omit<PantryItem, 'id' | 'addedDate'>) => {
@@ -1016,11 +1071,11 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       id: 'pantry_' + Date.now() + Math.random().toString(36).substring(2, 6),
       addedDate: new Date().toISOString().slice(0, 10),
     };
-    setPantry((prev) => [newItem, ...prev]);
+    queueFridge([{ type: 'add', item: newItem }]);
   };
 
   const removePantryItem = (id: string) => {
-    setPantry((prev) => prev.filter((p) => p.id !== id));
+    queueFridge([{ type: 'remove', id }]);
   };
 
   const addStaple = (name: string) => {
@@ -1092,15 +1147,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (rescuedRedItems.length > 0) {
         setRescuedItemsCount((prev) => prev + rescuedRedItems.length);
         // Remove rescued Red items from fridge since they were cooked!
-        setPantry((prev) =>
-          prev.filter(
-            (p) =>
-              !(
-                p.freshness === 'red' &&
-                rescuedRedItems.some((r) => r.toLowerCase() === p.name.toLowerCase())
-              )
-          )
-        );
+        queueFridge([{ type: 'removeUseNextByNames', names: rescuedRedItems }]);
       }
     }
 
@@ -1224,7 +1271,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         restoredCount += payload.meals.length;
       }
       if (Array.isArray(payload.pantry)) {
-        setPantry(payload.pantry);
+        queueFridge([{ type: 'replaceAll', items: payload.pantry }]);
       }
       if (Array.isArray(payload.staples)) {
         setStaples(payload.staples);
@@ -1292,7 +1339,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const resetToFactoryDefaults = () => {
     setMeals(INITIAL_MEALS);
-    setPantry(INITIAL_PANTRY);
+    queueFridge([{ type: 'replaceAll', items: INITIAL_PANTRY }]);
     setTakeaways(INITIAL_TAKEAWAYS);
     setHouseholdMembers(INITIAL_MEMBERS);
     setStaples(INITIAL_STAPLES);

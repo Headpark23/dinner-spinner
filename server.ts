@@ -7,6 +7,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { applyShoppingOp } from './src/utils/shopping';
 import type { ShoppingItem } from './src/types';
 import { RoomStore, cleanState } from './src/utils/rooms';
+import { applyFridgeOp, type FridgeState } from './src/utils/fridge';
 
 dotenv.config();
 
@@ -141,6 +142,33 @@ try {
 } catch {
   shopping = { version: 0, items: [] };
 }
+
+const FRIDGE_PATH = process.env.NODE_ENV === 'test' ? null : path.resolve(__dirname, '.fridge.json');
+let fridge: FridgeState = { version: 0, seeded: false, items: [] };
+try {
+  if (FRIDGE_PATH && fs.existsSync(FRIDGE_PATH)) fridge = JSON.parse(fs.readFileSync(FRIDGE_PATH, 'utf-8'));
+} catch {
+  fridge = { version: 0, seeded: false, items: [] };
+}
+
+app.get('/api/fridge', (_req, res) => {
+  res.json(fridge);
+});
+
+app.post('/api/fridge/ops', (req, res) => {
+  const ops = Array.isArray(req.body?.ops) ? req.body.ops.slice(0, 200) : [];
+  if (ops.length === 0) return res.status(400).json({ error: 'No operations' });
+  fridge = ops.reduce(applyFridgeOp, fridge);
+  fridge.version += 1;
+  if (FRIDGE_PATH) {
+    try {
+      fs.writeFileSync(FRIDGE_PATH, JSON.stringify(fridge, null, 2), 'utf-8');
+    } catch {
+      // Read-only filesystem: the fridge still lives in memory.
+    }
+  }
+  res.json(fridge);
+});
 
 // Shared voting rooms (in memory, expire after a day)
 const rooms = new RoomStore();
