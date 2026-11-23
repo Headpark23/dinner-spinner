@@ -279,6 +279,17 @@ test('Tweaks: extra ingredients count for stock and extra steps slot into the ti
   assert.ok(steps.some((s) => s.label === 'Toast breadcrumbs' && s.timeString === '18:21'));
 });
 
+test('Supermarket links: every store builds a safe, encoded search URL', async () => {
+  const { STORES } = await import('./stores');
+  assert.ok(STORES.length >= 4);
+  for (const st of STORES) {
+    const url = st.searchUrl('Greek yoghurt & honey');
+    assert.ok(url.startsWith('https://'), st.id);
+    assert.ok(url.includes('Greek%20yoghurt%20%26%20honey'), `${st.id} should encode the item`);
+    assert.equal(url.includes(' '), false);
+  }
+});
+
 test('Shopping list ops: add dedupes, ticks record who, clear removes ticked', async () => {
   const { applyShoppingOp } = await import('./shopping');
   let items = applyShoppingOp([], { type: 'add', item: { id: 'a', name: 'Limes', forMeal: 'Pad Thai' } });

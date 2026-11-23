@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useDinner } from '../../context/DinnerContext';
-import { Check, X, Copy, UserPlus, Trash2, CircleAlert, RotateCcw, Dices, Clock } from 'lucide-react';
+import { Check, X, Copy, UserPlus, Trash2, CircleAlert, RotateCcw, Dices, Clock, Bell, BellOff } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { AfterDinnerReview } from '../AfterDinnerReview';
 import { RecipeSheet } from '../RecipeSheet';
@@ -62,6 +62,50 @@ export const VotingView: React.FC = () => {
   const [showRoster, setShowRoster] = useState(false);
   const [newMemberName, setNewMemberName] = useState('');
   const [recipeOpen, setRecipeOpen] = useState(false);
+
+  // Cooking reminders: a browser notification when each step is due. They only fire while the page stays open.
+  const [remind, setRemind] = useState(false);
+  const [remindNote, setRemindNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!remind || !agreedMeal) return;
+    const timers = reverseTimers
+      .filter((step) => !step.done)
+      .map((step) => {
+        const [h, m] = step.timeString.split(':').map(Number);
+        const at = new Date();
+        at.setHours(h, m, 0, 0);
+        const ms = at.getTime() - Date.now();
+        if (!Number.isFinite(ms) || ms <= 0) return null;
+        return window.setTimeout(() => {
+          try {
+            new Notification(`${step.timeString}: ${step.label}`, { body: agreedMeal.title, tag: step.id });
+          } catch {
+            // Notifications unavailable on this device; the timeline still works.
+          }
+        }, ms);
+      });
+    return () => timers.forEach((t) => t !== null && window.clearTimeout(t));
+  }, [remind, reverseTimers, agreedMeal]);
+
+  const toggleReminders = async () => {
+    if (remind) {
+      setRemind(false);
+      setRemindNote(null);
+      return;
+    }
+    if (typeof Notification === 'undefined') {
+      setRemindNote('This browser can’t show reminders. The timeline still works.');
+      return;
+    }
+    const result = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+    if (result === 'granted') {
+      setRemind(true);
+      setRemindNote('Reminders are on. Keep this page open while you cook.');
+    } else {
+      setRemindNote('Notifications are blocked for this site. Allow them in your browser settings to get reminders.');
+    }
+  };
 
   const currentVoter = householdMembers[activeVoterIndex] || householdMembers[0];
   const yesVotesCount = Object.values(currentBallot).filter((v) => v === 'yes').length;
@@ -208,10 +252,24 @@ export const VotingView: React.FC = () => {
                 <h2 id="timeline-h" className="text-[15px] font-semibold">
                   Timeline
                 </h2>
-                <span className="text-[13px] text-ink-2 tabular-nums">
-                  {doneCount} of {reverseTimers.length} done
+                <span className="flex items-center gap-3">
+                  <button
+                    onClick={toggleReminders}
+                    aria-pressed={remind}
+                    className={cx(
+                      'inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-[13px] font-semibold transition-colors',
+                      remind ? 'bg-sage-soft text-sage' : 'bg-sunk text-ink-2 hover:text-ink'
+                    )}
+                  >
+                    {remind ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+                    {remind ? 'Reminders on' : 'Remind me'}
+                  </button>
+                  <span className="text-[13px] text-ink-2 tabular-nums">
+                    {doneCount} of {reverseTimers.length} done
+                  </span>
                 </span>
               </div>
+              {remindNote && <p className="mb-2 px-1 text-[12px] text-ink-3">{remindNote}</p>}
               <ol className="overflow-hidden rounded-2xl border border-line bg-card">
                 {reverseTimers.map((step, idx) => {
                   const isNext = idx === nextIdx;

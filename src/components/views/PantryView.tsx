@@ -19,10 +19,12 @@ import {
   Sparkles,
   Copy,
   LoaderCircle,
+  ExternalLink,
 } from 'lucide-react';
 import { FreshnessLevel, Meal, TimeStake, EffortLevel } from '../../types';
 import { RecipeSheet } from '../RecipeSheet';
 import { PageHeader } from '../ui';
+import { STORES, loadStoreId, saveStoreId } from '../../utils/stores';
 import { photoFor } from '../../data/photos';
 import { INITIAL_MEALS } from '../../data/initialData';
 import {
@@ -111,6 +113,8 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
   const [newBannedName, setNewBannedName] = useState('');
 
   const [copiedShopping, setCopiedShopping] = useState(false);
+  const [storeId, setStoreId] = useState(loadStoreId);
+  const store = STORES.find((st) => st.id === storeId) || STORES[0];
 
   // Vault
   const [vaultSearch, setVaultSearch] = useState('');
@@ -760,6 +764,27 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
               </Button>
             </form>
 
+            {toBuy.length > 0 && (
+              <label className="flex items-center justify-between gap-3 rounded-xl bg-sunk px-3 py-2 text-[13px]">
+                <span className="text-ink-2">Find items at</span>
+                <select
+                  value={storeId}
+                  onChange={(e) => {
+                    setStoreId(e.target.value);
+                    saveStoreId(e.target.value);
+                  }}
+                  aria-label="Supermarket to search"
+                  className="rounded-lg border border-line bg-card px-2 py-1 text-[13px] font-semibold"
+                >
+                  {STORES.map((st) => (
+                    <option key={st.id} value={st.id}>
+                      {st.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
             {shoppingList.length === 0 ? (
               <Card className="p-6 text-center">
                 <p className="font-display text-[19px] font-semibold">The list is empty</p>
@@ -812,6 +837,18 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
                                   </span>
                                 </span>
                               </button>
+                              {!item.checked && (
+                                <a
+                                  href={store.searchUrl(item.name)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  aria-label={`Search ${store.name} for ${item.name}`}
+                                  title={`Search ${store.name}`}
+                                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl text-ink-2 hover:bg-sunk hover:text-ink"
+                                >
+                                  <ExternalLink className="h-4 w-4" />
+                                </a>
+                              )}
                               <IconButton label={`Remove ${item.name}`} onClick={() => removeShoppingItem(item.id)}>
                                 <X className="h-4 w-4" />
                               </IconButton>
