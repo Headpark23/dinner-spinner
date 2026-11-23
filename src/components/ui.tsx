@@ -71,7 +71,7 @@ export const Card: React.FC<React.HTMLAttributes<HTMLDivElement> & { as?: 'div' 
 }) => {
   const Tag = as;
   return (
-    <Tag {...rest} className={cx('rounded-2xl border border-line bg-card', className)}>
+    <Tag {...rest} className={cx('rounded-2xl border border-line bg-card shadow-[0_1px_2px_rgba(31,26,21,0.05)]', className)}>
       {children}
     </Tag>
   );

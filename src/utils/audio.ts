@@ -1,10 +1,29 @@
 /**
- * Retro Pub Fruit Machine Sound Synthesiser (Web Audio API)
- * Fully self-contained, offline-ready, no audio file dependencies.
+ * Dinner Spinner sound design (Web Audio API). Fully self-contained, offline-ready.
+ *
+ * Soft and wooden rather than arcade: only sine/triangle tones with a gentle attack,
+ * everything routed through one low-pass filter and a quiet master volume. No sawtooth
+ * or square waves, so nothing buzzes or rasps.
  */
+
+interface ToneOptions {
+  freq: number;
+  /** Glide to this frequency over the tone's length. */
+  freqEnd?: number;
+  /** Seconds. */
+  dur: number;
+  gain: number;
+  /** Seconds from now. */
+  delay?: number;
+  type?: OscillatorType;
+}
+
+const MASTER_VOLUME = 0.55;
+const ATTACK = 0.006; // a short fade-in stops the harsh "click" at the start of a tone
 
 class SoundEngine {
   private ctx: AudioContext | null = null;
+  private out: GainNode | null = null;
   private muted: boolean = false;
 
   private getContext(): AudioContext | null {
@@ -13,6 +32,20 @@ class SoundEngine {
       if (!this.ctx) {
         const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
         this.ctx = new AudioCtx();
+        // master volume -> low-pass (takes the edge off) -> gentle limiter -> speakers
+        const master = this.ctx.createGain();
+        master.gain.value = MASTER_VOLUME;
+        const lowpass = this.ctx.createBiquadFilter();
+        lowpass.type = 'lowpass';
+        lowpass.frequency.value = 2400;
+        lowpass.Q.value = 0.3;
+        const limiter = this.ctx.createDynamicsCompressor();
+        limiter.threshold.value = -18;
+        limiter.ratio.value = 6;
+        master.connect(lowpass);
+        lowpass.connect(limiter);
+        limiter.connect(this.ctx.destination);
+        this.out = master;
       }
       if (this.ctx.state === 'suspended') {
         this.ctx.resume();
@@ -21,6 +54,24 @@ class SoundEngine {
     } catch (e) {
       return null;
     }
+  }
+
+  private tone({ freq, freqEnd, dur, gain, delay = 0, type = 'sine' }: ToneOptions) {
+    const ctx = this.getContext();
+    if (!ctx || !this.out) return;
+    const t0 = ctx.currentTime + delay;
+    const osc = ctx.createOscillator();
+    const env = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t0);
+    if (freqEnd) osc.frequency.exponentialRampToValueAtTime(freqEnd, t0 + dur);
+    env.gain.setValueAtTime(0.0001, t0);
+    env.gain.linearRampToValueAtTime(gain, t0 + ATTACK);
+    env.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(env);
+    env.connect(this.out);
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.02);
   }
 
   public toggleMute(): boolean {
@@ -32,151 +83,49 @@ class SoundEngine {
     return this.muted;
   }
 
-  // Mechanical reel stepper tick
+  // A soft wooden tick as the reel steps past each dish.
   public playReelTick() {
-    const ctx = this.getContext();
-    if (!ctx) return;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(320 + Math.random() * 80, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.04);
-    gain.gain.setValueAtTime(0.08, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.04);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.045);
+    this.tone({ freq: 620 + Math.random() * 60, freqEnd: 360, dur: 0.035, gain: 0.05, type: 'triangle' });
   }
 
-  // Heavy mechanical reel lock clunk
+  // The reel settling: a low, muffled thud.
   public playReelLock() {
-    const ctx = this.getContext();
-    if (!ctx) return;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(140, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(45, ctx.currentTime + 0.12);
-    gain.gain.setValueAtTime(0.2, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.13);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.14);
+    this.tone({ freq: 150, freqEnd: 70, dur: 0.16, gain: 0.16 });
   }
 
-  // Lever pull ratchet
+  // Lever pull: one smooth downward sweep instead of a rattle of beeps.
   public playLeverPull() {
-    const ctx = this.getContext();
-    if (!ctx) return;
-    for (let i = 0; i < 4; i++) {
-      setTimeout(() => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'square';
-        osc.frequency.setValueAtTime(200 + i * 40, ctx.currentTime);
-        gain.gain.setValueAtTime(0.05, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.03);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.035);
-      }, i * 45);
-    }
+    this.tone({ freq: 260, freqEnd: 120, dur: 0.14, gain: 0.1, type: 'triangle' });
   }
 
-  // Hold button latch click
+  // Hold button: a soft, short pop.
   public playHold() {
-    const ctx = this.getContext();
-    if (!ctx) return;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(660, ctx.currentTime);
-    osc.frequency.setValueAtTime(880, ctx.currentTime + 0.05);
-    gain.gain.setValueAtTime(0.12, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.13);
+    this.tone({ freq: 520, freqEnd: 600, dur: 0.07, gain: 0.07 });
   }
 
-  // Nudge mechanical step
+  // Nudge: a light two-note "step".
   public playNudge() {
-    const ctx = this.getContext();
-    if (!ctx) return;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(440, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(587.33, ctx.currentTime + 0.08);
-    gain.gain.setValueAtTime(0.15, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.11);
+    this.tone({ freq: 440, dur: 0.06, gain: 0.07 });
+    this.tone({ freq: 523.25, dur: 0.09, gain: 0.07, delay: 0.05 });
   }
 
-  // Fruit Machine Win Fanfare / Jackpot Chime
+  // Result chime: three gentle rising bell tones, played once, not a fanfare.
   public playWin() {
-    const ctx = this.getContext();
-    if (!ctx) return;
-    const notes = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6
-    notes.forEach((freq, idx) => {
-      setTimeout(() => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(freq, ctx.currentTime);
-        gain.gain.setValueAtTime(0.18, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.36);
-      }, idx * 110);
+    [523.25, 659.25, 783.99].forEach((freq, i) => {
+      this.tone({ freq, dur: 0.55, gain: 0.07, delay: i * 0.11 });
+      this.tone({ freq: freq * 2, dur: 0.3, gain: 0.015, delay: i * 0.11 }); // faint overtone for a bell-like shine
     });
   }
 
-  // Takeaway Override Alarm Klaxon
+  // Kitchen closed: a polite two-note doorbell.
   public playTakeawayAlarm() {
-    const ctx = this.getContext();
-    if (!ctx) return;
-    for (let i = 0; i < 3; i++) {
-      setTimeout(() => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(400, ctx.currentTime);
-        osc.frequency.linearRampToValueAtTime(800, ctx.currentTime + 0.15);
-        gain.gain.setValueAtTime(0.15, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.23);
-      }, i * 260);
-    }
+    this.tone({ freq: 659.25, dur: 0.4, gain: 0.09 });
+    this.tone({ freq: 523.25, dur: 0.5, gain: 0.09, delay: 0.28 });
   }
 
-  // Veto Reject Buzzer
+  // Veto: a short, low, soft "nope", not a buzzer.
   public playBuzzer() {
-    const ctx = this.getContext();
-    if (!ctx) return;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(130, ctx.currentTime);
-    osc.frequency.setValueAtTime(110, ctx.currentTime + 0.15);
-    gain.gain.setValueAtTime(0.25, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.36);
+    this.tone({ freq: 220, freqEnd: 165, dur: 0.22, gain: 0.1, type: 'triangle' });
   }
 }
 

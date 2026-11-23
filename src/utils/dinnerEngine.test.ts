@@ -75,6 +75,16 @@ test('Eligibility Engine: time and effort mean "up to", so wider limits widen th
   assert.equal(everything.pool.length, INITIAL_MEALS.length);
 });
 
+test('4-reel plate: adds a veg reel to the title, shopping list and timeline', () => {
+  const plate = buildComboMeal('4-reel', ['Basmati Rice', 'King Prawns', 'Thai Green Coconut', 'Charred Broccoli'], '30m', 'standard');
+  assert.equal(plate.title, 'King Prawns with Thai Green Coconut');
+  assert.ok(plate.description.includes('Basmati Rice') && plate.description.includes('Charred Broccoli'));
+  assert.ok(plate.ingredients.includes('Charred Broccoli'));
+  assert.ok(plate.prepSteps.some((s) => s.includes('Charred Broccoli')));
+  assert.ok(plate.prepSteps.every((s) => /\(-\d+m\)$/.test(s)));
+  assert.ok(plate.tags.includes('4-Reel Custom Combo'));
+});
+
 test('Pantry Match Engine: detects stock percentage and Red rescue items', () => {
   const dopiaza = INITIAL_MEALS[1];
   const match = calculateMealPantryMatch(dopiaza, INITIAL_PANTRY, INITIAL_STAPLES);

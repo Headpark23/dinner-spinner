@@ -31,6 +31,7 @@ import {
   REEL_CARBS,
   REEL_PROTEINS,
   REEL_SAUCES,
+  COMBO_REELS,
   SUNDAY_MEATS,
   SUNDAY_POTATOES,
   SUNDAY_STAR_SIDES,
@@ -220,7 +221,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [mode, setModeState] = useState<MachineMode>(() => {
     if (typeof window !== 'undefined') {
       const m = new URLSearchParams(window.location.search).get('mode');
-      if (m === 'single' || m === '3-reel' || m === 'sunday') return m;
+      if (m === 'single' || m === '3-reel' || m === '4-reel' || m === 'sunday') return m;
     }
     return 'single';
   });
@@ -235,7 +236,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     'Rigatoni Pasta',
     'Free-Range Chicken',
     'Spicy Arrabbiata',
-    'Charred Cabbage & Rich Beef Gravy',
+    'Garlic Green Beans',
   ]);
   const [soundMuted, setSoundMuted] = useState<boolean>(false);
 
@@ -403,24 +404,19 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     localStorage.setItem(`${STORAGE_KEY}_takeaway_override`, JSON.stringify(takeawayOverrideActive));
   }, [consecutiveRejections, takeawayOverrideActive]);
 
+  // Sunday roast is always an all-day, chef-mode job; plates follow the time/effort filters.
+  const comboLimits = (m: MachineMode): [TimeStake, EffortLevel] =>
+    m === 'sunday' ? ['all-day', 'chef-mode'] : [timeStake, effort];
+
   // Mode switcher that also initializes sensible default reels & meal preview
   const setMode = (nextMode: MachineMode) => {
     sound.playHold();
     setModeState(nextMode);
     setHeldReels([false, false, false, false]);
-    if (nextMode === '3-reel') {
-      const initial3 = [REEL_CARBS[0].label, REEL_PROTEINS[0].label, REEL_SAUCES[0].label];
-      setCustomReelResult(initial3);
-      setActiveMealResult(buildComboMeal('3-reel', initial3, timeStake, effort));
-    } else if (nextMode === 'sunday') {
-      const initial4 = [
-        SUNDAY_MEATS[0].label,
-        SUNDAY_POTATOES[0].label,
-        SUNDAY_STAR_SIDES[0].label,
-        SUNDAY_VEG_GRAVY[0].label,
-      ];
-      setCustomReelResult(initial4);
-      setActiveMealResult(buildComboMeal('sunday', initial4, 'all-day', 'chef-mode'));
+    if (nextMode !== 'single') {
+      const initial = COMBO_REELS[nextMode].map((list) => list[0].label);
+      setCustomReelResult(initial);
+      setActiveMealResult(buildComboMeal(nextMode, initial, ...comboLimits(nextMode)));
     } else {
       const { pool } = filterEligibleMeals(meals, timeStake, effort, bannedIngredients);
       if (pool.length > 0) {
@@ -471,26 +467,14 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const nextIndex = (currentIndex + 1) % meals.length;
         setActiveMealResult(meals[nextIndex]);
       }
-    } else if (mode === '3-reel') {
-      const lists = [REEL_CARBS, REEL_PROTEINS, REEL_SAUCES];
-      const list = lists[reelIndex] || REEL_CARBS;
+    } else {
+      const list = COMBO_REELS[mode][reelIndex] || COMBO_REELS[mode][0];
       const currentVal = customReelResult[reelIndex];
       const currentIndex = list.findIndex((i) => i.label === currentVal);
-      const nextIndex = (currentIndex + 1) % list.length;
       const nextReels = [...customReelResult];
-      nextReels[reelIndex] = list[nextIndex].label;
+      nextReels[reelIndex] = list[(currentIndex + 1) % list.length].label;
       setCustomReelResult(nextReels);
-      setActiveMealResult(buildComboMeal('3-reel', nextReels, timeStake, effort));
-    } else if (mode === 'sunday') {
-      const lists = [SUNDAY_MEATS, SUNDAY_POTATOES, SUNDAY_STAR_SIDES, SUNDAY_VEG_GRAVY];
-      const list = lists[reelIndex] || SUNDAY_MEATS;
-      const currentVal = customReelResult[reelIndex];
-      const currentIndex = list.findIndex((i) => i.label === currentVal);
-      const nextIndex = (currentIndex + 1) % list.length;
-      const nextReels = [...customReelResult];
-      nextReels[reelIndex] = list[nextIndex].label;
-      setCustomReelResult(nextReels);
-      setActiveMealResult(buildComboMeal('sunday', nextReels, 'all-day', 'chef-mode'));
+      setActiveMealResult(buildComboMeal(mode, nextReels, ...comboLimits(mode)));
     }
   };
 
@@ -507,7 +491,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const tickInterval = setInterval(() => {
       sound.playReelTick();
-    }, 90);
+    }, 130);
 
     setTimeout(() => {
       clearInterval(tickInterval);
@@ -518,35 +502,13 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         sound.playReelLock();
         setActiveMealResult(chosen);
         sound.playWin();
-      } else if (mode === '3-reel') {
+      } else {
         const newRes = [...customReelResult];
-        if (!heldReels[0]) {
-          newRes[0] = REEL_CARBS[Math.floor(Math.random() * REEL_CARBS.length)].label;
-        }
-        if (!heldReels[1]) {
-          newRes[1] = REEL_PROTEINS[Math.floor(Math.random() * REEL_PROTEINS.length)].label;
-        }
-        if (!heldReels[2]) {
-          newRes[2] = REEL_SAUCES[Math.floor(Math.random() * REEL_SAUCES.length)].label;
-        }
+        COMBO_REELS[mode].forEach((list, i) => {
+          if (!heldReels[i]) newRes[i] = list[Math.floor(Math.random() * list.length)].label;
+        });
         setCustomReelResult(newRes);
-        const comboMeal = buildComboMeal('3-reel', newRes, timeStake, effort);
-        setActiveMealResult(comboMeal);
-        sound.playReelLock();
-        sound.playWin();
-      } else if (mode === 'sunday') {
-        const newRes = [...customReelResult];
-        if (!heldReels[0])
-          newRes[0] = SUNDAY_MEATS[Math.floor(Math.random() * SUNDAY_MEATS.length)].label;
-        if (!heldReels[1])
-          newRes[1] = SUNDAY_POTATOES[Math.floor(Math.random() * SUNDAY_POTATOES.length)].label;
-        if (!heldReels[2])
-          newRes[2] = SUNDAY_STAR_SIDES[Math.floor(Math.random() * SUNDAY_STAR_SIDES.length)].label;
-        if (!heldReels[3])
-          newRes[3] = SUNDAY_VEG_GRAVY[Math.floor(Math.random() * SUNDAY_VEG_GRAVY.length)].label;
-        setCustomReelResult(newRes);
-        const sundayMeal = buildComboMeal('sunday', newRes, 'all-day', 'chef-mode');
-        setActiveMealResult(sundayMeal);
+        setActiveMealResult(buildComboMeal(mode, newRes, ...comboLimits(mode)));
         sound.playReelLock();
         sound.playWin();
       }

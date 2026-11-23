@@ -261,7 +261,7 @@ export function selectWeightedMeal(
 }
 
 /**
- * Synthesizes an accurate, cookable Meal Card from 3-Reel or 4-Reel Sunday Roast combinations.
+ * Synthesizes an accurate, cookable Meal Card from 3-reel, 4-reel or Sunday Roast combinations.
  * Used both after a spin and immediately after a reel NUDGE so the card is always in sync.
  */
 export function buildComboMeal(
@@ -310,10 +310,11 @@ export function buildComboMeal(
     };
   }
 
-  // 3-Reel Builder Mode
+  // 3-Reel and 4-Reel Builder Modes
   const carb = reels[0] || 'Rigatoni Pasta';
   const protein = reels[1] || 'Free-Range Chicken';
   const sauce = reels[2] || 'Spicy Arrabbiata';
+  const veg = mode === '4-reel' ? reels[3] || 'Garlic Green Beans' : null;
 
   const inferredCuisine = sauce.toLowerCase().includes('tikka')
     ? 'Indian'
@@ -328,15 +329,18 @@ export function buildComboMeal(
     : 'British';
 
   return {
-    id: `combo_${carb}_${protein}_${sauce}`.replace(/\s+/g, '_').toLowerCase(),
-    title: `${protein} with ${sauce} & ${carb}`,
-    description: `Custom 3-reel creation: tender ${protein} glazed in ${sauce}, served piping hot with ${carb}.`,
+    id: `${veg ? 'combo4' : 'combo'}_${carb}_${protein}_${sauce}${veg ? `_${veg}` : ''}`.replace(/\s+/g, '_').toLowerCase(),
+    title: veg ? `${protein} with ${sauce}` : `${protein} with ${sauce} & ${carb}`,
+    description: veg
+      ? `Served with ${carb} and ${veg}. Tender ${protein} glazed in ${sauce}.`
+      : `Custom 3-reel creation: tender ${protein} glazed in ${sauce}, served piping hot with ${carb}.`,
     cuisine: inferredCuisine,
     timeStake,
     effort,
-    ingredients: [protein, carb, sauce, 'Garlic Bulbs', 'Olive Oil', 'Maldon Sea Salt'],
+    ingredients: [protein, carb, sauce, ...(veg ? [veg] : []), 'Garlic Bulbs', 'Olive Oil', 'Maldon Sea Salt'],
     prepSteps: [
       `Prep ingredients and start cooking ${carb} (-22m)`,
+      ...(veg ? [`Get ${veg} cooking alongside (-16m)`] : []),
       `Sear ${protein} in a hot pan until golden brown (-15m)`,
       `Pour in ${sauce} and simmer gently to infuse flavours (-8m)`,
       `Combine with ${carb}, garnish, and plate up (-0m)`,
@@ -345,7 +349,7 @@ export function buildComboMeal(
     isFavorite: false,
     lastCookedDate: null,
     cookCount: 1,
-    tags: ['3-Reel Custom Combo', inferredCuisine],
+    tags: [veg ? '4-Reel Custom Combo' : '3-Reel Custom Combo', inferredCuisine],
     servings: 4,
   };
 }

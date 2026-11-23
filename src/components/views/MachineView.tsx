@@ -78,15 +78,25 @@ export const MachineView: React.FC = () => {
         onChange={setMode}
         options={[
           { value: 'single', label: 'A dish', hint: 'Spin your saved dishes' },
-          { value: '3-reel', label: 'Mix a plate', hint: 'Base + main + sauce' },
-          { value: 'sunday', label: 'Sunday roast', hint: 'Four-reel roast builder' },
+          { value: '3-reel', label: '3 reels', hint: 'Base + main + sauce' },
+          { value: '4-reel', label: '4 reels', hint: 'Base + main + sauce + veg' },
+          { value: 'sunday', label: 'Roast', hint: 'Sunday roast builder' },
         ]}
       />
+      <p className="-mt-1.5 px-1 text-[12px] text-ink-3">
+        {mode === 'single'
+          ? 'Spins your saved dishes.'
+          : mode === '3-reel'
+          ? 'Base, main and sauce. Hold a reel to keep it; the arrow nudges it on.'
+          : mode === '4-reel'
+          ? 'Base, main, sauce and veg. Hold a reel to keep it; the arrow nudges it on.'
+          : 'A Sunday roast takes the afternoon. Hold the reels you like and spin the rest.'}
+      </p>
 
       {showFilters ? (
         <button
           onClick={() => setFiltersOpen(true)}
-          className="flex w-full items-center gap-3 rounded-2xl border border-line bg-card px-3.5 py-3 text-left transition-colors hover:border-line-strong"
+          className="flex w-full items-center gap-3 rounded-2xl border border-line bg-card px-3.5 py-2.5 text-left transition-colors hover:border-line-strong"
         >
           <SlidersHorizontal className="h-5 w-5 shrink-0 text-ink-2" strokeWidth={1.75} />
           <span className="min-w-0 flex-1">
@@ -102,11 +112,7 @@ export const MachineView: React.FC = () => {
           </span>
           <span className="shrink-0 text-[13px] font-semibold text-tomato">Change</span>
         </button>
-      ) : (
-        <p className="rounded-2xl bg-sunk px-3.5 py-3 text-[13px] text-ink-2">
-          A roast takes the afternoon. Hold the reels you like and spin the rest.
-        </p>
-      )}
+      ) : null}
       {poolNote && showFilters && <p className="-mt-2 px-1 text-[12px] text-ink-3">{poolNote}</p>}
 
       <ReelWindow onSpin={spin} />
@@ -132,10 +138,11 @@ export const MachineView: React.FC = () => {
               )}
               <div className="min-w-0 flex-1">
                 <p className="eyebrow">Tonight’s pick</p>
-                <h2 className="font-display text-[22px] leading-snug font-semibold">{activeMealResult.title}</h2>
+                <h2 className="font-display text-[21px] leading-snug font-semibold">{activeMealResult.title}</h2>
                 <p className="mt-0.5 text-[13px] text-ink-2">
                   {timeLabel(activeMealResult.timeStake)} · {effortLabel(activeMealResult.effort)} · {activeMealResult.cuisine}
                 </p>
+                <p className="mt-1.5 line-clamp-2 text-[13px] leading-snug text-ink-2">{activeMealResult.description}</p>
               </div>
               <IconButton
                 label={activeMealResult.isFavorite ? 'Remove from favourites' : 'Add to favourites'}
@@ -201,11 +208,11 @@ export const MachineView: React.FC = () => {
             </div>
 
             <div className="mt-4 grid grid-cols-[auto_1fr] gap-2">
-              <Button variant="secondary" size="lg" onClick={() => setSheetOpen(true)}>
-                <BookOpen className="h-5 w-5" /> Recipe
+              <Button variant="secondary" onClick={() => setSheetOpen(true)}>
+                <BookOpen className="h-4 w-4" /> Recipe
               </Button>
-              <Button variant="primary" size="lg" onClick={() => sendToVote(activeMealResult)}>
-                <ThumbsUp className="h-5 w-5" />
+              <Button variant="primary" onClick={() => sendToVote(activeMealResult)}>
+                <ThumbsUp className="h-4 w-4" />
                 Start the vote
               </Button>
             </div>
