@@ -25,19 +25,45 @@ export function addDays(date: Date, days: number): Date {
   return d;
 }
 
-export const keepDaysFor = (meal?: Pick<Meal, 'makesLeftovers'>): number => {
-  const n = meal?.makesLeftovers?.keepDays;
+/** What a dish needs to be read for its leftovers: its own setting if it has one, otherwise a guess from its name. */
+export type LeftoverSource = { title?: string; ingredients?: string[]; tags?: string[]; makesLeftovers?: Meal['makesLeftovers'] };
+
+// Dishes that are made in a pot and are better the next day, so there is nearly always extra.
+const BATCH = /\b(curry|curries|dhal|dal|chilli|chili|stew|casserole|bolognese|ragu|ragout|soup|chowder|hotpot|goulash|lasagne|lasagna|cassoulet|bake|shepherd'?s|cottage pie|pie|roast|tagine|bean|lentil|jollof|paella|risotto|masala|rogan josh|korma|madras|bhuna|jalfrezi|dopiaza|butter chicken|biryani|bourguignon|coq au vin|moussaka|borscht|stroganoff|paprikash|osso buco|cacciatore|fabada|caldo|ratatouille|keema|saag|mapo|massaman|tom kha|pot roast|rendang|feijoada|gumbo|jambalaya|pozole|jjigae|doro wat|bobotie|pulled pork|paneer|aloo gobi|chana|mac and cheese|plov|adobo|enchiladas|jerk)\b/i;
+const SEAFOOD = /\b(fish|salmon|cod|haddock|prawns?|shrimp|mackerel|trout|tuna|sea bass|squid|mussels?|seafood|scallops?)\b/i;
+const RICE = /\brice\b(?! (noodles?|vinegar|wine|paper|flour|cakes?|crackers?))/i;
+
+/**
+ * A guess for dishes that obviously make extra, so "Made extra?" starts with a sensible number of portions and a safe
+ * eat-by date without anyone editing every recipe. Pot dishes get 3 portions and 3 days; rice shortens that to a day (cooked rice
+ * should not wait), fish to two. Quick plates (stir-fries, salads, fajitas) get no guess and keep the plain defaults.
+ */
+export function suggestLeftovers(meal?: LeftoverSource): Meal['makesLeftovers'] | undefined {
+  if (!meal?.title) return undefined;
+  const name = [meal.title, ...(meal.tags ?? [])].join(' ');
+  if (!BATCH.test(name)) return undefined;
+  const text = [meal.title, ...(meal.ingredients ?? [])].join(' ');
+  let keepDays = 3;
+  if (SEAFOOD.test(text)) keepDays = Math.min(keepDays, 2);
+  if (RICE.test(text)) keepDays = Math.min(keepDays, 1);
+  return { portions: 3, keepDays };
+}
+
+const leftoversOf = (meal?: LeftoverSource) => meal?.makesLeftovers ?? suggestLeftovers(meal);
+
+export const keepDaysFor = (meal?: LeftoverSource): number => {
+  const n = leftoversOf(meal)?.keepDays;
   return typeof n === 'number' && n >= 1 && n <= 7 ? Math.round(n) : DEFAULT_KEEP_DAYS;
 };
 
-export const defaultPortions = (meal?: Pick<Meal, 'makesLeftovers'>): number => {
-  const n = meal?.makesLeftovers?.portions;
+export const defaultPortions = (meal?: LeftoverSource): number => {
+  const n = leftoversOf(meal)?.portions;
   return typeof n === 'number' && n >= 1 ? Math.min(MAX_LEFTOVER_PORTIONS, Math.round(n)) : 2;
 };
 
 /** The fridge entry for leftovers: "Use next", and eat-by a few days on. */
 export function leftoverFridgeItem(
-  meal: { title: string; makesLeftovers?: Meal['makesLeftovers'] },
+  meal: LeftoverSource & { title: string },
   portions: number,
   now: Date = new Date()
 ): Omit<PantryItem, 'id' | 'addedDate'> {

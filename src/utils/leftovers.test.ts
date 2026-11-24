@@ -55,3 +55,35 @@ test('the fridge keeps a valid useBy and drops a bad one, through the shared ser
   const next = applyFridgeOp({ version: 1, seeded: true, items: [] }, { type: 'add', item: { id: 'x', name: 'Leftover Chilli', freshness: 'red', useBy: '2026-02-02' } });
   assert.equal(next.items[0].useBy, '2026-02-02');
 });
+
+import { suggestLeftovers } from './leftovers';
+import { INITIAL_MEALS } from '../data/initialData';
+
+test('pot dishes get a leftovers guess; quick plates keep the plain defaults', () => {
+  assert.deepEqual(suggestLeftovers({ title: 'Beef Stew', ingredients: ['beef', 'carrot'] }), { portions: 3, keepDays: 3 });
+  assert.deepEqual(suggestLeftovers({ title: 'Lamb Rogan Josh' }), { portions: 3, keepDays: 3 });
+  assert.equal(suggestLeftovers({ title: 'Greek salad' }), undefined);
+  assert.equal(suggestLeftovers({ title: 'Quick Chicken Chow Mein' }), undefined);
+  assert.equal(suggestLeftovers(undefined), undefined);
+  assert.equal(defaultPortions({ title: 'Greek salad' }), 2);
+  assert.equal(keepDaysFor({ title: 'Greek salad' }), 3);
+});
+
+test('rice shortens the keep time to a day and fish to two', () => {
+  assert.equal(keepDaysFor({ title: 'Chicken Curry', ingredients: ['basmati rice'] }), 1);
+  assert.equal(keepDaysFor({ title: 'Fish Curry', ingredients: ['cod'] }), 2);
+  assert.equal(keepDaysFor({ title: 'Chicken Curry', ingredients: ['rice noodles'] }), 3, 'rice noodles are not cooked rice');
+});
+
+test('a dish\'s own makesLeftovers beats the guess', () => {
+  const own = { title: 'Beef Stew', makesLeftovers: { portions: 6, keepDays: 2 } };
+  assert.equal(defaultPortions(own), 6);
+  assert.equal(keepDaysFor(own), 2);
+});
+
+test('the starter chilli and shepherd\'s pie are recognised as batch dishes', () => {
+  const find = (t: string) => INITIAL_MEALS.find((m) => m.title.includes(t))!;
+  assert.deepEqual(suggestLeftovers(find('Chilli Con Carne')), { portions: 3, keepDays: 3 });
+  assert.equal(suggestLeftovers(find('Shepherd')) !== undefined, true);
+  assert.equal(suggestLeftovers(find('Fajita')), undefined);
+});
