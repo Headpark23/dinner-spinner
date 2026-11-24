@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx --test src/utils/dinnerEngine.test.ts src/utils/takeaways.test.ts src/utils/recipeImport.test.ts src/utils/docText.test.ts src/utils/reelParts.test.ts"
+    "test": "tsx --test src/utils/dinnerEngine.test.ts src/utils/takeaways.test.ts src/utils/recipeImport.test.ts src/utils/docText.test.ts src/utils/reelParts.test.ts src/utils/photoSearch.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

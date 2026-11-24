@@ -22,6 +22,8 @@ export interface Meal {
   estimatedCostPerHead?: number;
   origin?: string; // country or region, for World Kitchen dishes
   source?: 'starter' | 'world' | 'own' | 'scanned' | 'idea';
+  /** Who to credit for `imageUrl` when it is a Wikimedia Commons photo. */
+  photoCredit?: { author: string; license: string; licenseUrl: string; source: string };
   tweaks?: MealTweaks;
 }
 

@@ -1,3 +1,4 @@
+import { flagCodeFor, FlagTile } from './CuisineFlag';
 import React, { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 
@@ -405,6 +406,8 @@ export const DishTile: React.FC<{ cuisine?: string; imageUrl?: string; size?: nu
       className={cx('shrink-0 rounded-xl object-cover', className)}
       style={{ width: size, height: size }}
     />
+  ) : flagCodeFor(cuisine) ? (
+    <FlagTile code={flagCodeFor(cuisine)!} size={size} className={className} />
   ) : (
     <span
       aria-hidden="true"

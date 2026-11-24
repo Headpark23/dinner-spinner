@@ -50,7 +50,7 @@ export const DishRow: React.FC<{
   onToggle: () => void;
   children?: React.ReactNode;
 }> = ({ meal, title, detail, rating, cuisine, open, onToggle, children }) => {
-  const photo = meal ? photoFor(meal.id) : undefined;
+  const photo = meal ? meal.imageUrl || photoFor(meal.id) : undefined;
   return (
     <li>
       <button

@@ -9,6 +9,7 @@ import { applyFridgeOp, type FridgeState } from './src/utils/fridge';
 import { cleanLog, unionLog } from './src/utils/history';
 import { DEFAULT_RADIUS_M, MAX_RADIUS_M, chainOf, cleanHub, distanceM, emptyHub, mergeHub, placeFromHtml, sameSpot, type SharedSpot } from './src/utils/takeaways';
 import { createPlaces, type Places } from './src/server/places';
+import { createPhotoSearch } from './src/server/photoSearch';
 import { fetchPublicPage } from './src/server/fetchPage';
 import { extractRecipeFromHtml, htmlToText } from './src/utils/recipeImport';
 import { Household, HttpError, Store, UserLink, createFileStore, createStoreFromEnv, mutate } from './src/server/store';
@@ -773,6 +774,19 @@ function getSimulatedVisionResponse(type: string, textPrompt?: string) {
     },
   };
 }
+
+// A freely licensed photo for a dish (Wikimedia Commons), so recipes the family adds get a picture. Only the dish name is sent.
+let photoSearch = createPhotoSearch(fetch);
+export const usePhotoSearch = (next: ReturnType<typeof createPhotoSearch>) => {
+  photoSearch = next;
+};
+app.get('/api/photos/find', rateLimit('photo', 60, 10 * 60_000), async (req, res) => {
+  const title = typeof req.query.title === 'string' ? req.query.title.trim().slice(0, 100) : '';
+  if (title.length < 3) return res.status(400).json({ error: 'Give the dish a name first.' });
+  const found = await photoSearch.findPhoto(title);
+  res.set('Cache-Control', 'public, max-age=86400');
+  res.json({ photo: found });
+});
 
 // Recipe from a web address. Most recipe sites embed structured recipe data, which we read directly (no AI needed).
 // If a page has none, the readable text comes back so the phone can still split it into a draft.
