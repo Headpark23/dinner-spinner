@@ -25,6 +25,10 @@ export type Household = {
   cookLog?: unknown[];
   /** Local takeaways, the family's scores and notes. Merged by id from every phone. */
   takeaways?: TakeawayHub;
+  /** Lists kept in step across phones: recipes, hidden dishes, cupboard, likes, dislikes, staples. */
+  shared?: Record<string, { version: number; seeded: boolean; data: unknown[]; applied?: string[] }>;
+  /** Phones that asked to be told about votes (Web Push). */
+  push?: import('./push').PushSub[];
   /** Bumped on every save so two phones writing at once can't silently overwrite each other. */
   _rev?: number;
   /** Older files kept the saved copy inline. Only the file store still uses this. */

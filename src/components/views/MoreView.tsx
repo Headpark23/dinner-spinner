@@ -1,4 +1,5 @@
 import React from 'react';
+import { VoteNotificationsCard } from '../VoteNotifications';
 import { Bike, BarChart3, Users, UsersRound, HardDriveDownload, CircleHelp, Volume2, VolumeX, ChevronRight, Leaf } from 'lucide-react';
 import { useDinner } from '../../context/DinnerContext';
 import { Card, PageHeader, cx } from '../ui';
@@ -70,6 +71,7 @@ export const MoreView: React.FC<{ onOpenProfile: () => void; onOpenRules: () => 
       <PageHeader title="More" />
 
       <InstallCard />
+      <VoteNotificationsCard />
 
       <ul className="space-y-2.5">
         {rows.map((row) => (

@@ -14,6 +14,8 @@ import { createPhotoSearch } from './src/server/photoSearch';
 import { fetchPublicPage } from './src/server/fetchPage';
 import { extractRecipeFromHtml, htmlToText } from './src/utils/recipeImport';
 import { Household, HttpError, Store, UserLink, createFileStore, createStoreFromEnv, mutate } from './src/server/store';
+import { cleanSub, notActor, pushPublicKey, sendToAll, voteMessage, type PushSub } from './src/server/push';
+import { SHARED, applySharedOp, emptyShared, isSharedName, type SharedName, type SharedState } from './src/utils/sharedSync';
 
 dotenv.config();
 
@@ -596,13 +598,111 @@ app.get('/api/tonight', requireHousehold, (req, res) => {
 
 app.post('/api/tonight', smallJson, requireHousehold, async (req, res) => {
   const body = req.body || {};
+  const id = (req as AuthedRequest).householdId!;
   try {
-    const t = await mutate(store, (req as AuthedRequest).householdId!, (h) => applyTonightOp(h, body));
-    res.json(t);
+    let subs: PushSub[] = [];
+    const t = await mutate(store, id, (h) => {
+      subs = h.push || [];
+      return applyTonightOp(h, body);
+    });
+    // Tell the other phones. Awaited, because a serverless host may freeze once the reply is sent.
+    const msg = voteMessage(String(body.op || ''), body, t as any);
+    let notified = 0;
+    if (msg) {
+      const targets = notActor(subs, msg.actor);
+      if (targets.length) {
+        const { sent, gone } = await sendToAll(targets, msg.payload);
+        notified = sent;
+        if (gone.length) await forgetPushSubs(id, gone);
+      }
+    }
+    res.json({ ...t, notified });
   } catch (err) {
     if (err instanceof HttpError) return res.status(err.status).json(err.body);
     fail(res, err);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Other shared lists (recipes, hidden dishes, store cupboard, likes, dislikes, "always have").
+// Same model as the fridge: small operations, a version number, the first phone seeds.
+// ---------------------------------------------------------------------------
+const sharedOf = (h: Household, name: SharedName): SharedState<any[]> => {
+  const all = (h.shared ||= {});
+  return (all[name] ||= emptyShared()) as SharedState<any[]>;
+};
+
+app.get('/api/shared/:name', requireHousehold, (req, res) => {
+  const name = req.params.name;
+  if (!isSharedName(name)) return res.status(404).json({ error: 'Unknown list' });
+  const st = sharedOf((req as AuthedRequest).household!, name);
+  // Phones poll every few seconds; when nothing changed, don't send the whole list again.
+  if (req.query.v !== undefined && Number(req.query.v) === st.version) return res.json({ version: st.version, seeded: st.seeded, unchanged: true });
+  res.json(st);
+});
+
+app.post('/api/shared/:name/ops', smallJson, requireHousehold, async (req, res) => {
+  const name = req.params.name;
+  if (!isSharedName(name)) return res.status(404).json({ error: 'Unknown list' });
+  const ops = Array.isArray(req.body?.ops) ? req.body.ops.slice(0, 200) : [];
+  if (ops.length === 0) return res.status(400).json({ error: 'No operations' });
+  const { kind, max } = SHARED[name];
+  try {
+    const st = await mutate(store, (req as AuthedRequest).householdId!, (h) => {
+      const next = ops.reduce((s: SharedState<any[]>, op: unknown) => applySharedOp(kind, max, s, op), sharedOf(h, name));
+      next.version += 1;
+      h.shared![name] = next;
+      return next;
+    });
+    res.json(st);
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Vote notifications (Web Push). Each phone registers itself under the person it belongs to.
+// ---------------------------------------------------------------------------
+async function forgetPushSubs(id: string, endpoints: string[]) {
+  try {
+    await mutate(store, id, (h) => {
+      h.push = (h.push || []).filter((s) => !endpoints.includes(s.endpoint));
+    });
+  } catch {
+    // tidy-up only
+  }
+}
+
+app.get('/api/push/key', (_req, res) => {
+  res.json({ publicKey: pushPublicKey() });
+});
+
+app.post('/api/push/subscribe', smallJson, requireHousehold, async (req, res) => {
+  const sub = cleanSub(req.body?.subscription, req.body?.name);
+  if (!sub) return res.status(400).json({ error: 'Missing notification details or name.' });
+  try {
+    const count = await mutate(store, (req as AuthedRequest).householdId!, (h) => {
+      h.push = [...(h.push || []).filter((s) => s.endpoint !== sub.endpoint), sub].slice(-30);
+      return h.push.length;
+    });
+    res.json({ ok: true, phones: count });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+app.post('/api/push/unsubscribe', smallJson, requireHousehold, async (req, res) => {
+  await forgetPushSubs((req as AuthedRequest).householdId!, [String(req.body?.endpoint || '')]);
+  res.json({ ok: true });
+});
+
+app.post('/api/push/test', smallJson, requireHousehold, async (req, res) => {
+  const h = (req as AuthedRequest).household!;
+  const sub = (h.push || []).find((s) => s.endpoint === String(req.body?.endpoint || ''));
+  if (!sub) return res.status(404).json({ error: 'This phone isn’t signed up for notifications yet.' });
+  const { sent, gone } = await sendToAll([sub], { title: 'Dinner Spinner', body: `Notifications are working for ${sub.name}.`, tag: 'test' });
+  if (gone.length) await forgetPushSubs((req as AuthedRequest).householdId!, gone);
+  res.status(sent ? 200 : 502).json({ ok: sent > 0 });
 });
 
 function applyTonightOp(h: Household, body: any): Tonight {
@@ -679,7 +779,10 @@ function withTimeout<T>(promise: Promise<T>, ms = GEMINI_TIMEOUT_MS): Promise<T>
 // Gemini is sometimes overloaded (503) or rate limited (429), and old models get retired (404). So: try the main model,
 // then another current flash model (found by asking Gemini what exists, not hard-coded), then the main one once more.
 // The whole thing has a time budget that fits inside the serverless limit.
-const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+// The newest flash models are often swamped or over quota (Nov 2026: 3.6-3.8 failed every scan), so the default is a
+// steadier one, with fast "lite" models as the first fallbacks. They answer in 1-4 seconds and read photos fine.
+const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+const PREFERRED_FALLBACKS = ['gemini-3.5-flash-lite', 'gemini-flash-lite-latest', 'gemini-3.1-flash-lite'];
 const GEMINI_BUDGET_MS = 26000;
 const isBusyError = (e: any) =>
   /\b(503|429|404|UNAVAILABLE|RESOURCE_EXHAUSTED|NOT_FOUND|overloaded|high demand|timed out|abort)/i.test(String(e?.message || e));
@@ -688,11 +791,13 @@ let fallbackCache: { at: number; models: string[] } | null = null;
 async function fallbackModels(): Promise<string[]> {
   if (fallbackCache && Date.now() - fallbackCache.at < 10 * 60_000) return fallbackCache.models;
   const found: { name: string; v: number }[] = [];
+  const preferred: string[] = [];
   try {
     const pager: any = await withTimeout(ai!.models.list(), 4000);
     for await (const m of pager) {
       const name = String(m.name || '').replace(/^models\//, '');
       const actions: string[] = m.supportedActions || [];
+      if (PREFERRED_FALLBACKS.includes(name) && name !== PRIMARY_MODEL) preferred.push(name);
       if (!/flash/i.test(name) || /image|tts|audio|live|embed|robot|computer|lite|thinking|exp/i.test(name)) continue;
       if (actions.length && !actions.includes('generateContent')) continue;
       if (name === PRIMARY_MODEL) continue;
@@ -702,7 +807,8 @@ async function fallbackModels(): Promise<string[]> {
     console.warn('Could not list Gemini models:', (e as any)?.message);
   }
   found.sort((x, y) => y.v - x.v);
-  const models = found.slice(0, 2).map((m) => m.name);
+  preferred.sort((a, b) => PREFERRED_FALLBACKS.indexOf(a) - PREFERRED_FALLBACKS.indexOf(b));
+  const models = [...preferred.slice(0, 2), ...found.slice(0, 1).map((m) => m.name)];
   console.warn('Gemini fallback models:', models.join(', ') || '(none)');
   fallbackCache = { at: Date.now(), models };
   return models;
@@ -721,7 +827,7 @@ async function generateWithFallback(request: any): Promise<any> {
     const model =
       round % 2 === 0 ? PRIMARY_MODEL : (fallbacks || []).filter((m) => !dead.has(m))[Math.floor(round / 2) % Math.max(1, (fallbacks || []).length)];
     if (model && !dead.has(model)) {
-      const ms = Math.min(round === 0 ? 12000 : 9000, left() - 300);
+      const ms = Math.min(round === 0 ? 14000 : 9000, left() - 300);
       if (ms < 2500) throw last || new Error('Gemini timed out');
       try {
         return await withTimeout(
@@ -742,6 +848,18 @@ async function generateWithFallback(request: any): Promise<any> {
 
 // Realistic UK Kitchen Demo Fallbacks when GEMINI_API_KEY is not configured
 function getSimulatedVisionResponse(type: string, textPrompt?: string) {
+  if (type === 'snap-cupboard') {
+    return {
+      demoMode: true,
+      detectedItems: [
+        { name: 'Chopped Tomatoes', category: 'Tins & jars', freshness: 'green', estimatedQuantity: '3 tins' },
+        { name: 'Coconut Milk', category: 'Tins & jars', freshness: 'green', estimatedQuantity: '1 tin' },
+        { name: 'Soy Sauce', category: 'Sauces & condiments', freshness: 'green', estimatedQuantity: '1 bottle' },
+        { name: 'Basmati Rice', category: 'Pasta, rice & grains', freshness: 'green', estimatedQuantity: 'half a bag' },
+        { name: 'Smoked Paprika', category: 'Herbs & spices', freshness: 'green', estimatedQuantity: '1 jar' },
+      ],
+    };
+  }
   if (type === 'snap-fridge') {
     return {
       demoMode: true,
@@ -881,7 +999,7 @@ app.post('/api/pantry/analyze', imageJson, rateLimit('scan', 20, 10 * 60_000), a
   try {
     const { type, imageBase64, mimeType = 'image/jpeg', textPrompt, demo } = req.body || {};
 
-    if (!type || !['snap-fridge', 'scan-receipt', 'recipe-photo', 'recipe-text'].includes(type)) {
+    if (!type || !['snap-fridge', 'snap-cupboard', 'scan-receipt', 'recipe-photo', 'recipe-text'].includes(type)) {
       return res.status(400).json({ error: `Unsupported analysis type: ${type}` });
     }
 
@@ -918,8 +1036,15 @@ app.post('/api/pantry/analyze', imageJson, rateLimit('scan', 20, 10 * 60_000), a
       });
     }
 
-    if (type === 'snap-fridge') {
-      const prompt = `You are the pantry inventory scanner for a UK kitchen. Look at this photo of a fridge or store cupboard. Identify all distinct food items, ingredients, vegetables, meats, dairy, and condiments visible.
+    if (type === 'snap-fridge' || type === 'snap-cupboard') {
+      const prompt = type === 'snap-cupboard'
+        ? `You are the inventory scanner for a UK kitchen. Look at this photo of a store cupboard, larder or shelf. Identify every distinct tin, jar, packet, bottle, sauce, spice and dry good you can read or recognise.
+For each item:
+- name: clear UK English product name without the brand where possible (e.g. "Chopped Tomatoes", "Coconut Milk", "Basmati Rice", "Soy Sauce", "Smoked Paprika", "Chickpeas").
+- category: one of ["Tins & jars", "Sauces & condiments", "Pasta, rice & grains", "Herbs & spices", "Baking", "Oils & vinegars", "Other"].
+- freshness: always "green".
+- estimatedQuantity: rough quantity (e.g. "2 tins", "1 jar", "half a bag").`
+        : `You are the pantry inventory scanner for a UK kitchen. Look at this photo of a fridge or store cupboard. Identify all distinct food items, ingredients, vegetables, meats, dairy, and condiments visible.
 For each item:
 - name: clear UK English ingredient name (e.g., "Mature Cheddar", "Courgettes", "Semi-Skimmed Milk", "Greek Style Yoghurt", "Free-Range Eggs", "Chestnut Mushrooms").
 - category: one of ["Produce", "Dairy & Eggs", "Meat & Fish", "Cupboard & Grains", "Sauces & Condiments", "Bakery", "Frozen"].

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { VoteNotificationsCard } from '../VoteNotifications';
 import { useDinner } from '../../context/DinnerContext';
 import { Check, X, Copy, UserPlus, Trash2, CircleAlert, RotateCcw, Dices, Clock, Bell, BellOff } from 'lucide-react';
 import confetti from 'canvas-confetti';
@@ -186,6 +187,9 @@ export const VotingView: React.FC = () => {
         <Button variant="primary" className="mt-6" onClick={() => setActiveView(0)}>
           <Dices className="h-4 w-4" /> Go to the spinner
         </Button>
+        <div className="mt-8 w-full text-left">
+          <VoteNotificationsCard compact />
+        </div>
       </div>
     );
   }
@@ -392,6 +396,8 @@ export const VotingView: React.FC = () => {
           </p>
         )}
       </div>
+
+      <VoteNotificationsCard compact />
 
       {liveActive ? <LiveVoteCard /> : (<>
       {householdCode && (

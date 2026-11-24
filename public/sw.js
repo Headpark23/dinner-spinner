@@ -29,14 +29,38 @@ self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
-// Tapping a step reminder brings the app forward (or opens it) on the cooking screen.
+// A vote notification sent by the server (someone suggested dinner, voted, or it's agreed).
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (e) {
+    data = { body: event.data ? event.data.text() : '' };
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'Dinner Spinner', {
+      body: data.body || '',
+      tag: data.tag || 'dinner-spinner',
+      renotify: true,
+      icon: '/icons/icon-192.png',
+      vibrate: [200, 100, 200],
+      data: { url: data.url || '/tonight' },
+    })
+  );
+});
+
+// Tapping a step reminder or vote notification brings the app forward (or opens it) on the Tonight screen.
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const target = (event.notification.data && event.notification.data.url) || '/';
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
       const open = wins.find((w) => new URL(w.url).origin === self.location.origin);
-      return open ? open.focus() : self.clients.openWindow(target);
+      if (open) {
+        open.postMessage({ type: 'open-tonight' });
+        return open.focus();
+      }
+      return self.clients.openWindow(target);
     })
   );
 });

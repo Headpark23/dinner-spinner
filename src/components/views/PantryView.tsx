@@ -1,4 +1,6 @@
 import React, { useRef, useState } from 'react';
+import { CupboardPanel } from '../CupboardPanel';
+import { shrinkImage } from '../../utils/shrinkImage';
 import { useDinner } from '../../context/DinnerContext';
 import { DietPicker } from '../DietPicker';
 import { MemberPrefs } from '../MemberPrefs';
@@ -26,6 +28,8 @@ import {
   Star,
   X,
   Heart,
+  Ban,
+  Package,
   Search,
   Send,
   Dices,
@@ -61,19 +65,20 @@ import {
   effortLabel,
 } from '../ui';
 
-type Tab = 'fridge' | 'freezer' | 'vault' | 'missing' | 'camera' | 'staples' | 'banned';
-type ScanType = 'snap-fridge' | 'scan-receipt' | 'recipe-photo' | 'recipe-text';
+type Tab = 'fridge' | 'cupboard' | 'freezer' | 'vault' | 'missing' | 'camera' | 'staples' | 'banned';
+type ScanType = 'snap-fridge' | 'snap-cupboard' | 'scan-receipt' | 'recipe-photo' | 'recipe-text';
 
 export type PantryScope = 'fridge' | 'recipes' | 'shop';
 
 const initialTabFor = (scope: PantryScope): Tab => {
   if (scope === 'recipes') return 'vault';
   if (scope === 'shop') return 'missing';
-  // The Dinner screen's freezer card asks for the Freezer tab once.
+  // The Dinner screen's shortcuts (freezer, cupboard, likes & dislikes) ask for a tab once.
   try {
-    if (sessionStorage.getItem('ds_pantry_tab') === 'freezer') {
+    const asked = sessionStorage.getItem('ds_pantry_tab');
+    if (asked === 'freezer' || asked === 'cupboard' || asked === 'banned') {
       sessionStorage.removeItem('ds_pantry_tab');
-      return 'freezer';
+      return asked;
     }
   } catch {
     // ignore
@@ -101,6 +106,9 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
     likedIngredients,
     addLikedIngredient,
     removeLikedIngredient,
+    cupboard,
+    addCupboardItems,
+    householdCode,
     shelvedMeals,
     meals,
     addMeal,
@@ -245,7 +253,19 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
         setSurpriseStep('spin');
         setActiveView(0);
       }
+    } else if (type === 'snap-cupboard' && data.detectedItems) {
+      addCupboardItems(data.detectedItems.map((item: any) => ({ name: item.name, shelf: item.category, quantity: item.estimatedQuantity })));
+      flash(
+        data.detectedItems.length
+          ? `Added ${data.detectedItems.length} things to the cupboard${note}.`
+          : 'Couldn’t make anything out on that shelf. Try a closer, brighter photo.'
+      );
+      setActiveTab('cupboard');
     } else if (type === 'scan-receipt' && data.items) {
+      // Tins, jars, sauces and dry goods go in the cupboard; the rest in the fridge.
+      const forCupboard = (item: any) => /cupboard|grain|sauce|condiment/i.test(item.category || '');
+      addCupboardItems(data.items.filter(forCupboard).map((item: any) => ({ name: item.name, quantity: item.quantity })));
+      data.items = data.items.filter((item: any) => !forCupboard(item));
       data.items.forEach((item: any) =>
         addPantryItem({
           name: item.name,
@@ -327,9 +347,15 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const type = currentUploadType;
     const reader = new FileReader();
-    reader.onload = () =>
-      callAnalyze(currentUploadType, { imageBase64: reader.result as string, mimeType: file.type || 'image/jpeg' });
+    // Full-size phone photos are too big to upload (the host stops at about 4.5 MB), so shrink first.
+    reader.onload = async () => {
+      setAnalyzing(type);
+      const original = reader.result as string;
+      const small = await shrinkImage(original);
+      callAnalyze(type, small ? { imageBase64: small, mimeType: 'image/jpeg' } : { imageBase64: original, mimeType: file.type || 'image/jpeg' });
+    };
     reader.onerror = () => setAnalysisError('Couldn’t read that image file.');
     reader.readAsDataURL(file);
   };
@@ -419,10 +445,11 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
     scope === 'fridge'
       ? [
           { id: 'fridge', label: 'In the fridge', count: pantry.length },
+          { id: 'cupboard', label: 'Cupboard', count: cupboard.length || undefined },
           { id: 'freezer', label: 'Freezer', count: freezerPortions || undefined },
+          { id: 'banned', label: 'Likes & dislikes', count: likedIngredients.length + bannedIngredients.length || undefined },
           { id: 'camera', label: 'Add by photo' },
           { id: 'staples', label: 'Always have' },
-          { id: 'banned', label: 'Likes and dislikes' },
         ]
       : [];
 
@@ -483,6 +510,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
 
   const allScanRows: { type: ScanType; icon: React.ReactNode; title: string; body: string }[] = [
     { type: 'snap-fridge', icon: <Camera className="h-5 w-5" />, title: 'Photo of the fridge', body: 'Adds what it sees, with a freshness guess.' },
+    { type: 'snap-cupboard', icon: <Package className="h-5 w-5" />, title: 'Photo of the cupboard', body: 'Lists your tins, jars, sauces and spices.' },
     { type: 'scan-receipt', icon: <Receipt className="h-5 w-5" />, title: 'Supermarket receipt', body: 'Adds the food lines from your shop.' },
     { type: 'recipe-photo', icon: <BookOpen className="h-5 w-5" />, title: 'Recipe page or plate', body: 'Turns it into a recipe with a timeline.' },
   ];
@@ -537,7 +565,6 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
         ref={fileInputRef}
         onChange={handleFileChange}
         accept="image/*"
-        capture="environment"
         className="hidden"
         aria-hidden="true"
         tabIndex={-1}
@@ -573,7 +600,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
       )}
 
       {tabs.length > 0 && (
-        <div role="tablist" aria-label="Fridge sections" className="-mx-4 flex gap-1.5 overflow-x-auto px-4 scrollbar-none">
+        <div role="tablist" aria-label="Fridge sections" className="flex flex-wrap gap-1.5">
           {tabs.map((tab) => {
             const selected = activeTab === tab.id;
             return (
@@ -1270,6 +1297,8 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
         {/* SCAN */}
         {activeTab === 'camera' && renderScan()}
 
+        {activeTab === 'cupboard' && <CupboardPanel onScan={() => triggerCameraUpload('snap-cupboard')} />}
+
         {/* STAPLES */}
         {activeTab === 'staples' && (
           <Card className="space-y-3 p-4">
@@ -1302,11 +1331,51 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
 
         {/* AVOID */}
         {activeTab === 'banned' && (
+          <div className="space-y-3">
+          <p className="px-1 text-[13px] text-ink-2">
+            {householdCode ? 'Shared with your family group.' : 'On this phone only. Start a family group to share them.'}
+          </p>
           <Card className="space-y-3 p-4">
-            <p className="text-[15px] font-semibold">Diets</p>
-            <DietPicker value={diets} onToggle={toggleDiet} />
-            <MemberPrefs />
-            <p className="pt-2 text-[15px] font-semibold">Never</p>
+            <p className="flex items-center gap-2 text-[15px] font-semibold">
+              <Heart className="h-4 w-4 fill-sage text-sage" /> Likes
+            </p>
+            <p className="text-[14px] text-ink-2">
+              Add what you enjoy and we’ll bring in more dishes built on it, and favour it when replacing anything.
+            </p>
+            {likedIngredients.length === 0 ? (
+              <p className="text-[14px] text-ink-3">Nothing here yet.</p>
+            ) : (
+              <ul className="flex flex-wrap gap-1.5">
+                {likedIngredients.map((ing) => (
+                  <li key={ing} className="inline-flex items-center gap-1 rounded-full bg-sage-soft py-1 pr-1 pl-3 text-[13px] text-sage">
+                    {ing}
+                    <button onClick={() => removeLikedIngredient(ing)} aria-label={`Stop favouring ${ing}`} className="rounded-full p-1 opacity-70 hover:opacity-100">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <form
+              className={CHIP_LIST_INPUT}
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!newLovedName.trim()) return;
+                const note = addLikedIngredient(newLovedName.trim());
+                if (note) flash(note);
+                setNewLovedName('');
+              }}
+            >
+              <TextInput value={newLovedName} onChange={(e) => setNewLovedName(e.target.value)} placeholder="e.g. Chilli" aria-label="Ingredient you love" />
+              <Button type="submit" variant="secondary" disabled={!newLovedName.trim()}>
+                Like
+              </Button>
+            </form>
+          </Card>
+          <Card className="space-y-3 p-4">
+            <p className="flex items-center gap-2 text-[15px] font-semibold">
+              <Ban className="h-4 w-4 text-tomato" /> Dislikes
+            </p>
             <p className="text-[14px] text-ink-2">
               Dishes with these leave your recipes and are replaced by ones you might like. Take an ingredient off and its
               dishes come back.
@@ -1353,40 +1422,13 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
               </p>
             )}
 
-            <p className="pt-3 text-[15px] font-semibold">Love</p>
-            <p className="text-[14px] text-ink-2">
-              Add what you enjoy and we’ll bring in more dishes built on it, and favour it when replacing anything.
-            </p>
-            {likedIngredients.length === 0 ? (
-              <p className="text-[14px] text-ink-3">Nothing here yet.</p>
-            ) : (
-              <ul className="flex flex-wrap gap-1.5">
-                {likedIngredients.map((ing) => (
-                  <li key={ing} className="inline-flex items-center gap-1 rounded-full bg-sage-soft py-1 pr-1 pl-3 text-[13px] text-sage">
-                    {ing}
-                    <button onClick={() => removeLikedIngredient(ing)} aria-label={`Stop favouring ${ing}`} className="rounded-full p-1 opacity-70 hover:opacity-100">
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <form
-              className={CHIP_LIST_INPUT}
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!newLovedName.trim()) return;
-                const note = addLikedIngredient(newLovedName.trim());
-                if (note) flash(note);
-                setNewLovedName('');
-              }}
-            >
-              <TextInput value={newLovedName} onChange={(e) => setNewLovedName(e.target.value)} placeholder="e.g. Chilli" aria-label="Ingredient you love" />
-              <Button type="submit" variant="secondary" disabled={!newLovedName.trim()}>
-                Love
-              </Button>
-            </form>
           </Card>
+          <Card className="space-y-3 p-4">
+            <p className="text-[15px] font-semibold">Diets and each person’s needs</p>
+            <DietPicker value={diets} onToggle={toggleDiet} />
+            <MemberPrefs />
+          </Card>
+          </div>
         )}
       </div>
       {sheetMeal && (
