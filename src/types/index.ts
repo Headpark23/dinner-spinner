@@ -4,6 +4,8 @@ export type FreshnessLevel = 'green' | 'amber' | 'red'; // Red = "Use Next" (pri
 export type MachineMode = 'single' | '3-reel' | '4-reel' | 'sunday';
 
 export interface Meal {
+  /** A dish that usually makes extra: how many portions, and how many days they keep in the fridge. */
+  makesLeftovers?: { portions: number; keepDays: number };
   id: string;
   title: string;
   description: string;
@@ -91,6 +93,8 @@ export interface PantryItem {
   freshness: FreshnessLevel;
   quantity?: string;
   addedDate: string;
+  /** Eat-by date, YYYY-MM-DD. Set for leftovers; shown amber then red as it nears. */
+  useBy?: string;
 }
 
 /** A batch-cooked meal in the freezer, split into portions that get ticked off as they are eaten. */
@@ -152,6 +156,7 @@ export interface CookLogEntry {
   date: string; // ISO timestamp the household finished cooking
   rescued: string[]; // Use-next pantry items cleared by this cook
   reviews?: MealReview[]; // after-dinner household verdicts
+  leftovers?: { route: 'fridge' | 'freezer'; portions: number }; // where the rest went
 }
 
 export interface TakeawayLogEntry {

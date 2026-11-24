@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { useDinner } from '../../context/DinnerContext';
 import { DietPicker } from '../DietPicker';
 import { MemberPrefs } from '../MemberPrefs';
+import { useByLabel, useByStatus } from '../../utils/leftovers';
 import { ImportRecipe } from '../ImportRecipe';
 import { DeliverySheet } from '../DeliverySheet';
 import type { ImportedRecipe } from '../../utils/recipeImport';
@@ -436,6 +437,18 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
                   {item.category}
                   {item.quantity ? ` · ${item.quantity}` : ''}
                 </p>
+                {useByLabel(item.useBy) && (
+                  <p
+                    className={cx(
+                      'truncate text-[12px] font-medium',
+                      (useByStatus(item.useBy) === 'over' || useByStatus(item.useBy) === 'today') && 'text-tomato',
+                      useByStatus(item.useBy) === 'soon' && 'text-saffron',
+                      useByStatus(item.useBy) === 'ok' && 'text-ink-3'
+                    )}
+                  >
+                    {useByLabel(item.useBy)}
+                  </p>
+                )}
               </div>
               <button
                 onClick={() => togglePantryFreshness(item.id)}

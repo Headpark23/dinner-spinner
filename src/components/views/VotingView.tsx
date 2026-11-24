@@ -3,6 +3,7 @@ import { useDinner } from '../../context/DinnerContext';
 import { Check, X, Copy, UserPlus, Trash2, CircleAlert, RotateCcw, Dices, Clock, Bell, BellOff } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { AfterDinnerReview } from '../AfterDinnerReview';
+import { LeftoversStep } from '../LeftoversStep';
 import { RecipeSheet } from '../RecipeSheet';
 import { LiveVoteCard } from '../LiveVote';
 import { quantityFor } from '../../utils/quantities';
@@ -233,6 +234,7 @@ export const VotingView: React.FC = () => {
         {loggedEntry ? (
           <>
             <AfterDinnerReview key={loggedEntry.id} entry={loggedEntry} />
+            <LeftoversStep key={`left-${loggedEntry.id}`} entry={loggedEntry} />
             <Button variant="secondary" block onClick={resetEvening}>
               <RotateCcw className="h-4 w-4" /> Start a new evening
             </Button>

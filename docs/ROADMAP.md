@@ -13,7 +13,7 @@ Effort: S = under a day, M = 1 to 3 days, L = a week or more.
 | 3 | Step alerts | **Mostly built.** Screen wake lock, service-worker notifications and an in-app banner when a step is due. | Real background push (needs a server), install prompt for iPhone. |
 | 4 | Voting from separate phones | **Done, different design.** Household-wide live vote (`LiveVote.tsx`, `/api/tonight`), decided on the server, phones poll. Uses Google-sign-in family groups instead of a 4-digit room code. | Nothing: guests do not need to vote, so no code. |
 | 5 | Dietary needs per person | **Mostly built.** `utils/diets.ts` (vegetarian, vegan, pescatarian, gluten-free, dairy-free, nut-free), `DietPicker`, avoid list with plural matching. | Ask per-person diets during onboarding. |
-| 6 | Leftovers | **Not built.** (`cupboard.ts` has a "leftover rice bowl" recipe only.) | Everything. |
+| 6 | Leftovers | **Mostly built.** "Made extra?" after dinner sends the rest to the fridge (use next, eat-by date) or the freezer; fridge rows show the use-by. | Use-by on ordinary items, auto use-next near the date, `makesLeftovers` on recipes. |
 | 7 | Supermarket links | **Built.** `utils/delivery.ts` (Tesco, Sainsbury's, Asda, Morrisons, Ocado, Waitrose, plus Uber Eats and Just Eat) and `DeliverySheet.tsx`. `planner.ts` also holds a shorter `STORES` list. | Merge the two shop lists. |
 | 8 | Cost per serving | **Built, differently.** `utils/cost.ts` estimates what you would have to *buy* (ingredient price table minus fridge and staples). Cost filter (Free, £5, £10, no limit) and "about £4 to buy" on the result. `Meal.estimatedCostPerHead` is still unused. | Show cost per head, cost on planner, retire the unused field. |
 | 9 | Share a recipe card | **Not built.** `navigator.share` is used only for the family invite link. | Everything. |
@@ -63,11 +63,12 @@ The Freezer tab is built and, as of PR 31, shared with the household like the fr
 - ~~Plain-language note~~ **Done.** The Per person card says it is a preference, not an allergy check; ticking nut-free adds a "read every label" warning.
 - **Still open.** Per-member diets are not asked during onboarding yet, and the clash chip names members only for whole dishes, not single reel parts. Tests: `utils/memberDiets.test.ts`.
 
-### 6. Leftovers (M)
-- Add `makesLeftovers?: { portions: number; keepDays: number }` to `Meal` and a "Made extra?" step in `AfterDinnerReview.tsx`.
-- Two routes: add a fridge item flagged "use next" with an eat-by date (the existing use-next boost then picks it up), or "Freeze the rest" which creates a `FreezerItem` directly.
-- `PantryItem` has no dates. Add an optional `useBy` that turns amber and red as it nears. This also fixes a gap for ordinary fridge items.
-- The fridge is a server-synced store, so extend `FridgeOp` rather than writing around it.
+### 6. Leftovers (mostly done)
+- ~~Made extra?~~ **Done.** After "We've eaten. Log it", `LeftoversStep.tsx` asks how many portions are left and offers "Keep in fridge" or "Freeze it", once per dinner (recorded on the cook log entry as `leftovers`). `Meal.makesLeftovers?: { portions; keepDays }` is in the type to seed the defaults (2 portions, 3 days); no recipe sets it yet.
+- ~~Fridge route~~ **Done.** `utils/leftovers.ts` `leftoverFridgeItem` adds "Leftover <dish>" flagged use next with an eat-by date, so the existing use-next boost and "Use these up" pick it up. Added through the normal fridge queue, so it syncs.
+- ~~Freezer route~~ **Done.** Creates a `FreezerItem` with the dish's `mealId` and a "Leftovers" note.
+- ~~`PantryItem.useBy`~~ **Done.** Optional YYYY-MM-DD, cleaned in `cleanItem` (so the server keeps it). Fridge rows show "Eat within 3 days" (grey), "Eat by tomorrow" (amber), "Eat today" or "Past its date" (red). It is not yet an input for ordinary items.
+- **Still open.** A use-by field when adding an ordinary fridge item; let a use-by date that has passed or arrives soon raise the item to use next on its own; set `makesLeftovers` on recipes that obviously make extra. Tests: `utils/leftovers.test.ts`.
 
 ### 7. Supermarket links (S)
 - Done in `delivery.ts`. Clean-up only: `planner.ts` has its own four-shop `STORES` list used by the shopping tab's store picker, which duplicates `DELIVERY_SHOPS`. Point both at one list so a changed URL is fixed once. Add a test that every shop builds a valid search URL.
