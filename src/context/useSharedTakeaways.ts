@@ -164,10 +164,15 @@ export function useSharedTakeaways(
       adopt(json.hub);
       const added = Number(json.added) || 0;
       const found = Number(json.found) || 0;
-      return {
-        ok: true,
-        message: found === 0 ? 'No takeaways found on the map there. Add your favourites by hand.' : added ? `Found ${added} new ${added === 1 ? 'place' : 'places'}.` : 'Nothing new. You have them all.',
-      };
+      const gone = Number(json.gone) || 0;
+      const parts: string[] = [];
+      if (found === 0) parts.push('No takeaways found on the map there. Add your favourites by hand.');
+      else {
+        parts.push(added ? `Found ${added} new ${added === 1 ? 'place' : 'places'}.` : 'Nothing new. You have them all.');
+        if (gone) parts.push(`${gone} ${gone === 1 ? 'place has' : 'places have'} dropped off the map and may have closed.`);
+        if (json.complete === false) parts.push('The map service was busy, so a few places may be missing. Refresh later to catch them.');
+      }
+      return { ok: true, message: parts.join(' ') };
     } catch {
       return { ok: false, message: 'Couldn’t reach the server.' };
     } finally {

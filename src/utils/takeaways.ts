@@ -19,6 +19,8 @@ export type SharedSpot = {
   source: 'osm' | 'manual';
   addedBy?: string;
   hidden?: boolean;
+  /** A refresh could no longer find it on the map, so it may have closed. */
+  gone?: boolean;
   updatedAt: string;
 };
 
@@ -32,7 +34,15 @@ export type SpotRating = {
   updatedAt: string;
 };
 
-export type TakeawayPlace = { label: string; lat: number; lon: number; updatedAt: string };
+export type TakeawayPlace = {
+  label: string;
+  lat: number;
+  lon: number;
+  updatedAt: string;
+  /** When the map was last searched for takeaways here, and how many places it found. The search is a one-off; refresh on request. */
+  searchedAt?: string;
+  found?: number;
+};
 
 export type TakeawayHub = {
   version: number;
@@ -81,6 +91,7 @@ export function cleanSpot(raw: any, now = new Date().toISOString()): SharedSpot 
     source: raw?.source === 'osm' ? 'osm' : 'manual',
     addedBy: clip(raw?.addedBy, 40) || undefined,
     hidden: raw?.hidden === true ? true : undefined,
+    gone: raw?.gone === true ? true : undefined,
     updatedAt: isoOr(raw?.updatedAt, now),
   };
 }
@@ -106,7 +117,16 @@ export function cleanPlace(raw: any, now = new Date().toISOString()): TakeawayPl
   const lat = num(raw?.lat, -90, 90);
   const lon = num(raw?.lon, -180, 180);
   if (!label || lat === undefined || lon === undefined) return null;
-  return { label, lat, lon, updatedAt: isoOr(raw?.updatedAt, now) };
+  const searchedAt = clip(raw?.searchedAt, 40);
+  const found = typeof raw?.found === 'number' && raw.found >= 0 && raw.found < 10000 ? Math.round(raw.found) : undefined;
+  return {
+    label,
+    lat,
+    lon,
+    updatedAt: isoOr(raw?.updatedAt, now),
+    searchedAt: searchedAt && !Number.isNaN(Date.parse(searchedAt)) ? searchedAt : undefined,
+    found,
+  };
 }
 
 const newer = (a: { updatedAt: string }, b: { updatedAt: string }) => Date.parse(b.updatedAt) >= Date.parse(a.updatedAt);
@@ -177,7 +197,9 @@ export function buildLeague(hub: TakeawayHub, here?: { lat: number; lon: number 
       const votes = scores.length;
       const average = votes ? scores.reduce((t, r) => t + r.stars, 0) / votes : 0;
       return { spot, average, votes, scores, notes: all.filter((r) => r.likes || r.dislikes) };
-    });
+    })
+    // A place that has gone from the map disappears unless the family has scored it (their history stays).
+    .filter((r) => !r.spot.gone || r.votes > 0);
   const dist = (s: SharedSpot) => (here && s.lat !== undefined && s.lon !== undefined ? distanceM(here, { lat: s.lat, lon: s.lon }) : Infinity);
   return rows.sort((a, b) => {
     if ((a.votes > 0) !== (b.votes > 0)) return a.votes > 0 ? -1 : 1;
@@ -309,6 +331,79 @@ export function parseOverpass(json: any, here?: { lat: number; lon: number }): S
     spots.push({ spot, d: here && spot.lat !== undefined && spot.lon !== undefined ? distanceM(here, { lat: spot.lat, lon: spot.lon }) : Infinity });
   }
   return spots.sort((a, b) => (a.d === b.d ? 0 : a.d < b.d ? -1 : 1)).map((s) => s.spot);
+}
+
+/** Search terms used when the Overpass servers are busy and we fall back to Nominatim. */
+export const FALLBACK_TERMS = ['takeaway', 'fast food', 'pizza', 'chinese', 'indian', 'fish and chips', 'kebab'];
+
+/** The map box (west,north,east,south) around a point, for Nominatim's bounded search. */
+export function viewbox(lat: number, lon: number, radiusM: number): string {
+  const dLat = radiusM / 111_320;
+  const dLon = radiusM / (111_320 * Math.max(0.2, Math.cos((lat * Math.PI) / 180)));
+  return [lon - dLon, lat + dLat, lon + dLon, lat - dLat].map((n) => n.toFixed(5)).join(',');
+}
+
+/**
+ * Turns Nominatim search results (with extratags and addressdetails) into spots, nearest first. Only food places that
+ * sell to take away are kept: fast food, restaurants that say so, and anything with takeaway in the name.
+ */
+export function parseNominatimSpots(lists: any[], here?: { lat: number; lon: number }): SharedSpot[] {
+  const now = new Date().toISOString();
+  const spots: { spot: SharedSpot; d: number }[] = [];
+  const seen = new Set<string>();
+  for (const list of lists) {
+    for (const hit of Array.isArray(list) ? list : []) {
+      const t = hit?.extratags || {};
+      const name = clip(hit?.name, 80);
+      const kind = String(hit?.type || '');
+      const cls = String(hit?.category || hit?.class || '');
+      const type = ['node', 'way', 'relation'].includes(hit?.osm_type) ? hit.osm_type : '';
+      if (!name || !type || typeof hit?.osm_id !== 'number') continue;
+      const sellsTakeaway = t.takeaway === 'yes' || t.takeaway === 'only' || /take-?away|chippy/i.test(name);
+      const food = cls === 'amenity' && (kind === 'fast_food' || (kind === 'restaurant' && sellsTakeaway)) || (/caterer|takeaway/.test(kind) && sellsTakeaway);
+      if (!food || t.takeaway === 'no') continue;
+      const a = hit.address || {};
+      const street = [a.house_number, a.road].filter(Boolean).join(' ');
+      const address = [street, a.suburb || a.city || a.town || a.village, a.postcode].filter(Boolean).join(', ');
+      const lat = num(Number(hit.lat), -90, 90);
+      const lon = num(Number(hit.lon), -180, 180);
+      const spot = cleanSpot(
+        {
+          id: `osm_${type[0]}${hit.osm_id}`,
+          name,
+          cuisine: cuisineLabel(t.cuisine) !== 'Takeaway' ? cuisineLabel(t.cuisine) : kind === 'restaurant' ? 'Restaurant' : 'Takeaway',
+          address,
+          phone: t.phone || t['contact:phone'],
+          website: t.website || t['contact:website'],
+          lat,
+          lon,
+          source: 'osm',
+        },
+        now
+      );
+      if (!spot || seen.has(spot.id)) continue;
+      seen.add(spot.id);
+      spots.push({ spot, d: here && spot.lat !== undefined && spot.lon !== undefined ? distanceM(here, { lat: spot.lat, lon: spot.lon }) : Infinity });
+    }
+  }
+  return spots.sort((a, b) => (a.d === b.d ? 0 : a.d < b.d ? -1 : 1)).map((x) => x.spot);
+}
+
+/**
+ * Links for ordering or finding a place. Delivery sites don't offer a stable address for each shop, so the three
+ * big ones are opened through a search that lands on the shop's own page there. The shop's own site is used when known.
+ */
+export function orderLinks(spot: Pick<SharedSpot, 'name' | 'address' | 'lat' | 'lon' | 'website'>, town?: string) {
+  const where = town || '';
+  const q = (extra: string) => 'https://www.google.com/search?q=' + encodeURIComponent(`${spot.name} ${where} ${extra}`.replace(/\s+/g, ' ').trim());
+  const mapQuery = spot.lat !== undefined && spot.lon !== undefined ? `${spot.name} @${spot.lat},${spot.lon}` : `${spot.name} ${spot.address || where}`;
+  return {
+    website: spot.website,
+    directions: 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(mapQuery),
+    justEat: q('site:just-eat.co.uk'),
+    uberEats: q('site:ubereats.com'),
+    deliveroo: q('site:deliveroo.co.uk'),
+  };
 }
 
 /** Reads the first Nominatim hit as a place. */
