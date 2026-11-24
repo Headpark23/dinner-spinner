@@ -1,0 +1,1169 @@
+{
+  "w_fish_chips": {
+    "Haddock Fillets": "4 x 150g",
+    "Maris Piper Potatoes": "1kg",
+    "Plain Flour": "200g",
+    "Cold Lager": "250ml",
+    "Frozen Peas": "200g",
+    "Lemon": "1",
+    "Vegetable Oil": "to fry"
+  },
+  "w_toad_hole": {
+    "Pork Sausages": "8",
+    "Eggs": "4",
+    "Plain Flour": "150g",
+    "Milk": "300ml",
+    "Brown Onions": "2",
+    "Beef Stock": "400ml",
+    "Vegetable Oil": "to fry"
+  },
+  "w_beef_wellington": {
+    "Beef Fillet": "800g",
+    "Chestnut Mushrooms": "500g",
+    "Prosciutto": "8 slices",
+    "Puff Pastry": "500g",
+    "English Mustard": "2 tbsp",
+    "Eggs": "2",
+    "Thyme": "4 sprigs"
+  },
+  "w_cornish_pasty": {
+    "Beef Skirt": "500g",
+    "Potatoes": "400g",
+    "Swede": "200g",
+    "Brown Onions": "2",
+    "Shortcrust Pastry": "500g",
+    "Eggs": "1",
+    "Black Pepper": "to taste"
+  },
+  "w_irish_stew": {
+    "Lamb Neck": "800g",
+    "Potatoes": "800g",
+    "Carrots": "400g",
+    "Brown Onions": "2",
+    "Lamb Stock": "750ml",
+    "Thyme": "4 sprigs",
+    "Parsley": "a handful"
+  },
+  "w_lancashire_hotpot": {
+    "Lamb Shoulder": "800g",
+    "Brown Onions": "2",
+    "Potatoes": "800g",
+    "Lamb Stock": "500ml",
+    "Worcestershire Sauce": "2 tbsp",
+    "Butter": "30g",
+    "Thyme": "4 sprigs"
+  },
+  "w_tikka_masala": {
+    "Chicken Thighs": "800g",
+    "Greek Yoghurt": "150g",
+    "Garam Masala": "2 tbsp",
+    "Tinned Tomatoes": "400g tin",
+    "Double Cream": "150ml",
+    "Garlic": "3 cloves",
+    "Ginger": "1 thumb",
+    "Basmati Rice": "300g"
+  },
+  "w_steak_ale_pie": {
+    "Braising Steak": "800g",
+    "Dark Ale": "330ml",
+    "Brown Onions": "2",
+    "Mushrooms": "200g",
+    "Beef Stock": "500ml",
+    "Puff Pastry": "320g",
+    "Plain Flour": "2 tbsp"
+  },
+  "w_kedgeree": {
+    "Smoked Haddock": "500g",
+    "Basmati Rice": "300g",
+    "Eggs": "4",
+    "Curry Powder": "2 tsp",
+    "Brown Onions": "1",
+    "Butter": "30g",
+    "Parsley": "a handful"
+  },
+  "w_carbonara": {
+    "Spaghetti": "400g",
+    "Guanciale": "150g",
+    "Egg Yolks": "4",
+    "Pecorino Romano": "50g",
+    "Black Pepper": "to taste"
+  },
+  "w_lasagne": {
+    "Beef Mince": "300g",
+    "Pork Mince": "300g",
+    "Tinned Tomatoes": "800g",
+    "Lasagne Sheets": "250g",
+    "Milk": "600ml",
+    "Butter": "60g",
+    "Plain Flour": "60g",
+    "Parmesan": "60g"
+  },
+  "w_risotto_milanese": {
+    "Arborio Rice": "320g",
+    "Saffron": "1 tsp",
+    "Chicken Stock": "1 litre",
+    "Brown Onions": "1",
+    "White Wine": "150ml",
+    "Butter": "50g",
+    "Parmesan": "50g"
+  },
+  "w_margherita": {
+    "Strong White Flour": "500g",
+    "Dried Yeast": "7g",
+    "Passata": "200g",
+    "Mozzarella": "250g",
+    "Fresh Basil": "1 handful",
+    "Olive Oil": "2 tbsp"
+  },
+  "w_pesto_trofie": {
+    "Trofie Pasta": "350g",
+    "Fresh Basil": "60g",
+    "Pine Nuts": "40g",
+    "Parmesan": "50g",
+    "Garlic": "2 cloves",
+    "Green Beans": "150g",
+    "Potatoes": "200g",
+    "Olive Oil": "100ml"
+  },
+  "w_osso_buco": {
+    "Veal Shin": "4 x 250g",
+    "Brown Onions": "2",
+    "Carrots": "2",
+    "Celery": "2 sticks",
+    "White Wine": "150ml",
+    "Chicken Stock": "500ml",
+    "Lemon": "1",
+    "Parsley": "a handful"
+  },
+  "w_aglio_olio": {
+    "Spaghetti": "400g",
+    "Garlic": "6 cloves",
+    "Chilli Flakes": "1 tsp",
+    "Olive Oil": "80ml",
+    "Parsley": "a handful"
+  },
+  "w_cacciatore": {
+    "Chicken Thighs": "800g",
+    "Tinned Tomatoes": "800g",
+    "Red Peppers": "2",
+    "Black Olives": "100g",
+    "Rosemary": "2 sprigs",
+    "Garlic": "3 cloves",
+    "Red Wine": "150ml"
+  },
+  "w_parmigiana": {
+    "Aubergines": "3 large",
+    "Passata": "700g",
+    "Mozzarella": "250g",
+    "Parmesan": "60g",
+    "Fresh Basil": "1 handful",
+    "Garlic": "2 cloves",
+    "Olive Oil": "100ml"
+  },
+  "w_coq_au_vin": {
+    "Chicken Thighs": "8",
+    "Red Wine": "500ml",
+    "Smoked Lardons": "150g",
+    "Chestnut Mushrooms": "250g",
+    "Shallots": "8",
+    "Garlic": "3 cloves",
+    "Thyme": "4 sprigs"
+  },
+  "w_bourguignon": {
+    "Braising Beef": "900g",
+    "Red Wine": "500ml",
+    "Smoked Lardons": "150g",
+    "Carrots": "3",
+    "Shallots": "200g",
+    "Mushrooms": "250g",
+    "Beef Stock": "300ml"
+  },
+  "w_ratatouille": {
+    "Aubergines": "2",
+    "Courgettes": "3",
+    "Red Peppers": "2",
+    "Tomatoes": "500g",
+    "Brown Onions": "2",
+    "Garlic": "3 cloves",
+    "Thyme": "4 sprigs",
+    "Olive Oil": "60ml"
+  },
+  "w_quiche": {
+    "Shortcrust Pastry": "320g",
+    "Smoked Bacon": "200g",
+    "Eggs": "4",
+    "Double Cream": "300ml",
+    "Gruyère": "150g",
+    "Nutmeg": "a pinch"
+  },
+  "w_croque": {
+    "White Bread": "8 slices",
+    "Ham": "4 slices",
+    "Gruyère": "200g",
+    "Butter": "30g",
+    "Milk": "300ml",
+    "Plain Flour": "30g",
+    "Dijon Mustard": "2 tsp"
+  },
+  "w_moules": {
+    "Mussels": "1.5kg",
+    "White Wine": "200ml",
+    "Shallots": "3",
+    "Garlic": "3 cloves",
+    "Butter": "30g",
+    "Double Cream": "100ml",
+    "Parsley": "a handful"
+  },
+  "w_cassoulet": {
+    "Haricot Beans": "800g",
+    "Toulouse Sausages": "4",
+    "Duck Legs": "4",
+    "Pork Belly": "300g",
+    "Garlic": "4 cloves",
+    "Tomato Purée": "2 tbsp",
+    "Breadcrumbs": "60g"
+  },
+  "w_paella": {
+    "Paella Rice": "350g",
+    "Chicken Thighs": "500g",
+    "Chorizo": "150g",
+    "King Prawns": "250g",
+    "Saffron": "1 tsp",
+    "Smoked Paprika": "2 tsp",
+    "Chicken Stock": "1 litre",
+    "Peas": "150g"
+  },
+  "w_tortilla": {
+    "Potatoes": "700g",
+    "Eggs": "6",
+    "Brown Onions": "2",
+    "Olive Oil": "150ml"
+  },
+  "w_gambas": {
+    "King Prawns": "400g",
+    "Garlic": "6 cloves",
+    "Chilli Flakes": "1 tsp",
+    "Olive Oil": "100ml",
+    "Parsley": "a handful",
+    "Crusty Bread": "1 loaf"
+  },
+  "w_fabada": {
+    "Butter Beans": "800g",
+    "Chorizo": "200g",
+    "Morcilla": "200g",
+    "Smoked Pancetta": "150g",
+    "Saffron": "a pinch",
+    "Smoked Paprika": "2 tsp"
+  },
+  "w_caldo_verde": {
+    "Potatoes": "600g",
+    "Kale": "250g",
+    "Chorizo": "150g",
+    "Brown Onions": "2",
+    "Garlic": "3 cloves",
+    "Olive Oil": "3 tbsp"
+  },
+  "w_bacalhau": {
+    "Salt Cod": "400g",
+    "Potatoes": "500g",
+    "Eggs": "6",
+    "Brown Onions": "2",
+    "Black Olives": "100g",
+    "Parsley": "a handful",
+    "Olive Oil": "4 tbsp"
+  },
+  "w_peri_peri": {
+    "Whole Chicken": "1.6kg",
+    "Red Chillies": "4",
+    "Garlic": "4 cloves",
+    "Lemon": "2",
+    "Smoked Paprika": "2 tsp",
+    "Olive Oil": "3 tbsp"
+  },
+  "w_moussaka": {
+    "Lamb Mince": "600g",
+    "Aubergines": "3",
+    "Tinned Tomatoes": "400g tin",
+    "Cinnamon": "1 tsp",
+    "Milk": "500ml",
+    "Butter": "50g",
+    "Plain Flour": "50g",
+    "Eggs": "1"
+  },
+  "w_souvlaki": {
+    "Chicken Breast": "700g",
+    "Lemon": "2",
+    "Dried Oregano": "2 tsp",
+    "Greek Yoghurt": "200g",
+    "Cucumber": "0.5",
+    "Pitta Bread": "4",
+    "Red Onions": "1"
+  },
+  "w_spanakopita": {
+    "Spinach": "600g",
+    "Feta": "200g",
+    "Filo Pastry": "250g",
+    "Spring Onions": "4",
+    "Dill": "1 handful",
+    "Eggs": "3",
+    "Butter": "60g"
+  },
+  "w_shakshuka": {
+    "Eggs": "6",
+    "Tinned Tomatoes": "800g",
+    "Red Peppers": "2",
+    "Brown Onions": "2",
+    "Cumin": "2 tsp",
+    "Smoked Paprika": "2 tsp",
+    "Feta": "100g"
+  },
+  "w_falafel": {
+    "Dried Chickpeas": "300g",
+    "Parsley": "1 handful",
+    "Coriander": "1 handful",
+    "Garlic": "3 cloves",
+    "Cumin": "2 tsp",
+    "Tahini": "4 tbsp",
+    "Flatbreads": "4"
+  },
+  "w_shawarma": {
+    "Chicken Thighs": "800g",
+    "Cumin": "2 tsp",
+    "Coriander Seeds": "2 tsp",
+    "Turmeric": "1 tsp",
+    "Garlic": "3 cloves",
+    "Greek Yoghurt": "150g",
+    "Flatbreads": "4"
+  },
+  "w_lahmacun": {
+    "Strong White Flour": "400g",
+    "Lamb Mince": "300g",
+    "Red Peppers": "2",
+    "Tomatoes": "2",
+    "Parsley": "1 handful",
+    "Lemon": "1",
+    "Pul Biber": "1 tsp"
+  },
+  "w_kofta": {
+    "Lamb Mince": "600g",
+    "Brown Onions": "1",
+    "Cumin": "2 tsp",
+    "Parsley": "1 handful",
+    "Greek Yoghurt": "200g",
+    "Bulgur Wheat": "150g",
+    "Lemon": "1"
+  },
+  "w_mujaddara": {
+    "Green Lentils": "250g",
+    "Basmati Rice": "200g",
+    "Brown Onions": "3",
+    "Cumin": "2 tsp",
+    "Olive Oil": "4 tbsp",
+    "Greek Yoghurt": "150g"
+  },
+  "w_goulash": {
+    "Braising Beef": "800g",
+    "Brown Onions": "3",
+    "Sweet Paprika": "2 tbsp",
+    "Caraway Seeds": "1 tsp",
+    "Potatoes": "500g",
+    "Red Peppers": "2",
+    "Tomato Purée": "2 tbsp"
+  },
+  "w_schnitzel": {
+    "Veal or Pork Escalopes": "4 x 150g",
+    "Eggs": "2",
+    "Plain Flour": "50g",
+    "Breadcrumbs": "100g",
+    "Butter": "50g",
+    "Lemon": "1",
+    "Potatoes": "800g"
+  },
+  "w_stroganoff": {
+    "Sirloin Steak": "600g",
+    "Chestnut Mushrooms": "250g",
+    "Brown Onions": "1",
+    "Soured Cream": "150ml",
+    "Dijon Mustard": "1 tbsp",
+    "Beef Stock": "250ml",
+    "Rice": "300g"
+  },
+  "w_pierogi": {
+    "Plain Flour": "300g",
+    "Potatoes": "500g",
+    "Twaróg or Cottage Cheese": "200g",
+    "Brown Onions": "2",
+    "Butter": "50g",
+    "Soured Cream": "150ml"
+  },
+  "w_borscht": {
+    "Beetroot": "500g",
+    "White Cabbage": "200g",
+    "Potatoes": "300g",
+    "Carrots": "2",
+    "Brown Onions": "2",
+    "Beef Stock": "1 litre",
+    "Dill": "1 handful",
+    "Soured Cream": "150ml"
+  },
+  "w_paprikash": {
+    "Chicken Thighs": "800g",
+    "Brown Onions": "2",
+    "Sweet Paprika": "2 tbsp",
+    "Soured Cream": "150ml",
+    "Chicken Stock": "500ml",
+    "Egg Noodles": "300g"
+  },
+  "w_kottbullar": {
+    "Beef Mince": "300g",
+    "Pork Mince": "300g",
+    "Breadcrumbs": "50g",
+    "Allspice": "0.5 tsp",
+    "Beef Stock": "300ml",
+    "Double Cream": "150ml",
+    "Potatoes": "800g",
+    "Lingonberry Jam": "4 tbsp"
+  },
+  "w_farikal": {
+    "Lamb Shoulder": "1kg",
+    "White Cabbage": "1 small",
+    "Black Peppercorns": "10",
+    "Potatoes": "800g",
+    "Plain Flour": "2 tbsp"
+  },
+  "w_butter_chicken": {
+    "Chicken Thighs": "800g",
+    "Greek Yoghurt": "150g",
+    "Tinned Tomatoes": "400g tin",
+    "Butter": "50g",
+    "Double Cream": "100ml",
+    "Garam Masala": "2 tsp",
+    "Kasoori Methi": "1 tsp",
+    "Basmati Rice": "300g"
+  },
+  "w_chana_masala": {
+    "Tinned Chickpeas": "2 x 400g tins",
+    "Brown Onions": "2",
+    "Tinned Tomatoes": "400g tin",
+    "Garlic": "3 cloves",
+    "Ginger": "1 thumb",
+    "Garam Masala": "2 tsp",
+    "Cumin Seeds": "1 tsp"
+  },
+  "w_palak_paneer": {
+    "Paneer": "250g",
+    "Spinach": "500g",
+    "Brown Onions": "2",
+    "Garlic": "3 cloves",
+    "Ginger": "1 thumb",
+    "Green Chillies": "2",
+    "Double Cream": "75ml"
+  },
+  "w_rogan_josh": {
+    "Lamb Shoulder": "800g",
+    "Greek Yoghurt": "150g",
+    "Kashmiri Chilli": "2 tsp",
+    "Fennel Seeds": "1 tsp",
+    "Cardamom": "6 pods",
+    "Ginger": "1 thumb",
+    "Brown Onions": "2"
+  },
+  "w_biryani": {
+    "Chicken Thighs": "800g",
+    "Basmati Rice": "350g",
+    "Greek Yoghurt": "200g",
+    "Brown Onions": "2",
+    "Saffron": "1 pinch",
+    "Biryani Masala": "2 tbsp",
+    "Mint": "1 handful",
+    "Ghee": "3 tbsp"
+  },
+  "w_dal_tadka": {
+    "Yellow Lentils": "300g",
+    "Turmeric": "1 tsp",
+    "Ghee": "2 tbsp",
+    "Cumin Seeds": "1 tsp",
+    "Garlic": "3 cloves",
+    "Dried Red Chillies": "2",
+    "Basmati Rice": "300g"
+  },
+  "w_aloo_gobi": {
+    "Potatoes": "500g",
+    "Cauliflower": "1",
+    "Turmeric": "1 tsp",
+    "Cumin Seeds": "1 tsp",
+    "Ginger": "1 thumb",
+    "Tinned Tomatoes": "400g tin",
+    "Coriander": "a handful"
+  },
+  "w_goan_fish": {
+    "White Fish Fillets": "600g",
+    "Coconut Milk": "400ml",
+    "Tamarind": "1 tbsp",
+    "Kashmiri Chilli": "2 tsp",
+    "Turmeric": "1 tsp",
+    "Garlic": "3 cloves",
+    "Brown Onions": "2"
+  },
+  "w_keema": {
+    "Lamb Mince": "600g",
+    "Frozen Peas": "150g",
+    "Brown Onions": "2",
+    "Tinned Tomatoes": "400g tin",
+    "Garam Masala": "2 tsp",
+    "Ginger": "1 thumb",
+    "Garlic": "3 cloves"
+  },
+  "w_momo": {
+    "Plain Flour": "300g",
+    "Chicken Mince": "400g",
+    "Brown Onions": "1",
+    "Ginger": "1 thumb",
+    "Garlic": "3 cloves",
+    "Coriander": "1 handful",
+    "Tomatoes": "3"
+  },
+  "w_kung_pao": {
+    "Chicken Thighs": "700g",
+    "Peanuts": "80g",
+    "Dried Red Chillies": "8",
+    "Sichuan Peppercorns": "1 tsp",
+    "Soy Sauce": "3 tbsp",
+    "Chinkiang Vinegar": "2 tbsp",
+    "Spring Onions": "4"
+  },
+  "w_mapo_tofu": {
+    "Silken Tofu": "600g",
+    "Pork Mince": "200g",
+    "Doubanjiang": "2 tbsp",
+    "Sichuan Peppercorns": "1 tsp",
+    "Garlic": "3 cloves",
+    "Spring Onions": "3"
+  },
+  "w_char_siu": {
+    "Pork Shoulder": "800g",
+    "Hoisin Sauce": "4 tbsp",
+    "Honey": "2 tbsp",
+    "Soy Sauce": "2 tbsp",
+    "Five-Spice": "1 tsp",
+    "Garlic": "2 cloves",
+    "Pak Choi": "300g"
+  },
+  "w_egg_fried_rice": {
+    "Cooked Rice": "600g",
+    "Eggs": "3",
+    "Frozen Peas": "150g",
+    "Spring Onions": "4",
+    "Soy Sauce": "2 tbsp",
+    "Sesame Oil": "1 tsp"
+  },
+  "w_sweet_sour": {
+    "Pork Loin": "600g",
+    "Cornflour": "60g",
+    "Pineapple": "200g",
+    "Red Peppers": "2",
+    "Ketchup": "3 tbsp",
+    "Rice Vinegar": "3 tbsp",
+    "Sugar": "2 tbsp"
+  },
+  "w_dan_dan": {
+    "Wheat Noodles": "300g",
+    "Pork Mince": "250g",
+    "Chilli Oil": "2 tbsp",
+    "Sesame Paste": "2 tbsp",
+    "Soy Sauce": "3 tbsp",
+    "Pak Choi": "2",
+    "Peanuts": "40g"
+  },
+  "w_beef_noodle": {
+    "Beef Shin": "800g",
+    "Star Anise": "2",
+    "Soy Sauce": "4 tbsp",
+    "Doubanjiang": "2 tbsp",
+    "Ginger": "1 thumb",
+    "Wheat Noodles": "300g",
+    "Pak Choi": "2"
+  },
+  "w_teriyaki": {
+    "Chicken Thighs": "700g",
+    "Soy Sauce": "4 tbsp",
+    "Mirin": "4 tbsp",
+    "Sake": "2 tbsp",
+    "Sugar": "1 tbsp",
+    "Sushi Rice": "300g",
+    "Spring Onions": "3"
+  },
+  "w_shoyu_ramen": {
+    "Ramen Noodles": "400g",
+    "Chicken Stock": "1 litre",
+    "Soy Sauce": "4 tbsp",
+    "Eggs": "4",
+    "Pork Belly": "300g",
+    "Spring Onions": "3",
+    "Nori": "4 sheets"
+  },
+  "w_katsu": {
+    "Chicken Breast": "600g",
+    "Panko": "100g",
+    "Eggs": "2",
+    "Curry Powder": "2 tbsp",
+    "Carrots": "2",
+    "Brown Onions": "1",
+    "Sushi Rice": "300g"
+  },
+  "w_okonomiyaki": {
+    "White Cabbage": "0.5",
+    "Plain Flour": "200g",
+    "Eggs": "4",
+    "Streaky Bacon": "100g",
+    "Okonomi Sauce": "4 tbsp",
+    "Kewpie Mayo": "4 tbsp",
+    "Spring Onions": "3"
+  },
+  "w_oyakodon": {
+    "Chicken Thighs": "500g",
+    "Eggs": "6",
+    "Brown Onions": "2",
+    "Dashi": "300ml",
+    "Soy Sauce": "4 tbsp",
+    "Mirin": "2 tbsp",
+    "Sushi Rice": "300g"
+  },
+  "w_bibimbap": {
+    "Sushi Rice": "300g",
+    "Beef Mince": "300g",
+    "Spinach": "200g",
+    "Carrots": "2",
+    "Beansprouts": "200g",
+    "Eggs": "4",
+    "Gochujang": "2 tbsp"
+  },
+  "w_bulgogi": {
+    "Sirloin Steak": "600g",
+    "Soy Sauce": "4 tbsp",
+    "Pear": "1",
+    "Garlic": "3 tbsp",
+    "Sesame Oil": "1 tbsp",
+    "Spring Onions": "3",
+    "Rice": "300g"
+  },
+  "w_kimchi_jjigae": {
+    "Kimchi": "300g",
+    "Pork Belly": "300g",
+    "Firm Tofu": "300g",
+    "Gochugaru": "1 tbsp",
+    "Brown Onions": "1",
+    "Spring Onions": "3"
+  },
+  "w_pad_thai": {
+    "Rice Noodles": "250g",
+    "King Prawns": "300g",
+    "Eggs": "3",
+    "Tamarind": "2 tbsp",
+    "Fish Sauce": "3 tbsp",
+    "Beansprouts": "150g",
+    "Peanuts": "50g",
+    "Lime": "2"
+  },
+  "w_massaman": {
+    "Braising Beef": "800g",
+    "Massaman Curry Paste": "3 tbsp",
+    "Coconut Milk": "400ml",
+    "Potatoes": "400g",
+    "Peanuts": "50g",
+    "Tamarind": "1 tbsp",
+    "Fish Sauce": "1 tbsp"
+  },
+  "w_tom_yum": {
+    "King Prawns": "400g",
+    "Lemongrass": "2 stalks",
+    "Galangal": "1 thumb",
+    "Kaffir Lime Leaves": "6",
+    "Mushrooms": "200g",
+    "Fish Sauce": "2 tbsp",
+    "Lime": "2"
+  },
+  "w_pho": {
+    "Beef Bones": "1kg",
+    "Beef Sirloin": "300g",
+    "Rice Noodles": "300g",
+    "Star Anise": "3",
+    "Cinnamon": "1 stick",
+    "Fish Sauce": "2 tbsp",
+    "Thai Basil": "1 handful",
+    "Beansprouts": "100g"
+  },
+  "w_banh_mi": {
+    "Baguettes": "4",
+    "Pork Mince": "400g",
+    "Lemongrass": "2 stalks",
+    "Carrots": "2",
+    "Daikon": "100g",
+    "Coriander": "1 handful",
+    "Mayonnaise": "4 tbsp"
+  },
+  "w_nasi_goreng": {
+    "Cooked Rice": "600g",
+    "Kecap Manis": "4 tbsp",
+    "Chicken Breast": "400g",
+    "Shallots": "3",
+    "Garlic": "3 cloves",
+    "Chillies": "2",
+    "Eggs": "4"
+  },
+  "w_rendang": {
+    "Braising Beef": "900g",
+    "Coconut Milk": "400ml",
+    "Lemongrass": "2 stalks",
+    "Galangal": "1 thumb",
+    "Chillies": "4",
+    "Shallots": "4",
+    "Desiccated Coconut": "3 tbsp"
+  },
+  "w_adobo": {
+    "Chicken Thighs": "800g",
+    "Cane Vinegar": "100ml",
+    "Soy Sauce": "100ml",
+    "Garlic": "6 cloves",
+    "Bay Leaves": "3",
+    "Black Peppercorns": "1 tsp",
+    "Rice": "300g"
+  },
+  "w_laksa": {
+    "Laksa Paste": "4 tbsp",
+    "Coconut Milk": "400ml",
+    "Rice Noodles": "250g",
+    "King Prawns": "300g",
+    "Tofu Puffs": "100g",
+    "Beansprouts": "150g",
+    "Lime": "2"
+  },
+  "w_chicken_rice": {
+    "Whole Chicken": "1.5kg",
+    "Jasmine Rice": "300g",
+    "Ginger": "1 thumb",
+    "Garlic": "4 cloves",
+    "Spring Onions": "4",
+    "Red Chillies": "2",
+    "Sesame Oil": "1 tbsp"
+  },
+  "w_tacos_pastor": {
+    "Pork Shoulder": "800g",
+    "Dried Chillies": "4",
+    "Pineapple": "200g",
+    "Corn Tortillas": "12",
+    "White Onions": "1",
+    "Coriander": "1 handful",
+    "Lime": "2"
+  },
+  "w_enchiladas": {
+    "Chicken Breast": "600g",
+    "Flour Tortillas": "8",
+    "Tinned Tomatoes": "400g tin",
+    "Chipotle Paste": "2 tbsp",
+    "Cheddar": "150g",
+    "Soured Cream": "150ml",
+    "Coriander": "1 handful"
+  },
+  "w_chicken_fajitas": {
+    "Chicken Breast": "600g",
+    "Red Peppers": "2",
+    "Red Onions": "2",
+    "Smoked Paprika": "2 tsp",
+    "Cumin": "1 tsp",
+    "Flour Tortillas": "8",
+    "Lime": "2"
+  },
+  "w_pozole": {
+    "Pork Shoulder": "800g",
+    "Hominy": "800g tin",
+    "Dried Chillies": "4",
+    "Garlic": "3 cloves",
+    "Radishes": "6",
+    "White Cabbage": "0.25",
+    "Lime": "2"
+  },
+  "w_feijoada": {
+    "Black Beans": "2 x 400g tins",
+    "Smoked Sausage": "300g",
+    "Pork Ribs": "500g",
+    "Smoked Bacon": "150g",
+    "Brown Onions": "2",
+    "Garlic": "3 cloves",
+    "Oranges": "2"
+  },
+  "w_ceviche": {
+    "Sea Bass Fillets": "600g",
+    "Limes": "8",
+    "Red Onions": "1",
+    "Red Chillies": "1",
+    "Coriander": "1 handful",
+    "Sweet Potato": "1"
+  },
+  "w_lomo_saltado": {
+    "Sirloin Steak": "600g",
+    "Tomatoes": "3",
+    "Red Onions": "2",
+    "Soy Sauce": "3 tbsp",
+    "Red Wine Vinegar": "2 tbsp",
+    "Oven Chips": "500g",
+    "Rice": "300g"
+  },
+  "w_arepas": {
+    "Pre-cooked Cornmeal": "300g",
+    "Black Beans": "400g tin",
+    "Cheddar": "100g",
+    "Avocado": "2",
+    "Shredded Chicken": "300g"
+  },
+  "w_jambalaya": {
+    "Long-Grain Rice": "300g",
+    "Chicken Thighs": "500g",
+    "Smoked Sausage": "250g",
+    "King Prawns": "250g",
+    "Celery": "3 sticks",
+    "Green Peppers": "2",
+    "Cajun Spice": "2 tbsp"
+  },
+  "w_gumbo": {
+    "Plain Flour": "60g",
+    "Vegetable Oil": "60ml",
+    "Chicken Thighs": "600g",
+    "Smoked Sausage": "250g",
+    "Celery": "3 sticks",
+    "Green Peppers": "2",
+    "Okra": "200g"
+  },
+  "w_mac_cheese": {
+    "Macaroni": "350g",
+    "Mature Cheddar": "250g",
+    "Milk": "700ml",
+    "Butter": "50g",
+    "Plain Flour": "50g",
+    "English Mustard": "2 tsp",
+    "Breadcrumbs": "50g"
+  },
+  "w_smash_burger": {
+    "Beef Mince": "600g",
+    "Burger Buns": "4",
+    "American Cheese": "4 slices",
+    "Pickles": "8 slices",
+    "Brown Onions": "1",
+    "Mustard": "2 tsp"
+  },
+  "w_chowder": {
+    "Clams": "500g",
+    "Potatoes": "500g",
+    "Smoked Bacon": "150g",
+    "Brown Onions": "1",
+    "Celery": "2 sticks",
+    "Milk": "500ml",
+    "Double Cream": "150ml"
+  },
+  "w_pulled_pork": {
+    "Pork Shoulder": "1.5kg",
+    "Smoked Paprika": "2 tbsp",
+    "Brown Sugar": "2 tbsp",
+    "Cider Vinegar": "3 tbsp",
+    "Brioche Buns": "4",
+    "White Cabbage": "200g",
+    "Carrots": "2"
+  },
+  "w_jerk_chicken": {
+    "Chicken Thighs": "1kg",
+    "Scotch Bonnet": "1",
+    "Allspice": "2 tsp",
+    "Thyme": "1 tsp",
+    "Spring Onions": "4",
+    "Kidney Beans": "400g tin",
+    "Coconut Milk": "400ml",
+    "Rice": "300g"
+  },
+  "w_empanadas": {
+    "Beef Mince": "500g",
+    "Shortcrust Pastry": "500g",
+    "Brown Onions": "2",
+    "Cumin": "1 tsp",
+    "Green Olives": "50g",
+    "Eggs": "2",
+    "Smoked Paprika": "1 tsp"
+  },
+  "w_poutine": {
+    "Maris Piper Potatoes": "1kg",
+    "Cheese Curds": "200g",
+    "Beef Stock": "500ml",
+    "Butter": "30g",
+    "Plain Flour": "30g",
+    "Vegetable Oil": "to fry"
+  },
+  "w_jollof": {
+    "Long-Grain Rice": "400g",
+    "Red Peppers": "3",
+    "Scotch Bonnet": "1",
+    "Tinned Tomatoes": "400g tin",
+    "Brown Onions": "2",
+    "Tomato Purée": "2 tbsp",
+    "Chicken Stock": "500ml"
+  },
+  "w_doro_wat": {
+    "Chicken Legs": "1kg",
+    "Red Onions": "4",
+    "Berbere": "3 tbsp",
+    "Ginger": "1 thumb",
+    "Garlic": "4 cloves",
+    "Eggs": "4",
+    "Butter": "50g"
+  },
+  "w_bobotie": {
+    "Beef Mince": "600g",
+    "Curry Powder": "2 tbsp",
+    "Mango Chutney": "2 tbsp",
+    "Sultanas": "50g",
+    "Bread": "2 slices",
+    "Milk": "250ml",
+    "Eggs": "2"
+  },
+  "w_tagine": {
+    "Chicken Thighs": "800g",
+    "Preserved Lemons": "2",
+    "Green Olives": "100g",
+    "Ginger": "1 thumb",
+    "Turmeric": "1 tsp",
+    "Saffron": "1 pinch",
+    "Couscous": "250g"
+  },
+  "w_bunny_chow": {
+    "Lamb Shoulder": "800g",
+    "White Loaf": "2",
+    "Potatoes": "500g",
+    "Curry Powder": "2 tbsp",
+    "Tinned Tomatoes": "400g tin",
+    "Brown Onions": "2",
+    "Curry Leaves": "10"
+  },
+  "w_koshari": {
+    "Brown Lentils": "200g",
+    "Rice": "200g",
+    "Macaroni": "200g",
+    "Tinned Chickpeas": "400g tin",
+    "Tinned Tomatoes": "400g tin",
+    "Brown Onions": "3",
+    "Cumin": "1 tsp"
+  },
+  "w_suya": {
+    "Sirloin Steak": "600g",
+    "Roasted Peanuts": "60g",
+    "Cayenne": "1 tsp",
+    "Ginger": "1 thumb",
+    "Red Onions": "2",
+    "Tomatoes": "3"
+  },
+  "w_veg_couscous": {
+    "Couscous": "300g",
+    "Carrots": "3",
+    "Courgettes": "2",
+    "Turnips": "2",
+    "Tinned Chickpeas": "400g tin",
+    "Ras el Hanout": "2 tbsp",
+    "Tinned Tomatoes": "400g tin"
+  },
+  "w_meat_pie": {
+    "Beef Mince": "600g",
+    "Beef Stock": "300ml",
+    "Worcestershire Sauce": "2 tbsp",
+    "Shortcrust Pastry": "300g",
+    "Puff Pastry": "200g",
+    "Brown Onions": "2",
+    "Eggs": "1"
+  },
+  "w_roast_lamb_kumara": {
+    "Leg of Lamb": "2kg",
+    "Sweet Potatoes": "800g",
+    "Rosemary": "3 sprigs",
+    "Garlic": "4 cloves",
+    "Green Beans": "300g",
+    "Olive Oil": "3 tbsp"
+  },
+  "w_poke": {
+    "Salmon Fillets": "500g",
+    "Sushi Rice": "300g",
+    "Soy Sauce": "4 tbsp",
+    "Sesame Oil": "1 tbsp",
+    "Avocado": "2",
+    "Cucumber": "1",
+    "Edamame": "150g"
+  },
+  "w_plov": {
+    "Lamb Shoulder": "800g",
+    "Long-Grain Rice": "400g",
+    "Carrots": "4",
+    "Brown Onions": "2",
+    "Garlic": "1 head",
+    "Cumin Seeds": "2 tsp"
+  },
+  "w_khachapuri": {
+    "Strong White Flour": "500g",
+    "Dried Yeast": "7g",
+    "Mozzarella": "250g",
+    "Feta": "150g",
+    "Eggs": "5",
+    "Butter": "40g"
+  },
+  "w_halloumi_salad": {
+    "Halloumi": "450g",
+    "Pitta Bread": "4",
+    "Tomatoes": "4",
+    "Cucumber": "1",
+    "Sumac": "2 tsp",
+    "Mint": "1 handful",
+    "Lemon": "2"
+  },
+  "w_dumplings_jiaozi": {
+    "Dumpling Wrappers": "40",
+    "Pork Mince": "400g",
+    "Chinese Chives": "100g",
+    "Ginger": "1 thumb",
+    "Soy Sauce": "3 tbsp",
+    "Black Vinegar": "2 tbsp"
+  },
+  "w_thai_basil": {
+    "Pork Mince": "500g",
+    "Thai Basil": "1 large handful",
+    "Bird’s Eye Chillies": "6",
+    "Garlic": "4 cloves",
+    "Oyster Sauce": "2 tbsp",
+    "Fish Sauce": "2 tbsp",
+    "Eggs": "4",
+    "Jasmine Rice": "300g"
+  },
+  "w_mushroom_stroganoff": {
+    "Chestnut Mushrooms": "600g",
+    "Brown Onions": "2",
+    "Smoked Paprika": "2 tsp",
+    "Soured Cream": "150ml",
+    "Garlic": "3 cloves",
+    "Parsley": "a handful",
+    "Rice": "300g"
+  },
+  "w_gnocchi": {
+    "Potato Gnocchi": "800g",
+    "Butter": "80g",
+    "Sage": "1 handful",
+    "Parmesan": "40g",
+    "Lemon": "1"
+  },
+  "meal_1": {
+    "Rigatoni Pasta": "400g",
+    "Tinned Plum Tomatoes": "800g",
+    "Garlic": "4 cloves",
+    "Chilli Flakes": "1 tsp",
+    "Olive Oil": "3 tbsp",
+    "Parmesan": "40g",
+    "Fresh Basil": "a handful"
+  },
+  "meal_2": {
+    "Free-Range Chicken Thighs": "800g",
+    "Brown Onions": "3",
+    "Garlic": "3 cloves",
+    "Ginger": "1 thumb",
+    "Garam Masala": "2 tsp",
+    "Turmeric": "1 tsp",
+    "Cumin Seeds": "1 tsp",
+    "Basmati Rice": "300g"
+  },
+  "meal_3": {
+    "Chicken Breast": "500g",
+    "Egg Noodles": "300g",
+    "Pak Choi": "2",
+    "Spring Onions": "4",
+    "Soy Sauce": "4 tbsp",
+    "Toasted Sesame Oil": "1 tbsp",
+    "Garlic": "2 cloves"
+  },
+  "meal_4": {
+    "Cumberland Sausages": "8",
+    "Maris Piper Potatoes": "1.2kg",
+    "Red Onions": "2",
+    "Beef Stock": "300ml",
+    "Butter": "50g",
+    "Mature Cheddar": "100g",
+    "English Mustard": "1 tsp"
+  },
+  "meal_5": {
+    "Scottish Salmon Fillets": "4 x 150g",
+    "Baby New Potatoes": "600g",
+    "Tenderstem Broccoli": "250g",
+    "Lemon": "1",
+    "Garlic": "2 cloves",
+    "Dill": "a handful",
+    "Olive Oil": "3 tbsp"
+  },
+  "meal_6": {
+    "Diced Beef Shin": "800g",
+    "Kidney Beans": "400g tin",
+    "Smoked Chipotle Paste": "1 tbsp",
+    "Dark Chocolate (70%)": "20g",
+    "Tinned Chopped Tomatoes": "400g tin",
+    "Ground Cumin": "2 tsp",
+    "Coriander": "a handful",
+    "Sour Cream": "150ml"
+  },
+  "meal_7": {
+    "Minced Lamb": "600g",
+    "Maris Piper Potatoes": "1kg",
+    "Frozen Garden Peas": "150g",
+    "Carrots": "2",
+    "Worcestershire Sauce": "2 tbsp",
+    "Tomato Purée": "2 tbsp",
+    "Fresh Rosemary": "2 sprigs",
+    "Egg Yolk": "1"
+  },
+  "meal_8": {
+    "Halloumi Cheese": "500g",
+    "Bell Peppers": "3",
+    "Black Beans": "400g tin",
+    "Avocado": "2",
+    "Microwave Rice": "250g",
+    "Smoked Paprika": "2 tsp",
+    "Limes": "2"
+  },
+  "meal_9": {
+    "Raw King Prawns": "400g",
+    "Coconut Milk": "400ml",
+    "Thai Green Curry Paste": "3 tbsp",
+    "Sugar Snap Peas": "150g",
+    "Jasmine Rice": "300g",
+    "Fish Sauce": "2 tbsp",
+    "Thai Basil": "a handful",
+    "Kaffir Lime Leaves": "4"
+  },
+  "meal_10": {
+    "Dry-Aged Beef Sirloin Joint": "1.5kg",
+    "Plain Flour": "140g",
+    "Eggs": "4",
+    "Milk": "200ml",
+    "Beef Dripping / Goose Fat": "100g",
+    "Maris Piper Potatoes": "1kg",
+    "Parsnips": "400g",
+    "Red Wine": "150ml"
+  },
+  "meal_11": {
+    "Free-Range Pork Belly Slab": "1.2kg",
+    "Dry Cider": "500ml",
+    "Bramley Apples": "2",
+    "Sea Salt Flakes": "1 tbsp",
+    "Sage Leaves": "6 leaves",
+    "Celeriac": "1",
+    "Double Cream": "100ml"
+  },
+  "meal_12": {
+    "Puff Pastry Roll": "375g",
+    "Chestnut Mushrooms": "300g",
+    "Portobello Mushrooms": "300g",
+    "Cooked Chestnuts": "200g",
+    "Shallots": "3",
+    "Fresh Thyme": "4 sprigs",
+    "Dijon Mustard": "1 tbsp",
+    "Egg Wash": "1"
+  }
+}

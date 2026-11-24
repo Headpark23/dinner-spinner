@@ -1,4 +1,6 @@
+import { flagCodeFor, FlagTile } from './CuisineFlag';
 import React, { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 /** Join class names, skipping falsy values. */
@@ -18,7 +20,7 @@ const variantClass: Record<ButtonVariant, string> = {
 };
 
 const sizeClass: Record<ButtonSize, string> = {
-  sm: 'h-9 px-3 text-[13px] gap-1.5 rounded-lg',
+  sm: 'min-h-11 px-3 text-[13px] gap-1.5 rounded-lg',
   md: 'h-11 px-4 text-[15px] gap-2 rounded-xl',
   lg: 'h-14 px-5 text-[17px] gap-2.5 rounded-2xl',
 };
@@ -54,7 +56,7 @@ export const IconButton: React.FC<
     title={label}
     {...rest}
     className={cx(
-      'inline-flex h-10 w-10 items-center justify-center rounded-xl transition-colors',
+      'inline-flex h-11 w-11 items-center justify-center rounded-xl transition-colors',
       active ? 'text-tomato bg-tomato-soft' : 'text-ink-2 hover:text-ink hover:bg-sunk',
       className
     )}
@@ -71,11 +73,27 @@ export const Card: React.FC<React.HTMLAttributes<HTMLDivElement> & { as?: 'div' 
 }) => {
   const Tag = as;
   return (
-    <Tag {...rest} className={cx('rounded-2xl border border-line bg-card', className)}>
+    <Tag {...rest} className={cx('rounded-2xl border border-line bg-card shadow-[0_1px_2px_rgba(31,26,21,0.05)]', className)}>
       {children}
     </Tag>
   );
 };
+
+/** Every screen opens the same way: a title, one plain sentence saying what the screen is for, and at most one action. */
+export const PageHeader: React.FC<{
+  title: string;
+  subtitle?: React.ReactNode;
+  action?: React.ReactNode;
+  className?: string;
+}> = ({ title, subtitle, action, className }) => (
+  <div className={cx('flex items-start justify-between gap-3', className)}>
+    <div className="min-w-0">
+      <h1 className="font-display text-[28px] leading-[1.1] font-semibold tracking-tight">{title}</h1>
+      {subtitle && <p className="mt-1.5 text-[14px] leading-snug text-ink-2">{subtitle}</p>}
+    </div>
+    {action && <div className="shrink-0 pt-1">{action}</div>}
+  </div>
+);
 
 export const SectionHeader: React.FC<{
   eyebrow?: string;
@@ -127,7 +145,7 @@ export function Segmented<T extends string>({
             onClick={() => onChange(opt.value)}
             className={cx(
               'rounded-lg font-semibold transition-colors duration-150 leading-tight',
-              size === 'sm' ? 'min-h-8 px-2 text-[12px]' : 'min-h-10 px-2 text-[13px]',
+              size === 'sm' ? 'min-h-11 px-2 text-[13px]' : 'min-h-11 px-2 text-[13px]',
               selected
                 ? 'bg-card text-ink shadow-[0_1px_2px_rgba(31,26,21,0.12)]'
                 : 'text-ink-2 hover:text-ink'
@@ -286,7 +304,9 @@ export const Sheet: React.FC<{
   subtitle?: string;
   children: React.ReactNode;
   labelledBy: string;
-}> = ({ isOpen, onClose, title, subtitle, children, labelledBy }) => {
+  /** Fill most of the screen on a phone, so the page behind clearly isn't the thing to use. */
+  tall?: boolean;
+}> = ({ isOpen, onClose, title, subtitle, children, labelledBy, tall }) => {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -297,7 +317,29 @@ export const Sheet: React.FC<{
     const previouslyFocused = document.activeElement as HTMLElement | null;
     panelRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCloseRef.current();
+      if (e.key === 'Escape') {
+        onCloseRef.current();
+        return;
+      }
+      // Keep keyboard focus inside the dialog while it is open.
+      if (e.key === 'Tab' && panelRef.current) {
+        const focusable = Array.from(
+          panelRef.current.querySelectorAll<HTMLElement>(
+            'a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          )
+        ).filter((el) => el.offsetParent !== null);
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement;
+        if (e.shiftKey && (active === first || active === panelRef.current)) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && active === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     };
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
@@ -310,8 +352,9 @@ export const Sheet: React.FC<{
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
+  // Drawn straight onto the page (not inside the screen that opened it), so the bottom tab bar can never sit on top of it.
+  const sheet = (
+    <div className="fixed inset-x-0 top-0 z-50 flex h-dvh items-end justify-center sm:items-center sm:p-4">
       <div className="absolute inset-0 bg-[rgba(20,16,12,0.55)]" onClick={onClose} aria-hidden="true" />
       <div
         ref={panelRef}
@@ -319,7 +362,10 @@ export const Sheet: React.FC<{
         aria-modal="true"
         aria-labelledby={labelledBy}
         tabIndex={-1}
-        className="fade-up relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-paper p-5 pb-8 outline-none sm:rounded-3xl sm:pb-5"
+        className={cx(
+          'fade-up relative w-full max-w-md overflow-y-auto rounded-t-3xl bg-paper p-5 pb-[calc(2rem+env(safe-area-inset-bottom))] outline-none sm:rounded-3xl sm:pb-5',
+          tall ? 'max-h-[94dvh] min-h-[88dvh] sm:min-h-0 sm:max-h-[90dvh]' : 'max-h-[88dvh] sm:max-h-[90dvh]'
+        )}
       >
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
@@ -336,6 +382,8 @@ export const Sheet: React.FC<{
       </div>
     </div>
   );
+  // (There is no page to draw onto when the screen is rendered as plain HTML, as the tests do.)
+  return typeof document === 'undefined' ? sheet : createPortal(sheet, document.body);
 };
 
 /** Typographic stand-in for a dish photo: cuisine initial on a tinted tile. */
@@ -367,6 +415,8 @@ export const DishTile: React.FC<{ cuisine?: string; imageUrl?: string; size?: nu
       className={cx('shrink-0 rounded-xl object-cover', className)}
       style={{ width: size, height: size }}
     />
+  ) : flagCodeFor(cuisine) ? (
+    <FlagTile code={flagCodeFor(cuisine)!} size={size} className={className} />
   ) : (
     <span
       aria-hidden="true"

@@ -1,7 +1,7 @@
 export type TimeStake = '20m' | '30m' | '60m' | 'all-day';
 export type EffortLevel = 'one-pot' | 'standard' | 'chef-mode';
 export type FreshnessLevel = 'green' | 'amber' | 'red'; // Red = "Use Next" (priority for clearout)
-export type MachineMode = 'single' | '3-reel' | 'sunday';
+export type MachineMode = 'single' | '3-reel' | '4-reel' | 'sunday';
 
 export interface Meal {
   id: string;
@@ -21,7 +21,9 @@ export interface Meal {
   servings?: number;
   estimatedCostPerHead?: number;
   origin?: string; // country or region, for World Kitchen dishes
-  source?: 'starter' | 'world' | 'own' | 'scanned';
+  source?: 'starter' | 'world' | 'own' | 'scanned' | 'idea';
+  /** Who to credit for `imageUrl` when it is a Wikimedia Commons photo. */
+  photoCredit?: { author: string; license: string; licenseUrl: string; source: string };
   tweaks?: MealTweaks;
 }
 
@@ -74,6 +76,12 @@ export interface TakeawayOption {
   usualOrders: { memberName: string; order: string }[];
   orderCount?: number;
   lastOrderedDate?: string | null;
+  /** Contact details, when the place came from a map search or its own web page. */
+  phone?: string;
+  website?: string;
+  address?: string;
+  lat?: number;
+  lon?: number;
 }
 
 export interface PantryItem {
@@ -148,4 +156,22 @@ export interface TakeawayLogEntry {
   takeawayId: string;
   name: string;
   date: string;
+}
+
+/** The spinner's filters also allow "no preference". */
+export type TimeFilter = TimeStake | 'any';
+export type EffortFilter = EffortLevel | 'any';
+
+/** One household-wide dinner vote, decided by the server so every phone agrees. */
+export interface LiveVote {
+  version: number;
+  round: number;
+  status: 'idle' | 'open' | 'agreed' | 'vetoed';
+  meal: Pick<Meal, 'id' | 'title' | 'description' | 'cuisine' | 'timeStake' | 'effort' | 'ingredients' | 'prepSteps' | 'tags'> | null;
+  people: string[];
+  needed: number;
+  ballot: Record<string, 'yes' | 'no'>;
+  proposedBy: string;
+  vetoedBy: string;
+  openedAt: string;
 }

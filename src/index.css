@@ -1,7 +1,23 @@
 @import "tailwindcss";
 
+/* Fonts are served from this app (no third-party requests). Both are SIL OFL licensed. */
+@font-face {
+  font-family: "Fraunces";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/fraunces-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Instrument Sans";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/instrument-sans-latin.woff2") format("woff2");
+}
+
 /* ------------------------------------------------------------------
-   Design tokens (see DESIGN.md). Light is the default; dark follows the OS.
+   Design tokens (see DESIGN.md). Light is the default; dark follows the OS until the header toggle picks one.
    ------------------------------------------------------------------ */
 :root {
   --paper: #f4efe6;
@@ -28,7 +44,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --paper: #13110f;
     --card: #1c1915;
     --sunk: #171410;
@@ -48,6 +64,28 @@
     --enamel-2: #171310;
     color-scheme: dark;
   }
+}
+
+/* The toggle in the header sets data-theme, which wins over the OS setting. */
+:root[data-theme='dark'] {
+  --paper: #13110f;
+  --card: #1c1915;
+  --sunk: #171410;
+  --ink: #f2ece2;
+  --ink-2: #b7ac9f;
+  --ink-3: #93887b;
+  --line: #2f2a24;
+  --line-strong: #40392f;
+  --tomato: #e2604a;
+  --tomato-hover: #ec7560;
+  --tomato-soft: #3a1d17;
+  --sage: #7fb394;
+  --sage-soft: #1b2a20;
+  --saffron: #e0a94a;
+  --saffron-soft: #33260f;
+  --enamel: #0c0a08;
+  --enamel-2: #171310;
+  color-scheme: dark;
 }
 
 @theme inline {

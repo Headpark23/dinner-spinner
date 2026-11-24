@@ -2,25 +2,15 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useDinner } from '../context/DinnerContext';
 import { Lock, ChevronDown, Dices, RotateCcw } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import {
-  REEL_CARBS,
-  REEL_PROTEINS,
-  REEL_SAUCES,
-  SUNDAY_MEATS,
-  SUNDAY_POTATOES,
-  SUNDAY_STAR_SIDES,
-  SUNDAY_VEG_GRAVY,
-} from '../data/initialData';
+import { COMBO_HEADERS } from '../data/initialData';
 import { Button, cx, timeLabel, effortLabel } from './ui';
+import { costText } from '../utils/cost';
 
 interface ReelWindowProps {
   onSpin: () => void;
 }
 
-const REEL_HEADERS: Record<'3-reel' | 'sunday', string[]> = {
-  '3-reel': ['Base', 'Main', 'Sauce'],
-  sunday: ['Roast', 'Potatoes', 'Side', 'Veg & gravy'],
-};
+const REEL_HEADERS = COMBO_HEADERS;
 
 const prefersReducedMotion = () =>
   typeof window !== 'undefined' &&
@@ -57,6 +47,8 @@ export const ReelWindow: React.FC<ReelWindowProps> = ({ onSpin }) => {
     resetNudges,
     meals,
     eligiblePool,
+    costToBuy,
+    comboReels,
     activeView,
     toggleSound,
   } = useDinner();
@@ -129,26 +121,25 @@ export const ReelWindow: React.FC<ReelWindowProps> = ({ onSpin }) => {
   };
 
   const pool = eligiblePool.length > 0 ? eligiblePool : meals;
-  const reelLists =
-    mode === '3-reel'
-      ? [REEL_CARBS, REEL_PROTEINS, REEL_SAUCES]
-      : [SUNDAY_MEATS, SUNDAY_POTATOES, SUNDAY_STAR_SIDES, SUNDAY_VEG_GRAVY];
+  const reelLists = mode === 'single' ? [] : comboReels[mode];
 
   // Neighbours on the single-reel drum, so the window reads as a physical reel.
   const currentIdx = pool.findIndex((m) => m.id === activeMealResult?.id);
-  const prevMeal = pool.length > 1 ? pool[(currentIdx - 1 + pool.length) % pool.length] : null;
-  const nextMeal = pool.length > 1 ? pool[(currentIdx + 1) % pool.length] : null;
+  const prevMeal = activeMealResult && pool.length > 1 ? pool[(currentIdx - 1 + pool.length) % pool.length] : null;
+  const nextMeal = activeMealResult && pool.length > 1 ? pool[(currentIdx + 1) % pool.length] : null;
 
   const drumCaption =
     mode === 'single'
       ? `${pool.length} ${pool.length === 1 ? 'dish' : 'dishes'} on the reel`
       : mode === '3-reel'
-      ? 'Build a plate · 3 reels'
+      ? 'Mix a plate · 3 reels'
+      : mode === '4-reel'
+      ? 'Full plate · 4 reels'
       : 'Sunday roast · 4 reels';
 
   return (
     <div>
-      <div className="rounded-[22px] bg-enamel p-3 text-on-enamel ring-1 ring-line shadow-[0_10px_30px_-12px_rgba(31,26,21,0.5)]">
+      <div className="rounded-[22px] bg-enamel p-3 text-on-enamel ring-1 ring-brass/30 shadow-[0_10px_30px_-12px_rgba(31,26,21,0.5)]">
         {/* Status strip */}
         <div className="mb-2.5 flex items-center justify-between px-1 text-[12px] text-on-enamel-2">
           <span aria-live="polite">{isSpinning ? 'Spinning…' : drumCaption}</span>
@@ -192,7 +183,7 @@ export const ReelWindow: React.FC<ReelWindowProps> = ({ onSpin }) => {
                       {activeMealResult && (
                         <p className="mt-1 text-[12px] text-on-enamel-2">
                           {timeLabel(activeMealResult.timeStake)} · {effortLabel(activeMealResult.effort)} ·{' '}
-                          {activeMealResult.cuisine}
+                          {activeMealResult.cuisine} · {costText(costToBuy(activeMealResult))}
                         </p>
                       )}
                     </div>
@@ -204,7 +195,7 @@ export const ReelWindow: React.FC<ReelWindowProps> = ({ onSpin }) => {
               </div>
             ) : (
               <div
-                className="grid h-[150px] divide-x divide-white/10"
+                className="grid h-[128px] divide-x divide-white/10"
                 style={{ gridTemplateColumns: `repeat(${reelLists.length}, minmax(0, 1fr))` }}
               >
                 {reelLists.map((list, idx) => {
@@ -234,7 +225,7 @@ export const ReelWindow: React.FC<ReelWindowProps> = ({ onSpin }) => {
                           <span
                             className={cx(
                               'mt-1.5 font-display font-semibold leading-tight text-on-enamel line-clamp-3',
-                              mode === 'sunday' ? 'text-[13px]' : 'text-[15px]'
+                              mode === '3-reel' ? 'text-[15px]' : 'text-[12px]'
                             )}
                           >
                             {customReelResult[idx]}
@@ -268,7 +259,6 @@ export const ReelWindow: React.FC<ReelWindowProps> = ({ onSpin }) => {
                 leverPulled ? 'h-2' : 'h-[74px]'
               )}
             />
-            <span className="mt-auto h-6 w-6 rounded-md bg-enamel-2 ring-1 ring-white/10" />
           </button>
         </div>
 
@@ -280,14 +270,14 @@ export const ReelWindow: React.FC<ReelWindowProps> = ({ onSpin }) => {
               <button
                 onClick={() => nudgeReel(0)}
                 disabled={isSpinning}
-                className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg bg-white/8 px-3 text-[13px] font-semibold text-on-enamel ring-1 ring-white/15 hover:bg-white/12 disabled:opacity-40"
+                className="inline-flex h-11 shrink-0 items-center gap-1 rounded-lg bg-white/8 px-3 text-[13px] font-semibold text-on-enamel ring-1 ring-white/15 hover:bg-white/12 disabled:opacity-40"
               >
                 <ChevronDown className="h-4 w-4" /> Nudge
               </button>
             ) : (
               <button
                 onClick={resetNudges}
-                className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-3 text-[13px] font-semibold text-brass hover:bg-white/8"
+                className="inline-flex h-11 shrink-0 items-center gap-1 rounded-lg px-3 text-[13px] font-semibold text-brass hover:bg-white/8"
               >
                 <RotateCcw className="h-3.5 w-3.5" /> Refill nudges
               </button>
@@ -301,29 +291,30 @@ export const ReelWindow: React.FC<ReelWindowProps> = ({ onSpin }) => {
             {reelLists.map((_, idx) => {
               const isHeld = heldReels[idx];
               return (
-                <div key={idx} className="flex flex-col gap-1.5">
+                <div key={idx} className="flex gap-1">
                   <button
                     onClick={() => toggleHold(idx)}
                     disabled={isSpinning}
                     aria-pressed={isHeld}
                     aria-label={`Hold ${REEL_HEADERS[mode][idx]} reel`}
                     className={cx(
-                      'inline-flex h-9 items-center justify-center gap-1 rounded-lg text-[13px] font-semibold transition-colors disabled:opacity-40',
+                      'inline-flex h-11 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg text-[13px] font-semibold transition-colors disabled:opacity-40',
                       isHeld
                         ? 'bg-brass text-enamel'
                         : 'bg-white/8 text-on-enamel ring-1 ring-white/15 hover:bg-white/12'
                     )}
                   >
-                    {isHeld && <Lock className="h-3.5 w-3.5" />}
+                    {isHeld ? <Lock className="h-3.5 w-3.5" /> : null}
                     {isHeld ? 'Held' : 'Hold'}
                   </button>
                   <button
                     onClick={() => nudgeReel(idx)}
                     disabled={nudgesRemaining <= 0 || isSpinning}
-                    aria-label={`Nudge ${REEL_HEADERS[mode][idx]} reel`}
-                    className="inline-flex h-8 items-center justify-center gap-0.5 rounded-lg text-[12px] font-medium text-on-enamel-2 hover:bg-white/8 hover:text-on-enamel disabled:opacity-30 disabled:hover:bg-transparent"
+                    aria-label={`Nudge ${REEL_HEADERS[mode][idx]} reel to the next choice`}
+                    title="Nudge to the next choice"
+                    className="inline-flex h-11 w-10 shrink-0 items-center justify-center rounded-lg bg-white/8 text-on-enamel-2 ring-1 ring-white/15 hover:bg-white/12 hover:text-on-enamel disabled:opacity-30 disabled:hover:bg-white/8"
                   >
-                    <ChevronDown className="h-3.5 w-3.5" /> Nudge
+                    <ChevronDown className="h-4 w-4" />
                   </button>
                 </div>
               );

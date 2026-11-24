@@ -7,6 +7,8 @@ import {
   PantryMatchInfo,
   ReverseTimerStep,
 } from '../types';
+import { mentionsAny } from './avoid';
+import { DietId, mealFitsDiets } from './diets';
 
 /**
  * Returns the meal as the household actually cooks it: the original recipe plus
@@ -109,7 +111,12 @@ export function calculateMealPantryMatch(
   };
 }
 
+const TIME_RANK: Record<TimeStake, number> = { '20m': 0, '30m': 1, '60m': 2, 'all-day': 3 };
+const EFFORT_RANK: Record<EffortLevel, number> = { 'one-pot': 0, standard: 1, 'chef-mode': 2 };
+
 export interface EligiblePoolResult {
+  /** True when nothing fitted the cost limit, so it was ignored rather than leaving the reel empty. */
+  costRelaxed?: boolean;
   pool: Meal[];
   exactMatchCount: number;
   timeStakeMatchCount: number;
@@ -117,30 +124,63 @@ export interface EligiblePoolResult {
 }
 
 /**
- * Filters meals matching TimeStake, EffortLevel, and excluding Banned Ingredients.
+ * Filters meals that fit within the chosen time and effort ("up to"), excluding Banned Ingredients.
  * Gracefully falls back if exact (timeStake + effort) pool is empty while preserving banned exclusions.
  */
 export function filterEligibleMeals(
   meals: Meal[],
-  timeStake: TimeStake,
-  effort: EffortLevel,
-  bannedIngredients: string[]
+  timeStake: TimeStake | 'any',
+  effort: EffortLevel | 'any',
+  bannedIngredients: string[],
+  diets: DietId[] = [],
+  cost?: { limit: number; of: (m: Meal) => number }
 ): EligiblePoolResult {
-  const nonBannedMeals = meals.filter((meal) => {
-    const containsBanned = meal.ingredients.some((ing) =>
-      bannedIngredients.some(
-        (banned) =>
-          banned.trim().length > 0 &&
-          ing.toLowerCase().includes(banned.toLowerCase())
-      )
-    );
-    return !containsBanned;
-  });
+  if (!cost || !Number.isFinite(cost.limit)) return filterByTimeAndEffort(meals, timeStake, effort, bannedIngredients, diets);
+  const affordable = meals.filter((m) => cost.of(m) <= cost.limit);
+  // Diets and the avoid list are never relaxed. If nothing is cheap enough, say so and show the rest.
+  const inCost = filterByTimeAndEffort(affordable, timeStake, effort, bannedIngredients, diets);
+  if (inCost.pool.length > 0) return inCost;
+  return { ...filterByTimeAndEffort(meals, timeStake, effort, bannedIngredients, diets), costRelaxed: true };
+}
+
+function filterByTimeAndEffort(
+  meals: Meal[],
+  timeStake: TimeStake | 'any',
+  effort: EffortLevel | 'any',
+  bannedIngredients: string[],
+  diets: DietId[] = []
+): EligiblePoolResult {
+  // Dietary preferences are strict: a vegan household never falls back to a meat dish.
+  if (diets.length > 0) {
+    meals = meals.filter((m) => mealFitsDiets(m.ingredients, diets));
+    if (meals.length === 0) {
+      return { pool: [], exactMatchCount: 0, timeStakeMatchCount: 0, isExactEffortMatch: false };
+    }
+  }
+  const nonBannedMeals = meals.filter(
+    (meal) => !mentionsAny([meal.title, ...withTweaks(meal).ingredients], bannedIngredients)
+  );
 
   const baseMeals = nonBannedMeals.length > 0 ? nonBannedMeals : meals;
 
-  const timeMatched = baseMeals.filter((m) => m.timeStake === timeStake);
-  const exactMatched = timeMatched.filter((m) => m.effort === effort);
+  // "Up to": 30 min also allows 20 min dishes, and Standard also allows one-pot dishes. "Any" is no limit.
+  const withinLimits = baseMeals.filter(
+    (m) =>
+      (timeStake === 'any' || TIME_RANK[m.timeStake] <= TIME_RANK[timeStake]) &&
+      (effort === 'any' || EFFORT_RANK[m.effort] <= EFFORT_RANK[effort])
+  );
+  if (withinLimits.length > 0) {
+    return {
+      pool: withinLimits,
+      exactMatchCount: withinLimits.length,
+      timeStakeMatchCount: withinLimits.length,
+      isExactEffortMatch: true,
+    };
+  }
+
+  // Nothing fits (everything is longer or fussier than asked): fall back to the closest matches.
+  const timeMatched = timeStake === 'any' ? baseMeals : baseMeals.filter((m) => m.timeStake === timeStake);
+  const exactMatched = effort === 'any' ? timeMatched : timeMatched.filter((m) => m.effort === effort);
 
   if (exactMatched.length > 0) {
     return {
@@ -189,7 +229,7 @@ export function selectWeightedMeal(
   pool: Meal[],
   pantry: PantryItem[],
   clearoutActive: boolean,
-  effort: EffortLevel,
+  effort: EffortLevel | 'any',
   nowMs: number = Date.now(),
   randomFn: () => number = Math.random
 ): Meal {
@@ -244,7 +284,7 @@ export function selectWeightedMeal(
 }
 
 /**
- * Synthesizes an accurate, cookable Meal Card from 3-Reel or 4-Reel Sunday Roast combinations.
+ * Synthesizes an accurate, cookable Meal Card from 3-reel, 4-reel or Sunday Roast combinations.
  * Used both after a spin and immediately after a reel NUDGE so the card is always in sync.
  */
 export function buildComboMeal(
@@ -284,19 +324,20 @@ export function buildComboMeal(
         `Rest ${meat} under foil while baking ${starSide} (-25m)`,
         `Finish ${vegGravy}, carve at the table, and serve (-0m)`,
       ],
-      rating: 5,
-      isFavorite: true,
+      rating: 0,
+      isFavorite: false,
       lastCookedDate: null,
-      cookCount: 1,
+      cookCount: 0,
       tags: ['Sunday Jackpot', '4-Reel Custom Roast', 'British Heritage'],
       servings: 4,
     };
   }
 
-  // 3-Reel Builder Mode
+  // 3-Reel and 4-Reel Builder Modes
   const carb = reels[0] || 'Rigatoni Pasta';
   const protein = reels[1] || 'Free-Range Chicken';
   const sauce = reels[2] || 'Spicy Arrabbiata';
+  const veg = mode === '4-reel' ? reels[3] || 'Garlic Green Beans' : null;
 
   const inferredCuisine = sauce.toLowerCase().includes('tikka')
     ? 'Indian'
@@ -311,24 +352,27 @@ export function buildComboMeal(
     : 'British';
 
   return {
-    id: `combo_${carb}_${protein}_${sauce}`.replace(/\s+/g, '_').toLowerCase(),
-    title: `${protein} with ${sauce} & ${carb}`,
-    description: `Custom 3-reel creation: tender ${protein} glazed in ${sauce}, served piping hot with ${carb}.`,
+    id: `${veg ? 'combo4' : 'combo'}_${carb}_${protein}_${sauce}${veg ? `_${veg}` : ''}`.replace(/\s+/g, '_').toLowerCase(),
+    title: veg ? `${protein} with ${sauce}` : `${protein} with ${sauce} & ${carb}`,
+    description: veg
+      ? `Served with ${carb} and ${veg}. Tender ${protein} glazed in ${sauce}.`
+      : `Custom 3-reel creation: tender ${protein} glazed in ${sauce}, served piping hot with ${carb}.`,
     cuisine: inferredCuisine,
     timeStake,
     effort,
-    ingredients: [protein, carb, sauce, 'Garlic Bulbs', 'Olive Oil', 'Maldon Sea Salt'],
+    ingredients: [protein, carb, sauce, ...(veg ? [veg] : []), 'Garlic Bulbs', 'Olive Oil', 'Maldon Sea Salt'],
     prepSteps: [
       `Prep ingredients and start cooking ${carb} (-22m)`,
+      ...(veg ? [`Get ${veg} cooking alongside (-16m)`] : []),
       `Sear ${protein} in a hot pan until golden brown (-15m)`,
       `Pour in ${sauce} and simmer gently to infuse flavours (-8m)`,
       `Combine with ${carb}, garnish, and plate up (-0m)`,
     ],
-    rating: 4,
+    rating: 0,
     isFavorite: false,
     lastCookedDate: null,
-    cookCount: 1,
-    tags: ['3-Reel Custom Combo', inferredCuisine],
+    cookCount: 0,
+    tags: [veg ? '4-Reel Custom Combo' : '3-Reel Custom Combo', inferredCuisine],
     servings: 4,
   };
 }

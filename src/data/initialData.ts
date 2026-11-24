@@ -301,6 +301,16 @@ export const REEL_SAUCES: ReelComboItem[] = [
   { id: 's7', label: 'Thai Green Coconut', category: 'Style', icon: '🥥' },
 ];
 
+export const REEL_VEG: ReelComboItem[] = [
+  { id: 'v1', label: 'Garlic Green Beans', category: 'Veg', icon: '🫛' },
+  { id: 'v2', label: 'Honey-Roast Carrots', category: 'Veg', icon: '🥕' },
+  { id: 'v3', label: 'Charred Broccoli', category: 'Veg', icon: '🥦' },
+  { id: 'v4', label: 'Buttered Peas', category: 'Veg', icon: '🟢' },
+  { id: 'v5', label: 'Crunchy Slaw', category: 'Veg', icon: '🥬' },
+  { id: 'v6', label: 'Sweetcorn', category: 'Veg', icon: '🌽' },
+  { id: 'v7', label: 'Roast Peppers & Courgette', category: 'Veg', icon: '🫑' },
+];
+
 // Sunday Roast Builder 4-Reels
 export const SUNDAY_MEATS: ReelComboItem[] = [
   { id: 'sm1', label: 'Dry-Aged Roast Beef', category: 'Roast Main', icon: '🥩' },
@@ -473,11 +483,45 @@ export const INITIAL_BANNED_INGREDIENTS = [
 ];
 
 export const INITIAL_USER_PROFILE: UserProfile = {
-  id: 'usr_uk_master',
-  name: 'Head Chef',
-  email: 'headpark@gmail.com',
-  avatarUrl: 'https://api.dicebear.com/7.x/bottts/svg?seed=dinner-spinner-chef&backgroundColor=e76f51',
-  provider: 'google',
-  cloudSyncEnabled: true,
+  id: 'guest',
+  name: 'Our kitchen',
+  email: '',
+  avatarUrl: '',
+  provider: 'guest',
+  cloudSyncEnabled: false,
   lastSyncedAt: '', // never saved to the server yet
+};
+
+// ---------------------------------------------------------------------------
+// What a brand-new household starts with. The INITIAL_* sample data above is kept
+// for tests and the "Try a sample" demos; it is never shown to a real user as if
+// it were theirs: no invented cook history, ratings, fridge, family or dislikes.
+// ---------------------------------------------------------------------------
+export const STARTER_MEALS: Meal[] = INITIAL_MEALS.map((m) => ({
+  ...m,
+  rating: 0,
+  isFavorite: false,
+  cookCount: 0,
+  lastCookedDate: null,
+}));
+export const STARTER_MEMBERS: HouseholdMember[] = [
+  { id: 'm1', name: 'Me', avatar: '🙂', vetoTokensRemaining: 3 },
+];
+export const STARTER_TAKEAWAYS: TakeawayOption[] = INITIAL_TAKEAWAYS.map((t) => ({
+  ...t,
+  usualOrders: [],
+  orderCount: 0,
+  lastOrderedDate: null,
+}));
+/** The reels for each build-it mode, in order. */
+export const COMBO_REELS: Record<'3-reel' | '4-reel' | 'sunday', ReelComboItem[][]> = {
+  '3-reel': [REEL_CARBS, REEL_PROTEINS, REEL_SAUCES],
+  '4-reel': [REEL_CARBS, REEL_PROTEINS, REEL_SAUCES, REEL_VEG],
+  sunday: [SUNDAY_MEATS, SUNDAY_POTATOES, SUNDAY_STAR_SIDES, SUNDAY_VEG_GRAVY],
+};
+
+export const COMBO_HEADERS: Record<'3-reel' | '4-reel' | 'sunday', string[]> = {
+  '3-reel': ['Base', 'Main', 'Sauce'],
+  '4-reel': ['Base', 'Main', 'Sauce', 'Veg'],
+  sunday: ['Roast', 'Potatoes', 'Side', 'Veg & gravy'],
 };
