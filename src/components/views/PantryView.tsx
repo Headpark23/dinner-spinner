@@ -19,11 +19,15 @@ import {
   Sparkles,
   Copy,
   LoaderCircle,
+  Snowflake,
+  Minus,
+  Undo2,
 } from 'lucide-react';
 import { FreshnessLevel, Meal, TimeStake, EffortLevel } from '../../types';
 import { RecipeSheet } from '../RecipeSheet';
 import { photoFor } from '../../data/photos';
 import { INITIAL_MEALS } from '../../data/initialData';
+import { inFreezer, usedUp, totalPortions, oldestFirst, frozenAgo, isEatSoon } from '../../utils/freezer';
 import {
   Button,
   Card,
@@ -41,14 +45,14 @@ import {
   effortLabel,
 } from '../ui';
 
-type Tab = 'fridge' | 'vault' | 'missing' | 'camera' | 'staples' | 'banned';
+type Tab = 'fridge' | 'freezer' | 'vault' | 'missing' | 'camera' | 'staples' | 'banned';
 type ScanType = 'snap-fridge' | 'scan-receipt' | 'recipe-photo' | 'recipe-text';
 
 const readInitialTab = (): Tab => {
   try {
     const t = sessionStorage.getItem('ds_pantry_tab') as Tab | null;
     sessionStorage.removeItem('ds_pantry_tab');
-    if (t && ['fridge', 'vault', 'missing', 'camera', 'staples', 'banned'].includes(t)) return t;
+    if (t && ['fridge', 'freezer', 'vault', 'missing', 'camera', 'staples', 'banned'].includes(t)) return t;
   } catch {
     // ignore
   }
@@ -89,6 +93,12 @@ export const PantryView: React.FC = () => {
     toggleShoppingItem,
     removeShoppingItem,
     clearCheckedShopping,
+    freezer,
+    addFreezerItem,
+    useFreezerPortion,
+    putBackFreezerPortion,
+    removeFreezerItem,
+    clearUsedFreezer,
   } = useDinner();
 
   const [recipeScope, setRecipeScope] = useState<'ours' | 'world'>('ours');
@@ -116,6 +126,13 @@ export const PantryView: React.FC = () => {
   const [newBannedName, setNewBannedName] = useState('');
 
   const [copiedShopping, setCopiedShopping] = useState(false);
+
+  // Freezer
+  const [freezeName, setFreezeName] = useState('');
+  const [freezePortions, setFreezePortions] = useState(4);
+  const stocked = oldestFirst(inFreezer(freezer));
+  const finished = usedUp(freezer);
+  const freezerPortions = totalPortions(freezer);
 
   // Vault
   const [vaultSearch, setVaultSearch] = useState('');
@@ -284,6 +301,7 @@ export const PantryView: React.FC = () => {
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: 'fridge', label: 'Fridge', count: pantry.length },
+    { id: 'freezer', label: 'Freezer', count: freezerPortions || undefined },
     { id: 'vault', label: 'Recipes', count: meals.length },
     { id: 'missing', label: 'Shopping', count: toBuy.length || undefined },
     { id: 'camera', label: 'Scan' },
@@ -446,6 +464,138 @@ export const PantryView: React.FC = () => {
                 {renderFreshnessGroup('red', 'Use next')}
                 {renderFreshnessGroup('amber', 'Eat soon')}
                 {renderFreshnessGroup('green', 'Fresh')}
+              </>
+            )}
+          </>
+        )}
+
+        {/* FREEZER */}
+        {activeTab === 'freezer' && (
+          <>
+            <form
+              className="space-y-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!freezeName.trim()) return;
+                const match = meals.find((m) => m.title.toLowerCase() === freezeName.trim().toLowerCase());
+                addFreezerItem({ name: freezeName, portions: freezePortions, mealId: match?.id });
+                setFreezeName('');
+              }}
+            >
+              <TextInput
+                value={freezeName}
+                onChange={(e) => setFreezeName(e.target.value)}
+                placeholder="What did you batch cook?"
+                aria-label="Batch-cooked meal to freeze"
+                list="freezer-dish-suggestions"
+              />
+              <datalist id="freezer-dish-suggestions">
+                {meals.map((m) => (
+                  <option key={m.id} value={m.title} />
+                ))}
+              </datalist>
+              <div className="flex items-center gap-2">
+                <div className="flex h-11 items-center rounded-xl border border-line bg-card" role="group" aria-label="Portions">
+                  <button
+                    type="button"
+                    onClick={() => setFreezePortions((n) => Math.max(1, n - 1))}
+                    aria-label="Fewer portions"
+                    className="flex h-11 w-11 items-center justify-center text-ink-2 hover:text-ink"
+                  >
+                    <Minus className="h-4 w-4" />
+                  </button>
+                  <span className="min-w-[5.5rem] text-center text-[15px] tabular-nums" aria-live="polite">
+                    {freezePortions} {freezePortions === 1 ? 'portion' : 'portions'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setFreezePortions((n) => Math.min(99, n + 1))}
+                    aria-label="More portions"
+                    className="flex h-11 w-11 items-center justify-center text-ink-2 hover:text-ink"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
+                <Button type="submit" variant="primary" disabled={!freezeName.trim()} className="flex-1">
+                  <Snowflake className="h-4 w-4" /> Put in freezer
+                </Button>
+              </div>
+            </form>
+
+            {stocked.length === 0 && finished.length === 0 ? (
+              <Card className="p-6 text-center">
+                <p className="font-display text-[19px] font-semibold">The freezer list is empty</p>
+                <p className="mt-1 text-[14px] text-ink-2">
+                  After a batch cook, add it here with how many portions you froze. Tick one off each time you eat it.
+                </p>
+              </Card>
+            ) : (
+              <>
+                {stocked.length > 0 && (
+                  <section aria-label="In the freezer">
+                    <h3 className="mb-1.5 px-1 text-[13px] font-semibold text-ink-2">
+                      In the freezer{' '}
+                      <span className="font-normal text-ink-3 tabular-nums">
+                        {stocked.length} {stocked.length === 1 ? 'meal' : 'meals'} · {freezerPortions}{' '}
+                        {freezerPortions === 1 ? 'portion' : 'portions'}
+                      </span>
+                    </h3>
+                    <ul className="divide-y divide-line rounded-2xl border border-line bg-card">
+                      {stocked.map((item) => (
+                        <li key={item.id} className="flex items-center gap-2 py-1 pr-1 pl-3">
+                          <div className="min-w-0 flex-1 py-1.5">
+                            <p className="truncate text-[15px]">{item.name}</p>
+                            <p className="flex flex-wrap items-center gap-x-2 text-[12px] text-ink-3">
+                              <span>{frozenAgo(item)}</span>
+                              {isEatSoon(item) && <Chip tone="saffron">Eat soon</Chip>}
+                            </p>
+                          </div>
+                          <span
+                            className="shrink-0 text-[13px] text-ink-2 tabular-nums"
+                            aria-label={`${item.portions} of ${item.totalPortions} portions left`}
+                          >
+                            {item.portions}/{item.totalPortions}
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="success"
+                            onClick={() => useFreezerPortion(item.id)}
+                            aria-label={`Tick off one portion of ${item.name}`}
+                          >
+                            <Check className="h-4 w-4" strokeWidth={3} /> Ate one
+                          </Button>
+                          <IconButton label={`Remove ${item.name} from the freezer`} onClick={() => removeFreezerItem(item.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </IconButton>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+
+                {finished.length > 0 && (
+                  <details className="text-[14px]">
+                    <summary className="cursor-pointer font-semibold text-ink-2">Finished ({finished.length})</summary>
+                    <ul className="mt-2 divide-y divide-line rounded-xl border border-line bg-card">
+                      {finished.map((item) => (
+                        <li key={item.id} className="flex items-center justify-between gap-2 py-1 pr-1 pl-3">
+                          <span className="min-w-0 truncate text-ink-3 line-through">{item.name}</span>
+                          <Button
+                            variant="quiet"
+                            size="sm"
+                            onClick={() => putBackFreezerPortion(item.id)}
+                            aria-label={`Put one portion of ${item.name} back`}
+                          >
+                            <Undo2 className="h-4 w-4" /> Put one back
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                    <Button variant="quiet" size="sm" className="mt-2" onClick={clearUsedFreezer}>
+                      Clear finished
+                    </Button>
+                  </details>
+                )}
               </>
             )}
           </>

@@ -85,6 +85,18 @@ export interface PantryItem {
   addedDate: string;
 }
 
+/** A batch-cooked meal in the freezer, split into portions that get ticked off as they are eaten. */
+export interface FreezerItem {
+  id: string;
+  name: string;
+  mealId?: string; // set when it came from one of our recipes
+  portions: number; // portions still in the freezer
+  totalPortions: number; // portions it was frozen as
+  frozenDate: string; // ISO date it went in
+  note?: string;
+  usedDate?: string; // set once the last portion is eaten
+}
+
 export interface HouseholdMember {
   id: string;
   name: string;

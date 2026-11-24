@@ -274,3 +274,44 @@ test('Server: shared shopping list round trip', async () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
+
+test('Freezer: ticking off portions, undo, and finished state', async () => {
+  const f = await import('./freezer');
+  const now = new Date('2026-11-24T12:00:00Z');
+  const item = f.createFreezerItem({ name: '  Chilli con carne ', portions: 3 }, now)!;
+  assert.equal(item.name, 'Chilli con carne');
+  assert.equal(item.portions, 3);
+  assert.equal(item.totalPortions, 3);
+  assert.equal(f.createFreezerItem({ name: '   ', portions: 2 }), null);
+
+  let cur = f.tickOffPortion(item, now);
+  assert.equal(cur.portions, 2);
+  assert.equal(cur.usedDate, undefined);
+  cur = f.tickOffPortion(f.tickOffPortion(cur, now), now);
+  assert.equal(cur.portions, 0);
+  assert.ok(cur.usedDate, 'last portion marks the batch as used');
+  assert.equal(f.tickOffPortion(cur, now), cur, 'cannot go below zero');
+  assert.equal(f.inFreezer([cur]).length, 0);
+  assert.equal(f.usedUp([cur]).length, 1);
+
+  const back = f.putBackFreezerPortion(cur);
+  assert.equal(back.portions, 1);
+  assert.equal(back.usedDate, undefined, 'putting one back revives the batch');
+  assert.equal(f.putBackFreezerPortion(item), item, 'cannot exceed what was frozen');
+});
+
+test('Freezer: totals, ordering, age and sanitising', async () => {
+  const f = await import('./freezer');
+  const now = new Date('2026-11-24T12:00:00Z');
+  const old = { ...f.createFreezerItem({ name: 'Bolognese', portions: 4 }, now)!, frozenDate: '2026-07-01T12:00:00Z' };
+  const fresh = { ...f.createFreezerItem({ name: 'Dal', portions: 2 }, now)!, frozenDate: '2026-11-23T12:00:00Z' };
+  assert.equal(f.totalPortions([fresh, old]), 6);
+  assert.deepEqual(f.oldestFirst([fresh, old]).map((i) => i.name), ['Bolognese', 'Dal']);
+  assert.equal(f.isEatSoon(old, now), true);
+  assert.equal(f.isEatSoon(fresh, now), false);
+  assert.equal(f.frozenAgo(fresh, now), 'Frozen yesterday');
+  const clean = f.sanitizeFreezer([{ name: 'Soup', portions: 2 }, { nope: true }, null, 'x']);
+  assert.equal(clean.length, 1);
+  assert.equal(clean[0].totalPortions, 2);
+  assert.deepEqual(f.sanitizeFreezer('garbage'), []);
+});

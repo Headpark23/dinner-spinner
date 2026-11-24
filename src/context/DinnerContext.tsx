@@ -16,7 +16,14 @@ import {
   MealTweaks,
   MealReview,
   ShoppingItem,
+  FreezerItem,
 } from '../types';
+import {
+  createFreezerItem,
+  tickOffPortion,
+  putBackFreezerPortion,
+  sanitizeFreezer,
+} from '../utils/freezer';
 import { WORLD_RECIPES } from '../data/worldRecipes';
 import { applyShoppingOp, newShoppingId, ShoppingOp } from '../utils/shopping';
 import {
@@ -156,6 +163,14 @@ interface DinnerContextType {
   // After-dinner reviews
   saveDinnerReviews: (cookLogId: string, reviews: MealReview[]) => void;
 
+  // Freezer: batch-cooked meals, ticked off a portion at a time
+  freezer: FreezerItem[];
+  addFreezerItem: (input: { name: string; portions: number; mealId?: string; note?: string }) => void;
+  useFreezerPortion: (id: string) => void;
+  putBackFreezerPortion: (id: string) => void;
+  removeFreezerItem: (id: string) => void;
+  clearUsedFreezer: () => void;
+
   // Shared shopping list
   shoppingList: ShoppingItem[];
   shoppingOnline: boolean | null;
@@ -208,6 +223,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [rejectedMealIds, setRejectedMealIds] = useState<string[]>(() => loadStored('rejected', []));
   const [shoppingList, setShoppingList] = useState<ShoppingItem[]>(() => loadStored('shopping', []));
+  const [freezer, setFreezer] = useState<FreezerItem[]>(() => sanitizeFreezer(loadStored('freezer', [])));
   const [shoppingOnline, setShoppingOnline] = useState<boolean | null>(null);
   const pendingShoppingOps = useRef<ShoppingOp[]>(loadStored('shopping_queue', []));
   const [meId, setMeIdState] = useState<string>(() => loadStored('me', ''));
@@ -338,6 +354,10 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY}_shopping`, JSON.stringify(shoppingList));
   }, [shoppingList]);
+
+  useEffect(() => {
+    localStorage.setItem(`${STORAGE_KEY}_freezer`, JSON.stringify(freezer));
+  }, [freezer]);
 
   // ---------- Shared shopping list sync ----------
   // Changes apply locally at once, queue, and are sent to the server. The list is
@@ -759,6 +779,22 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const removeShoppingItem = (id: string) => queueShopping([{ type: 'remove', id }]);
   const clearCheckedShopping = () => queueShopping([{ type: 'clearChecked' }]);
 
+  // ---------- Freezer ----------
+  const addFreezerItem = (input: { name: string; portions: number; mealId?: string; note?: string }) => {
+    const item = createFreezerItem(input);
+    if (!item) return;
+    sound.playHold();
+    setFreezer((prev) => [item, ...prev]);
+  };
+  const useFreezerPortionById = (id: string) => {
+    sound.playHold();
+    setFreezer((prev) => prev.map((i) => (i.id === id ? tickOffPortion(i) : i)));
+  };
+  const putBackFreezerPortionById = (id: string) =>
+    setFreezer((prev) => prev.map((i) => (i.id === id ? putBackFreezerPortion(i) : i)));
+  const removeFreezerItem = (id: string) => setFreezer((prev) => prev.filter((i) => i.id !== id));
+  const clearUsedFreezer = () => setFreezer((prev) => prev.filter((i) => !i.usedDate && i.portions > 0));
+
   // ---------- World Kitchen, tweaks, "not for us" ----------
   const addFromLibrary = (id: string): Meal | null => {
     const dish = WORLD_RECIPES.find((r) => r.id === id);
@@ -1081,6 +1117,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             cookLog,
             takeawayLog,
             rejectedMealIds,
+            freezer,
           },
         }),
       });
@@ -1141,6 +1178,9 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (Array.isArray(payload.rejectedMealIds)) {
         setRejectedMealIds(payload.rejectedMealIds);
       }
+      if (Array.isArray(payload.freezer)) {
+        setFreezer(sanitizeFreezer(payload.freezer));
+      }
       setUserProfile((prev) => ({
         ...prev,
         ...(payload.userProfile || {}),
@@ -1189,6 +1229,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setCookLog([]);
     setTakeawayLog([]);
     setRejectedMealIds([]);
+    setFreezer([]);
     setReverseTimers([]);
     setAgreedMeal(null);
     setConsecutiveRejections(0);
@@ -1300,6 +1341,12 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         restoreRejected,
         updateMealTweaks,
         saveDinnerReviews,
+        freezer,
+        addFreezerItem,
+        useFreezerPortion: useFreezerPortionById,
+        putBackFreezerPortion: putBackFreezerPortionById,
+        removeFreezerItem,
+        clearUsedFreezer,
         shoppingList,
         shoppingOnline,
         meId,
