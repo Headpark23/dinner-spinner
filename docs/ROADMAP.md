@@ -10,7 +10,7 @@ Effort: S = under a day, M = 1 to 3 days, L = a week or more.
 | --- | --- | --- | --- |
 | 1 | Week planner | **Mostly built.** `PlannerSheet.tsx`, `utils/planner.ts` (`suggestWeek`, themes per night, `tidyPlan`, `weekShopping`), "shop for the week" in one tap. | Freezer nights, household sharing, cost cap, cuisine variety. |
 | 2 | Installable and offline | **Built.** `public/manifest.webmanifest`, `public/sw.js` (app shell, assets, photos, fonts cached), registered in `main.tsx`, offline shopping queue. | Update prompt, install prompt. |
-| 3 | Step alerts | **Partly built.** Browser notifications when a step is due, in `VotingView.tsx`. They only fire while the page is open. | Screen wake lock, service-worker notifications. |
+| 3 | Step alerts | **Mostly built.** Screen wake lock, service-worker notifications and an in-app banner when a step is due. | Real background push (needs a server), install prompt for iPhone. |
 | 4 | Voting from separate phones | **Built, different design.** Household-wide live vote (`LiveVote.tsx`, `/api/tonight`), decided on the server, phones poll. Uses Google-sign-in family groups instead of a 4-digit room code. | Decide whether a code is still wanted. |
 | 5 | Dietary needs per person | **Partly built, household-wide.** `utils/diets.ts` (vegetarian, vegan, pescatarian, gluten-free, dairy-free, nut-free), `DietPicker`, avoid list with plural matching. | Per-person diets and a clash warning on the vote. |
 | 6 | Leftovers | **Not built.** (`cupboard.ts` has a "leftover rice bowl" recipe only.) | Everything. |
@@ -48,9 +48,9 @@ The Freezer tab is built and, as of PR 31, shared with the household like the fr
 - Bump `VERSION` in `sw.js` on each release that changes the shell. Consider generating it from the build so this cannot be forgotten.
 
 ### 3. Step alerts (S to M)
-- **Wake lock.** `navigator.wakeLock` is not used anywhere. Hold the screen awake while a dinner is agreed and steps remain; re-acquire on `visibilitychange`; feature-detect.
-- **Locked-screen alerts.** The current `new Notification(...)` only fires while the page is open. Switch to `registration.showNotification` from the service worker so alerts appear with the screen locked, and say plainly in the UI that true background scheduling needs a push server (see open question 2).
-- On iPhone, notifications need the app installed to the home screen, so this pairs with the install prompt in item 2.
+- ~~Wake lock~~ **Done.** `src/utils/wakeLock.ts` holds the screen awake while a dinner is agreed and steps remain (a "Keep the screen on while I cook" tick, on by default), asks again when the page becomes visible, and does nothing where the browser lacks it.
+- ~~Service-worker notifications~~ **Done.** `src/utils/stepAlerts.ts` shows alerts through `registration.showNotification` (Android Chrome refuses `new Notification()` on a page), falling back to the page API. `sw.js` handles `notificationclick`. Each due step also shows an in-app "Now:" banner and a chime. The reminder note says plainly that a locked phone may hold alerts back.
+- **Still open.** True background delivery with the phone locked needs a push server and keys (open question 2). On iPhone, notifications need the app installed to the home screen, so this pairs with the install prompt in item 2.
 
 ### 4. Voting from separate phones (S, or nothing)
 - The live vote already works across phones inside a signed-in family group. The original idea was a 4-digit code so someone outside the group can vote. Only build that if guests are a real need (open question 3). If so: short-lived rooms on `/api/tonight`, rate-limited joins, vote state only.
