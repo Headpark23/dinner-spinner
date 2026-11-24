@@ -9,6 +9,8 @@ import { applyFridgeOp, type FridgeState } from './src/utils/fridge';
 import { cleanLog, unionLog } from './src/utils/history';
 import { DEFAULT_RADIUS_M, MAX_RADIUS_M, cleanHub, distanceM, emptyHub, mergeHub, type SharedSpot } from './src/utils/takeaways';
 import { createPlaces, type Places } from './src/server/places';
+import { fetchPublicPage } from './src/server/fetchPage';
+import { extractRecipeFromHtml, htmlToText } from './src/utils/recipeImport';
 import { Household, HttpError, Store, UserLink, createFileStore, createStoreFromEnv, mutate } from './src/server/store';
 
 dotenv.config();
@@ -682,6 +684,30 @@ function getSimulatedVisionResponse(type: string, textPrompt?: string) {
     },
   };
 }
+
+// Recipe from a web address. Most recipe sites embed structured recipe data, which we read directly (no AI needed).
+// If a page has none, the readable text comes back so the phone can still split it into a draft.
+let pageFetcher: typeof fetchPublicPage = fetchPublicPage;
+/** Tests swap in a fake page fetcher. */
+export const usePageFetcher = (next: typeof fetchPublicPage) => {
+  pageFetcher = next;
+};
+app.post('/api/recipes/import', smallJson, rateLimit('recipe link', 20, 10 * 60_000), async (req, res) => {
+  try {
+    const url = typeof req.body?.url === 'string' ? req.body.url.trim().slice(0, 500) : '';
+    if (!url) return res.status(400).json({ error: 'Paste a link to a recipe.' });
+    const page = await pageFetcher(url);
+    const recipe = extractRecipeFromHtml(page.html);
+    if (recipe) return res.json({ recipe: { ...recipe, tags: [...recipe.tags, 'From a website'].slice(0, 5) }, source: page.url });
+    res.status(422).json({
+      error: 'That page doesn’t have a recipe the app can read. Here is its text; check it over.',
+      text: htmlToText(page.html, 12_000),
+      source: page.url,
+    });
+  } catch (err) {
+    fail(res, err);
+  }
+});
 
 // Multimodal Gemini Vision & Text API endpoint for Fridge, Receipt & Meal Grab
 app.post('/api/pantry/analyze', imageJson, rateLimit('scan', 20, 10 * 60_000), async (req, res) => {
