@@ -33,8 +33,8 @@ const OVERPASS_ENDPOINTS = [
 const USER_AGENT = 'DinnerSpinner/1.0 (family dinner app; takeaway finder)';
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
 /** The whole search must finish inside the serverless limit (30s). */
-const OVERPASS_BUDGET_MS = 11_000;
-const FALLBACK_BUDGET_MS = 12_000;
+const OVERPASS_BUDGET_MS = 8_000;
+const FALLBACK_BUDGET_MS = 10_000;
 const sleepFor = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export function createPlaces(doFetch: typeof fetch = fetch, sleep: (ms: number) => Promise<void> = sleepFor): Places {

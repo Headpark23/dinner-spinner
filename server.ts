@@ -7,7 +7,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { applyShoppingOp } from './src/utils/shopping';
 import { applyFridgeOp, type FridgeState } from './src/utils/fridge';
 import { cleanLog, unionLog } from './src/utils/history';
-import { DEFAULT_RADIUS_M, MAX_RADIUS_M, cleanHub, distanceM, emptyHub, mergeHub, type SharedSpot } from './src/utils/takeaways';
+import { DEFAULT_RADIUS_M, MAX_RADIUS_M, chainOf, cleanHub, distanceM, emptyHub, mergeHub, placeFromHtml, type SharedSpot } from './src/utils/takeaways';
 import { createPlaces, type Places } from './src/server/places';
 import { fetchPublicPage } from './src/server/fetchPage';
 import { extractRecipeFromHtml, htmlToText } from './src/utils/recipeImport';
@@ -398,6 +398,23 @@ app.post('/api/takeaways/place', smallJson, requireHousehold, rateLimit('place l
   }
 });
 
+// Add a place the map missed: paste its website and we read its name, cuisine, address and phone from the page.
+// Nothing is saved here; the phone shows the details to check, then adds the place like any other.
+app.post('/api/takeaways/lookup', smallJson, requireHousehold, rateLimit('place link', 20, 10 * 60_000), async (req, res) => {
+  try {
+    const url = typeof req.body?.url === 'string' ? req.body.url.trim().slice(0, 500) : '';
+    if (!url) return res.status(400).json({ error: 'Paste the restaurant’s website.' });
+    const page = await pageFetcher(url);
+    const details = placeFromHtml(page.html);
+    if (!details) {
+      return res.status(422).json({ error: 'Couldn’t read a name from that page. Type the name and we’ll keep the link.', website: page.url });
+    }
+    res.json({ details, website: page.url });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
 app.post('/api/takeaways/discover', smallJson, requireHousehold, rateLimit('takeaway search', 12, 10 * 60_000), async (req, res) => {
   const id = (req as AuthedRequest).householdId!;
   const place = hubOf((req as AuthedRequest).household!).place;
@@ -415,9 +432,14 @@ app.post('/api/takeaways/discover', smallJson, requireHousehold, rateLimit('take
       const now = new Date().toISOString();
       const byId = new Map(current.spots.map((s) => [s.id, s]));
       const changes: SharedSpot[] = [];
+      // A chain already in the list (any branch) is not added again from another branch.
+      const haveChains = new Set(current.spots.filter((s) => !s.gone).map((s) => chainOf(s.name)).filter(Boolean));
       for (const f of found) {
         const have = byId.get(f.id);
+        const chain = chainOf(f.name);
+        if (!have && chain && haveChains.has(chain)) continue;
         if (!have) {
+          if (chain) haveChains.add(chain);
           changes.push(f);
           added++;
         } else if (have.gone || (!have.website && f.website) || (!have.phone && f.phone) || (!have.address && f.address)) {

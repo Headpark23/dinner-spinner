@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, MapPin, Phone, Globe, Star, Search, UsersRound, ThumbsUp, ThumbsDown, EyeOff, Navigation, RefreshCw } from 'lucide-react';
+import { ChevronDown, Plus, MapPin, Phone, Globe, Star, Search, UsersRound, ThumbsUp, ThumbsDown, EyeOff, Navigation, RefreshCw } from 'lucide-react';
 import { useDinner } from '../context/DinnerContext';
 import { orderLinks, ratingId, type LeagueRow } from '../utils/takeaways';
 import { Button, Card, Select, TextInput, cx } from './ui';
@@ -236,6 +236,116 @@ const LeagueItem: React.FC<{ row: LeagueRow; rank: number | null; open: boolean;
   );
 };
 
+/** Add a place the map missed, by pasting its website. We read the page for the details; the person checks them first. */
+const AddPlace: React.FC = () => {
+  const { shared, whoAmI } = useDinner();
+  const [open, setOpen] = useState(false);
+  const [url, setUrl] = useState('');
+  const [name, setName] = useState('');
+  const [cuisine, setCuisine] = useState('');
+  const [address, setAddress] = useState('');
+  const [phone, setPhone] = useState('');
+  const [coords, setCoords] = useState<{ lat?: number; lon?: number }>({});
+  const [website, setWebsite] = useState('');
+  const [note, setNote] = useState('');
+
+  const reset = () => {
+    setUrl('');
+    setName('');
+    setCuisine('');
+    setAddress('');
+    setPhone('');
+    setCoords({});
+    setWebsite('');
+    setNote('');
+  };
+
+  const lookup = async () => {
+    setNote('');
+    const r = await shared.lookupLink(url);
+    if (r.website) setWebsite(r.website);
+    if (r.details) {
+      setName(r.details.name);
+      setCuisine(r.details.cuisine || '');
+      setAddress(r.details.address || '');
+      setPhone(r.details.phone || '');
+      setCoords({ lat: r.details.lat, lon: r.details.lon });
+    }
+    setNote(r.message);
+  };
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} className="inline-flex min-h-11 items-center gap-1.5 text-[14px] font-semibold text-ink-2 hover:text-ink">
+        <Plus className="h-4 w-4" /> Missing a place? Add it from its website
+      </button>
+    );
+  }
+
+  return (
+    <form
+      className="fade-up space-y-2 rounded-2xl border border-line bg-card p-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!name.trim()) return;
+        shared.addSpot(name.trim(), cuisine.trim() || 'Takeaway', whoAmI, {
+          website: website || url.trim() || undefined,
+          address: address.trim() || undefined,
+          phone: phone.trim() || undefined,
+          ...coords,
+        });
+        reset();
+        setOpen(false);
+      }}
+    >
+      <p className="text-[14px] font-semibold">Add a place the map missed</p>
+      <label htmlFor="place-url" className="block text-[13px] text-ink-2">
+        Paste its website and we’ll fill in the details.
+      </label>
+      <div className="flex gap-2">
+        <TextInput
+          id="place-url"
+          type="url"
+          inputMode="url"
+          autoComplete="off"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://www.thegoldenwok.co.uk"
+        />
+        <Button type="button" variant="secondary" disabled={shared.busy || !url.trim()} onClick={lookup}>
+          {shared.busy ? 'Reading…' : 'Look up'}
+        </Button>
+      </div>
+      {note && (
+        <p role="status" className="text-[13px] text-ink-2">
+          {note}
+        </p>
+      )}
+      <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="Name, e.g. The Golden Wok" aria-label="Name" maxLength={80} />
+      <div className="grid grid-cols-2 gap-2">
+        <TextInput value={cuisine} onChange={(e) => setCuisine(e.target.value)} placeholder="Cuisine (optional)" aria-label="Cuisine" maxLength={40} />
+        <TextInput value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone (optional)" aria-label="Phone" inputMode="tel" maxLength={30} />
+      </div>
+      <TextInput value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Address (optional)" aria-label="Address" maxLength={120} />
+      <div className="grid grid-cols-[1fr_auto] gap-2">
+        <Button type="submit" variant="primary" disabled={!name.trim()}>
+          Add to the league
+        </Button>
+        <Button
+          type="button"
+          variant="quiet"
+          onClick={() => {
+            reset();
+            setOpen(false);
+          }}
+        >
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+};
+
 /** Local takeaways for the family group: find them, score them, and see the favourites. Family groups only. */
 export const LocalTakeaways: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFamily }) => {
   const { householdCode, shared } = useDinner();
@@ -401,6 +511,8 @@ export const LocalTakeaways: React.FC<{ onOpenFamily?: () => void }> = ({ onOpen
       {shared.league.length === 0 && place && !changing && !shared.busy && !message && (
         <p className="text-[14px] text-ink-2">Nothing yet. Tap “Find takeaways”, or add a favourite by hand below.</p>
       )}
+
+      <AddPlace />
 
       <p className="text-[11px] text-ink-3">Places from OpenStreetMap contributors (openstreetmap.org/copyright).</p>
     </section>

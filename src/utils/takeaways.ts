@@ -51,7 +51,7 @@ export type TakeawayHub = {
   ratings: SpotRating[];
 };
 
-export const MAX_SPOTS = 300;
+export const MAX_SPOTS = 500;
 export const MAX_RATINGS = 2500;
 
 export const emptyHub = (): TakeawayHub => ({ version: 0, place: null, spots: [], ratings: [] });
@@ -200,6 +200,21 @@ export function buildLeague(hub: TakeawayHub, here?: { lat: number; lon: number 
     })
     // A place that has gone from the map disappears unless the family has scored it (their history stays).
     .filter((r) => !r.spot.gone || r.votes > 0);
+  // One row per big chain, however many branches were found: the most-scored branch, else the nearest to the town.
+  const distTo = (s: SharedSpot) => (here && s.lat !== undefined && s.lon !== undefined ? distanceM(here, { lat: s.lat, lon: s.lon }) : Infinity);
+  const best = new Map<string, LeagueRow>();
+  for (const r of rows) {
+    const c = chainOf(r.spot.name);
+    if (!c) continue;
+    const cur = best.get(c);
+    if (!cur || r.votes > cur.votes || (r.votes === cur.votes && distTo(r.spot) < distTo(cur.spot))) best.set(c, r);
+  }
+  const kept = rows.filter((r) => {
+    const c = chainOf(r.spot.name);
+    return !c || best.get(c) === r;
+  });
+  rows.length = 0;
+  rows.push(...kept);
   const dist = (s: SharedSpot) => (here && s.lat !== undefined && s.lon !== undefined ? distanceM(here, { lat: s.lat, lon: s.lon }) : Infinity);
   return rows.sort((a, b) => {
     if ((a.votes > 0) !== (b.votes > 0)) return a.votes > 0 ? -1 : 1;
@@ -251,7 +266,16 @@ export function distanceM(a: { lat: number; lon: number }, b: { lat: number; lon
 export const DEFAULT_RADIUS_M = 3000;
 export const MAX_RADIUS_M = 8000;
 
-/** Places with a name that sell food to take away: fast food unless it says no, restaurants only if they say yes. */
+/** Kinds of food that are normally sold to take away, even when nobody has tagged the shop as a takeaway on the map. */
+const TAKEAWAY_CUISINES = 'indian|chinese|pizza|thai|kebab|turkish|burger|chicken|fish_and_chips|bangladeshi|pakistani|curry|noodle|sushi|japanese|vietnamese|korean|asian|sandwich|american|mexican|lebanese|middle_eastern|caribbean|jamaican';
+/** Names that give a takeaway away. */
+export const TAKEAWAY_NAME = /take-?away|chippy|fish\s*(?:&|and)\s*chips|chip shop|kebab|pizz|tandoori|curry|balti|wok|noodle|burger|fried chicken|\bgrill\b|shawarma|sushi|bhuna|spice/i;
+
+/**
+ * Places with a name that sell food to take away: all fast food unless it says no; restaurants that say they do takeaway
+ * or delivery, or that serve food usually taken away (curry houses and the like) and don't say no. Many shops on the map
+ * were never tagged, so the wider net catches them.
+ */
 export function overpassQuery(lat: number, lon: number, radiusM = DEFAULT_RADIUS_M): string {
   const r = Math.round(Math.min(MAX_RADIUS_M, Math.max(300, radiusM)));
   const at = `(around:${r},${lat.toFixed(5)},${lon.toFixed(5)})`;
@@ -259,8 +283,67 @@ export function overpassQuery(lat: number, lon: number, radiusM = DEFAULT_RADIUS
     '[out:json][timeout:25];(' +
     `nwr["amenity"="fast_food"]["name"]["takeaway"!="no"]${at};` +
     `nwr["amenity"="restaurant"]["name"]["takeaway"~"^(yes|only)$"]${at};` +
-    ');out center tags 250;'
+    `nwr["amenity"="restaurant"]["name"]["delivery"="yes"]["takeaway"!="no"]${at};` +
+    `nwr["amenity"="restaurant"]["name"]["cuisine"~"${TAKEAWAY_CUISINES}"]["takeaway"!="no"]${at};` +
+    `nwr["shop"~"^(deli|convenience)$"]["name"]["cuisine"]["takeaway"="yes"]${at};` +
+    ');out center tags 500;'
   );
+}
+
+/**
+ * The big national chains. Every branch of one of these would otherwise appear in the list (and the league), so a
+ * chain with six branches nearby would count six times. We keep one branch of each: the nearest to the chosen town.
+ */
+const CHAINS: [string, RegExp][] = [
+  ['mcdonalds', /^mc\s?donald/],
+  ['burgerking', /^burger king/],
+  ['kfc', /^(kfc|kentucky fried)/],
+  ['greggs', /^greggs/],
+  ['dominos', /^domino/],
+  ['subway', /^subway/],
+  ['pizzahut', /^pizza hut/],
+  ['papajohns', /^papa john/],
+  ['nandos', /^nando/],
+  ['fiveguys', /^five guys/],
+  ['tacobell', /^taco bell/],
+  ['wimpy', /^wimpy/],
+  ['popeyes', /^popeyes/],
+  ['wingstop', /^wingstop/],
+  ['dixy', /^dixy/],
+  ['wagamama', /^wagamama/],
+  ['pret', /^pret( a manger)?\b/],
+  ['starbucks', /^starbucks/],
+  ['costa', /^costa( coffee)?\b/],
+  ['krispykreme', /^krispy kreme/],
+  ['itsu', /^itsu\b/],
+  ['leon', /^leon\b/],
+  ['ginsters', /^ginsters/],
+  ['cooplan', /^(chicken cottage|morley'?s|sam'?s chicken|perfect fried chicken|dixie chicken)/],
+];
+
+/** Which big chain a shop belongs to, or null for an independent. Matches on the name only. */
+export function chainOf(name: string): string | null {
+  const n = name
+    .toLowerCase()
+    .replace(/[’'`]/g, '')
+    .replace(/^the\s+/, '')
+    .replace(/[^a-z0-9 ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  for (const [key, re] of CHAINS) if (re.test(n)) return key;
+  return null;
+}
+
+/** Keeps the first spot of each chain (callers pass them nearest first) and every independent. */
+export function oneOfEachChain<T extends { name: string }>(spots: T[]): T[] {
+  const seen = new Set<string>();
+  return spots.filter((s) => {
+    const c = chainOf(s.name);
+    if (!c) return true;
+    if (seen.has(c)) return false;
+    seen.add(c);
+    return true;
+  });
 }
 
 const CUISINES: Record<string, string> = {
@@ -330,11 +413,11 @@ export function parseOverpass(json: any, here?: { lat: number; lon: number }): S
     seen.add(spot.id);
     spots.push({ spot, d: here && spot.lat !== undefined && spot.lon !== undefined ? distanceM(here, { lat: spot.lat, lon: spot.lon }) : Infinity });
   }
-  return spots.sort((a, b) => (a.d === b.d ? 0 : a.d < b.d ? -1 : 1)).map((s) => s.spot);
+  return oneOfEachChain(spots.sort((a, b) => (a.d === b.d ? 0 : a.d < b.d ? -1 : 1)).map((s) => s.spot));
 }
 
 /** Search terms used when the Overpass servers are busy and we fall back to Nominatim. */
-export const FALLBACK_TERMS = ['takeaway', 'fast food', 'pizza', 'chinese', 'indian', 'fish and chips', 'kebab'];
+export const FALLBACK_TERMS = ['takeaway', 'fast food', 'pizza', 'chinese', 'indian', 'curry', 'fish and chips', 'kebab', 'burger', 'chicken', 'thai', 'sushi'];
 
 /** The map box (west,north,east,south) around a point, for Nominatim's bounded search. */
 export function viewbox(lat: number, lon: number, radiusM: number): string {
@@ -359,8 +442,14 @@ export function parseNominatimSpots(lists: any[], here?: { lat: number; lon: num
       const cls = String(hit?.category || hit?.class || '');
       const type = ['node', 'way', 'relation'].includes(hit?.osm_type) ? hit.osm_type : '';
       if (!name || !type || typeof hit?.osm_id !== 'number') continue;
-      const sellsTakeaway = t.takeaway === 'yes' || t.takeaway === 'only' || /take-?away|chippy/i.test(name);
-      const food = cls === 'amenity' && (kind === 'fast_food' || (kind === 'restaurant' && sellsTakeaway)) || (/caterer|takeaway/.test(kind) && sellsTakeaway);
+      const cuisines = String(t.cuisine || '').toLowerCase();
+      const sellsTakeaway =
+        t.takeaway === 'yes' ||
+        t.takeaway === 'only' ||
+        t.delivery === 'yes' ||
+        TAKEAWAY_NAME.test(name) ||
+        new RegExp(TAKEAWAY_CUISINES).test(cuisines);
+      const food = (cls === 'amenity' && (kind === 'fast_food' || (kind === 'restaurant' && sellsTakeaway))) || (/caterer|takeaway/.test(kind) && sellsTakeaway);
       if (!food || t.takeaway === 'no') continue;
       const a = hit.address || {};
       const street = [a.house_number, a.road].filter(Boolean).join(' ');
@@ -386,7 +475,7 @@ export function parseNominatimSpots(lists: any[], here?: { lat: number; lon: num
       spots.push({ spot, d: here && spot.lat !== undefined && spot.lon !== undefined ? distanceM(here, { lat: spot.lat, lon: spot.lon }) : Infinity });
     }
   }
-  return spots.sort((a, b) => (a.d === b.d ? 0 : a.d < b.d ? -1 : 1)).map((x) => x.spot);
+  return oneOfEachChain(spots.sort((a, b) => (a.d === b.d ? 0 : a.d < b.d ? -1 : 1)).map((x) => x.spot));
 }
 
 /**
@@ -416,4 +505,66 @@ export function parseGeocode(json: any, query: string): { label: string; lat: nu
   const town = a.city || a.town || a.village || a.suburb || a.hamlet || a.county;
   const label = [town, a.postcode && /^\d|^[A-Z]{1,2}\d/i.test(String(query).trim()) ? a.postcode : ''].filter(Boolean).join(' ');
   return { label: clip(label || hit.name || hit.display_name || query, 100), lat, lon };
+}
+
+/**
+ * What we can learn about a business from its own web page: structured data first (name, cuisine, address, phone,
+ * position), then the page's title. Returns null when there is nothing to go on.
+ */
+export type PlaceDetails = { name: string; cuisine?: string; address?: string; phone?: string; lat?: number; lon?: number };
+
+const BUSINESS_TYPES = /restaurant|foodestablishment|localbusiness|cafe|bakery|store|barorpub/i;
+const decode = (t: string) =>
+  t
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;|&apos;|&rsquo;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+function findBusiness(json: any): any | null {
+  if (!json || typeof json !== 'object') return null;
+  if (Array.isArray(json)) {
+    for (const j of json) {
+      const r = findBusiness(j);
+      if (r) return r;
+    }
+    return null;
+  }
+  const types = ([] as unknown[]).concat(json['@type'] ?? []).map(String);
+  if (types.some((t) => BUSINESS_TYPES.test(t)) && json.name) return json;
+  return findBusiness(json['@graph']);
+}
+
+export function placeFromHtml(html: string): PlaceDetails | null {
+  const re = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html))) {
+    try {
+      const b = findBusiness(JSON.parse(m[1].trim()));
+      if (!b) continue;
+      const a = b.address && typeof b.address === 'object' ? b.address : {};
+      const address = typeof b.address === 'string' ? b.address : [a.streetAddress, a.addressLocality, a.postalCode].filter(Boolean).join(', ');
+      const cuisine = ([] as unknown[]).concat(b.servesCuisine ?? [])[0];
+      const lat = Number(b.geo?.latitude);
+      const lon = Number(b.geo?.longitude);
+      return {
+        name: clip(decode(String(b.name)), 80),
+        cuisine: cuisine ? cuisineLabel(String(cuisine)) : undefined,
+        address: clip(decode(address), 120) || undefined,
+        phone: clip(b.telephone, 30) || undefined,
+        lat: Number.isFinite(lat) && Number.isFinite(lon) ? lat : undefined,
+        lon: Number.isFinite(lat) && Number.isFinite(lon) ? lon : undefined,
+      };
+    } catch {
+      // not valid JSON; try the next block
+    }
+  }
+  const og = /<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i.exec(html) || /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:site_name["']/i.exec(html);
+  const title = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html);
+  const raw = og?.[1] || (title ? title[1].split(/\s[|\u2013\u2014-]\s/)[0] : '');
+  const name = clip(decode(raw), 80);
+  return name ? { name } : null;
 }
