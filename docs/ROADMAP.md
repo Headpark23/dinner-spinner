@@ -1,139 +1,111 @@
 # Dinner Spinner roadmap
 
-Plan for the next twelve improvements. Written after the Freezer feature landed, and checked against the code, so some items differ from the first idea list (see "Corrections to the brief").
+Status of the twelve improvement ideas, checked against the code on `main` (plus the Freezer in PR 31). The first draft of this file was written before main's rebuild landed, so most of it was out of date. This version only lists what is left to do.
 
 Effort: S = under a day, M = 1 to 3 days, L = a week or more.
 
-## Corrections to the brief
+## Where each idea stands
 
-- **Cost per serving (8) is not "already there".** `Meal.estimatedCostPerHead` exists in `src/types/index.ts` but no recipe in `initialData.ts` or `worldRecipes.ts` sets it. Item 8 needs the data filled in first (see below).
-- **Tesco (7) is not mentioned in `VotingView.tsx` or anywhere in `src/`.** Supermarket links are only in the backlog in `PRODUCT_EVOLUTION.md`. Nothing to reuse; start clean.
-- **PWA (2) confirmed missing.** No manifest, no service worker, no `public/manifest` (only `public/photos`).
-- **Voting (4) and the shopping list share a server, but it is a single global list.** `server.ts` writes one `.shopping-list.json` with no household or room concept. Rooms need that added; copying the shopping method as-is would mix every household's votes together.
-- **Alerts (3) and the week planner (1) both depend on state that today lives only on one phone** (`reverseTimers`, `agreedMeal`).
+| # | Idea | Status on main | What is left |
+| --- | --- | --- | --- |
+| 1 | Week planner | **Mostly built.** `PlannerSheet.tsx`, `utils/planner.ts` (`suggestWeek`, themes per night, `tidyPlan`, `weekShopping`), "shop for the week" in one tap. | Freezer nights, household sharing, cost cap, cuisine variety. |
+| 2 | Installable and offline | **Built.** `public/manifest.webmanifest`, `public/sw.js` (app shell, assets, photos, fonts cached), registered in `main.tsx`, offline shopping queue. | Update prompt, install prompt. |
+| 3 | Step alerts | **Partly built.** Browser notifications when a step is due, in `VotingView.tsx`. They only fire while the page is open. | Screen wake lock, service-worker notifications. |
+| 4 | Voting from separate phones | **Built, different design.** Household-wide live vote (`LiveVote.tsx`, `/api/tonight`), decided on the server, phones poll. Uses Google-sign-in family groups instead of a 4-digit room code. | Decide whether a code is still wanted. |
+| 5 | Dietary needs per person | **Partly built, household-wide.** `utils/diets.ts` (vegetarian, vegan, pescatarian, gluten-free, dairy-free, nut-free), `DietPicker`, avoid list with plural matching. | Per-person diets and a clash warning on the vote. |
+| 6 | Leftovers | **Not built.** (`cupboard.ts` has a "leftover rice bowl" recipe only.) | Everything. |
+| 7 | Supermarket links | **Built.** `utils/delivery.ts` (Tesco, Sainsbury's, Asda, Morrisons, Ocado, Waitrose, plus Uber Eats and Just Eat) and `DeliverySheet.tsx`. `planner.ts` also holds a shorter `STORES` list. | Merge the two shop lists. |
+| 8 | Cost per serving | **Built, differently.** `utils/cost.ts` estimates what you would have to *buy* (ingredient price table minus fridge and staples). Cost filter (Free, £5, £10, no limit) and "about £4 to buy" on the result. `Meal.estimatedCostPerHead` is still unused. | Show cost per head, cost on planner, retire the unused field. |
+| 9 | Share a recipe card | **Not built.** `navigator.share` is used only for the family invite link. | Everything. |
+| 10 | Surprise me from the fridge | **Mostly built.** "Cook from what we have" (`cupboard.ts`, `CupboardSheet.tsx`) plus the fridge photo scan. | Link the photo scan straight into one spin; include the freezer. |
+| 11 | Seasonal dishes | **Not built.** | Everything. |
+| 12 | Streaks and milestones | **Partly built.** Stats shows a "N-night streak" of home-cooked dinners (`ScorecardView.tsx`). | Milestones (rescued items, takeaway-free runs, freezer portions eaten). |
 
-## Order of work
+## Freezer follow-ups (PR 31)
 
-| Phase | Items | Why this order |
-| --- | --- | --- |
-| 0 | Freezer (done) | Shipped. Feeds item 1 and item 6. |
-| 1 | 2 Installable and offline, 1 Week planner | Offline is the groundwork. The planner changes what the app is for. They touch different files, so they can run in parallel. |
-| 2 | 3 Step alerts, 7 Supermarket links, 8 Cost per serving | Small, high-value, mostly independent. |
-| 3 | 5 Dietary needs, 6 Leftovers, 11 Seasonal | Change the eligibility and weighting engine. Do them together so the engine is touched once and tested once. |
-| 4 | 4 Voting from separate phones | Biggest server change. Needs the household/room model. |
-| 5 | 9 Share card, 10 Surprise me, 12 Streaks | Nice to have. |
+The Freezer tab works, but it was built before main's household sync, so it is behind the other stores. This is the most useful next step because of that gap.
 
-## Phase 1
+1. **Share it with the household (M).** The fridge and shopping list sync through small operations (`utils/fridge.ts`, `/api/fridge/ops`, `requireHousehold`). Today the freezer lives only in this phone's `localStorage`, so a partner would not see what is in it or ticking a portion off. Add `utils/freezerOps.ts` (add, tick, put back, remove, clear) applied identically on the server and the phone, a `/api/freezer` pair of routes next to the fridge ones, and a `freezer` field in `src/server/store.ts`. Copy the fridge's "seed from the first phone" and queue-when-offline behaviour. Add tests next to the fridge ones.
+2. **Use it when planning (M).** Let a planner night be "from the freezer": offer batches oldest first, tick a portion when that night is cooked, and skip that night in `weekShopping`. `WeekPlan` entries are `{ mealId, title }` today, so add an optional `freezerId`.
+3. **Count it in "Cook from what we have" (S).** A batch in the freezer is a dinner that needs nothing from the shop. Offer it first in `CupboardSheet`, with the "Eat soon" ones at the front.
+4. **Leftovers (item 6) goes into it.** After dinner, "made extra?" can either add a fridge item with a use-by or send the rest to the freezer in one tap. See item 6 below.
+5. **Stats (S).** Portions eaten from the freezer feed the milestones in item 12.
+6. **Backup check (S).** `utils/backup.ts` (`checkBackup`) validates every other store but not `freezer`. It is sanitised on import, but add it to the checker so a damaged freezer list is reported like the others.
 
-### 2. Installable and offline (M)
+## Remaining work by item
 
-- Add `public/manifest.webmanifest` (name, icons 192/512 and a maskable one, `display: standalone`, theme colour from `DESIGN.md`) and link it in `index.html`.
-- Service worker via `vite-plugin-pwa` (Workbox, `generateSW`). Precache the app shell. Runtime-cache `/photos/*` with cache-first and `/api/shopping` with network-first so the last list shows with no signal.
-- Keep `pendingShoppingOps` as the write queue. Add: replay on the `online` event as well as the 5 s poll, and show the queue length in the Shopping tab ("3 changes waiting").
-- Freezer and every other store already live in `localStorage`, so they work offline today.
-- Update-available toast when a new service worker is waiting, so a stale shell never lingers.
-- Risk: a service worker that caches `index.html` forever strands users on old builds. Use `skipWaiting` only behind the toast, and test an upgrade, not just a first install.
-- Done when: Lighthouse PWA checks pass, airplane-mode reload shows the app, a shopping tick made offline syncs on reconnect.
+### 1. Week planner (M)
+- **Freezer nights.** See follow-up 2.
+- **Household sharing.** `weekPlan` and `weekThemes` are saved per phone (`week_plan`, `week_themes` in `localStorage`) and are not in the server store. Two people can plan different weeks. Move the plan into the household store using the same operations pattern.
+- **Cost cap.** `suggestWeek` ignores the cost filter. Pass the chosen limit through and prefer cheaper dishes so a "cheap week" is possible, using `missingCost` from `utils/cost.ts`.
+- **Variety.** `suggestWeek` avoids repeating a dish and prefers dishes not recently cooked, but it can still pick the same cuisine on consecutive nights. Add a soft penalty.
+- **Spread the use-next boost.** Today it is not applied when planning at all. Give use-next fridge items a bonus on the first few nights.
+- Tests: extend the planner tests to cover freezer nights, cost cap and cuisine spacing.
 
-### 1. Week planner (L)
+### 2. Installable and offline (S)
+- The service worker calls `skipWaiting()` on install, so a new version takes over at once but an open page keeps running old code until it reloads. Add a small "A new version is ready, reload" notice (listen for `controllerchange`).
+- Add a gentle in-app "Install" prompt using `beforeinstallprompt` (Android and desktop) and a one-line "Share, then Add to Home Screen" hint on iPhone. Nothing handles this today.
+- Bump `VERSION` in `sw.js` on each release that changes the shell. Consider generating it from the build so this cannot be forgotten.
 
-- New type `WeekPlan { weekStart: string; nights: { date: string; mealId: string | null; locked: boolean; kind: 'cook' | 'freezer' | 'takeaway' | 'out' }[] }`, persisted like the other stores and included in backup/sync.
-- Engine: add `planWeek(meals, pantry, cookLog, options)` to `dinnerEngine.ts`. It picks per night, skips locked nights, avoids repeating a cuisine two nights running, treats meals already planned this week as cooked for the cooling-off penalty, and spreads the use-next boost across the week instead of using it on night one.
-- Freezer link: a night can be "from the freezer". Planning offers batches in the freezer, oldest first, and ticks a portion off when the night is marked done.
-- UI: new view (or a Spin-screen mode) with Mon to Fri rows, a lock toggle per night, per-night respin, and "respin unlocked". Weekend toggle. Reuse `ReelWindow` styling.
-- Combined shopping list: union of ingredients across the planned nights, minus pantry and staples (reuse `calculateMealPantryMatch`), de-duplicated by name, pushed with `addShoppingItems(names, forMeal)`.
-- Tonight handoff: today's planned meal pre-fills the Tonight tab and the reverse timeline.
-- Tests: no repeats within a week when the pool allows, locked nights survive a respin, shopping list de-dupes across meals, freezer nights do not add ingredients.
-- Navigation: the nav already has five items. Either fold "Week" under Spin as a segmented control, or replace Stats with a "More" sheet. Decide before building (open question 1).
+### 3. Step alerts (S to M)
+- **Wake lock.** `navigator.wakeLock` is not used anywhere. Hold the screen awake while a dinner is agreed and steps remain; re-acquire on `visibilitychange`; feature-detect.
+- **Locked-screen alerts.** The current `new Notification(...)` only fires while the page is open. Switch to `registration.showNotification` from the service worker so alerts appear with the screen locked, and say plainly in the UI that true background scheduling needs a push server (see open question 2).
+- On iPhone, notifications need the app installed to the home screen, so this pairs with the install prompt in item 2.
 
-## Phase 2
+### 4. Voting from separate phones (S, or nothing)
+- The live vote already works across phones inside a signed-in family group. The original idea was a 4-digit code so someone outside the group can vote. Only build that if guests are a real need (open question 3). If so: short-lived rooms on `/api/tonight`, rate-limited joins, vote state only.
 
-### 3. Alerts for cooking steps (S to M)
-
-- Wake lock: `navigator.wakeLock.request('screen')` while a dinner is agreed and the timeline has unfinished steps. Re-acquire on `visibilitychange`. Feature-detect.
-- Notifications: ask for permission only after the user taps "Remind me", never on load. Schedule with `setTimeout` against the step `minuteOffset` while the page is open, and via the service worker (`showNotification`) so it still fires with the screen locked. True background scheduling (Notification Triggers) is not reliable across browsers, so the honest scope is "works while the app is open or recently backgrounded". Say that in the UI.
-- Fallback: in-app banner plus the existing audio cue when permission is denied.
-- Depends on item 2 (service worker).
-- iOS caveat: web push and notifications need the app installed to the home screen (another reason item 2 comes first).
-
-### 7. Supermarket links (S)
-
-- Per shopping item, an "Open in..." menu with Tesco, Sainsbury's, Ocado, Aldi search URLs. Search-URL patterns change; keep them in one `src/utils/supermarkets.ts` map with a unit test that checks each builds a valid URL.
-- Remember the household's preferred store in `localStorage`. Add a bulk "open all in one store" only if the store supports multi-search (most do not), otherwise one tap per item.
-- Do not scrape prices. Links only.
-
-### 8. Cost per serving and "cheap week" (M, because of the data)
-
-- Data first: populate `estimatedCostPerHead` for all recipes. Two options: derive it from an ingredient price table (`src/data/ingredientPrices.ts`, about 150 common UK ingredients), or ask Gemini once, offline, to produce a reviewed JSON that is committed. Prefer the price table so numbers are explainable and editable.
-- Show on meal cards and the recipe sheet. Mark clearly as an estimate.
-- Filter: "Budget" toggle on the machine (pool filter) and a "cheap week" option in the planner (item 1) that caps average cost per head.
-- Stats: swap the estimated takeaway savings figure to use real per-meal costs when available.
-
-## Phase 3: one pass through the engine
-
-Do 5, 6 and 11 together. All three change `filterEligibleMeals` and `selectWeightedMeal`, so the tests are shared and the weighting stays understandable.
-
-### 5. Dietary needs per person (M)
-
-- Extend `HouseholdMember` with `diet?: 'vegetarian' | 'vegan' | 'pescatarian' | 'gluten-free' | 'dairy-free'` and `avoid: string[]` (nuts, mushrooms, anything free text).
-- Ingredient classification: a small keyword map for diets (meat, fish, dairy, gluten words). Tag recipes at load time rather than guessing at spin time. Free-text avoids reuse the existing substring match used for `bannedIngredients`.
-- Spin behaviour: a setting, "Skip dishes someone can't eat" (hard filter) versus "warn only". Default to skip.
-- Voting: a warning chip on the ballot naming who it clashes with.
-- Safety: this is preference handling, not an allergy guarantee. Add a plain-language line on the screen that allergy checks must be done on the real ingredients. Do not claim "nut free".
-- Migrate existing `bannedIngredients` as the household-wide list; do not remove it.
+### 5. Per-person dietary needs (M)
+- Diets and the avoid list are household-wide (`diets` in the context). Add `diets` and `avoid` to each household member, keep the household list as the baseline.
+- Spin behaviour: a setting for "skip dishes someone can't eat" (default) versus "just warn".
+- Vote screen: a clash chip naming who a dish does not suit, using `mealFitsDiets` per member.
+- Keep the plain-language note that this is preference handling, not an allergy check. The nut-free diet in particular should say to read labels.
 
 ### 6. Leftovers (M)
+- Add `makesLeftovers?: { portions: number; keepDays: number }` to `Meal` and a "Made extra?" step in `AfterDinnerReview.tsx`.
+- Two routes: add a fridge item flagged "use next" with an eat-by date (the existing use-next boost then picks it up), or "Freeze the rest" which creates a `FreezerItem` directly.
+- `PantryItem` has no dates. Add an optional `useBy` that turns amber and red as it nears. This also fixes a gap for ordinary fridge items.
+- The fridge is a server-synced store, so extend `FridgeOp` rather than writing around it.
 
-- Add `makesLeftovers?: { portions: number; keepDays: number }` to `Meal`, and a "Made extra?" prompt in the after-dinner review (`AfterDinnerReview.tsx`).
-- Fridge route: add a fridge item flagged use-next with an "eat by" date (the pantry model already has red/amber/green, so the existing "use next" boost picks it up with no engine change).
-- Freezer route: a second button, "Freeze the rest", creates a `FreezerItem` directly. This is the natural bridge to the Freezer feature.
-- Pantry `FreshnessLevel` has no dates today. Add an optional `useBy` date and turn amber/red automatically as it approaches. Needed here and also fixes a gap for ordinary fridge items.
+### 7. Supermarket links (S)
+- Done in `delivery.ts`. Clean-up only: `planner.ts` has its own four-shop `STORES` list used by the shopping tab's store picker, which duplicates `DELIVERY_SHOPS`. Point both at one list so a changed URL is fixed once. Add a test that every shop builds a valid search URL.
 
-### 11. Seasonal dishes (S)
-
-- Tag recipes with `seasons?: ('winter' | 'spring' | 'summer' | 'autumn')[]`, defaulting from tags/titles (stew, roast, salad, barbecue) so no hand-tagging of 120 recipes is needed. Allow overrides.
-- Weighting: a mild multiplier (about 1.25x in season, 0.85x out). Keep it small so it nudges rather than dominates the 4.5x clear-out boost.
-- Hemisphere/season from the device date, with a setting to turn it off.
-
-## Phase 4
-
-### 4. Voting from separate phones (L)
-
-- Room model on the server: `rooms[code] = { createdAt, members, proposedMealId, ballot, expiresAt }` with a 4-digit code, 24 h expiry, and a cap on rooms to stop abuse. Server persistence is optional since a room only lives for one evening.
-- Transport: SSE for server-to-phone updates plus `POST` for votes. This fits the existing Express server and avoids a WebSocket dependency. Add polling fallback, the same pattern as the shopping list.
-- Client: "Start a room" and "Join with code" on the Tonight tab. Each phone picks "I'm..." (already stored as `meId`). Votes and vetoes apply on the server so two phones cannot spend one veto token twice.
-- Security: a 4-digit code is guessable. Rate-limit joins, expire rooms, and keep rooms to vote state only (no recipes, no personal data). Do not put the shopping list under the room code.
-- Reuse the sync ops idea from `src/utils/shopping.ts`: apply the same pure function on server and client, tested once.
-- Depends on the household/room concept (see open question 3). Do it after item 2 so reconnects are handled.
-
-## Phase 5
+### 8. Cost per serving (S)
+- Keep what is there (cost to buy tonight). Add a per-head figure on recipe cards, calculated from the same price table and `servings`, so "£2 a head" and "£8 to buy" can both appear.
+- Remove or populate `Meal.estimatedCostPerHead`, which nothing reads or writes. Delete it unless per-head is added.
+- Feed the cost limit into the planner (item 1).
 
 ### 9. Share a recipe card (M)
+- Canvas-rendered image (photo, title, time, ingredients) via `navigator.share({ files })`, with a copy-image fallback. Photos carry licence credits (`photoCredit`, `photoCredits.json`); print the credit on the card.
+- A link form needs a public recipe route, so do it only if a public site is planned.
 
-- Canvas-rendered image (dish photo, title, time, ingredients) shared with `navigator.share({ files })`, with a copy-image fallback. Photos come from our own `/photos` set; check `photoCredits.json` and print the credit on the card.
-- A link version needs a public recipe route. Only do this if a deployed site is planned.
+### 10. Surprise me from the fridge (S)
+- "Cook from what we have" and the fridge scan both exist but are separate steps. Add one button: scan, add what it sees, then spin from what is in the fridge. Offer the freezer batches first (follow-up 3).
 
-### 10. Surprise me from the fridge (M)
+### 11. Seasonal dishes (S)
+- Tag recipes with seasons, defaulted from titles and tags (stew, roast, salad, barbecue) so nothing is hand-tagged across the ~120 dishes. Apply a mild multiplier (about 1.25x in season, 0.85x out) in `selectWeightedMeal`, well below the 4.5x use-next boost. Add a setting to turn it off. Test in `dinnerEngine.test.ts`.
 
-- Reuse the existing `snap-fridge` scan (`/api/pantry/analyze`), then spin only dishes with a high `calculateMealPantryMatch` percentage. Offer to keep the scanned items or use them for one spin only.
-- Includes the freezer: if a batch is waiting, show it first ("You have 3 chilli portions").
+### 12. Milestones (S)
+- The streak is computed inside `ScorecardView.tsx`. Move it to `utils/milestones.ts` as pure, tested functions, then add: takeaway-free runs, items rescued (already counted), freezer portions eaten. Celebrate; avoid shaming a takeaway night.
 
-### 12. Streaks and milestones (S)
+## Suggested order
 
-- Derived from `cookLog`, `takeawayLog` and the freezer's used items, so no new storage. Examples: dinners in a row cooked at home, items rescued (already counted), freezer portions eaten.
-- Pure functions in `src/utils/milestones.ts` with tests; display on `ScorecardView`. Avoid guilt framing: celebrate, do not shame a takeaway.
+1. **Freezer household sync** (follow-up 1) and the backup check (follow-up 6). Closes the gap in the work already in review.
+2. **Quick wins that finish half-built features:** wake lock and locked-screen alerts (3), update and install prompts (2), merge the shop lists (7), cost per head (8).
+3. **Planner upgrades** (1) together with freezer nights and "Cook from what we have" (follow-ups 2 and 3, item 10), since all touch the same plan and spin code.
+4. **Engine pass** for per-person diets (5), leftovers (6) and seasons (11), so `filterEligibleMeals` and `selectWeightedMeal` change once with shared tests.
+5. **Milestones** (12), then the **share card** (9).
 
 ## Cross-cutting
 
-- Every new store goes into `syncWithCloud`, `importBackupData` and `resetToFactoryDefaults` (as the Freezer now does) and is sanitised on load.
-- Every engine change gets a unit test in `src/utils/dinnerEngine.test.ts` before the UI.
-- Version the localStorage schema. Several items add fields to `Meal`, `HouseholdMember` and `PantryItem`; add a small migration helper before Phase 3 rather than patching each load.
-- Check against the `PRODUCT_EVOLUTION.md` constraints: mobile-first 480px, reduced motion, 44px touch targets, no asset bloat, works without a Gemini key.
+- Every new store goes through the same four places as the Freezer did: sync payload, backup import and check, factory reset, sanitise on load. Anything that should be shared between phones also needs a server store and operations, as the fridge and shopping list have.
+- Engine changes get unit tests before the UI.
+- Keep the design constraints in `PRODUCT_EVOLUTION.md`: mobile-first width, reduced motion, 44px touch targets, works without a Gemini key.
+- `PRODUCT_EVOLUTION.md` itself is also stale. Its backlog still lists room-code voting, supermarket links, notifications and cost as future work. Update it alongside this file.
 
 ## Open questions
 
-1. Navigation: where does the week planner live, given the five-item nav is full?
-2. Cost data (item 8): price table (explainable, editable) or one-off Gemini estimate (faster, less trustworthy)?
-3. Households (item 4): is one household per server enough, or is this ever deployed for several families? That decides whether rooms need real accounts.
-4. Notifications (item 3): is "works while the app is open or backgrounded" acceptable, or is true push (needs a push server and VAPID keys) wanted?
-5. Deployment: is there a public URL planned? Items 2, 3, 4 and the link form of 9 all need HTTPS.
+1. Where do new planner features live? The planner is a sheet; freezer nights and a shared plan may justify its own screen.
+2. Alerts: is "works while the app is open or recently backgrounded" enough, or is real push (a push server and keys) wanted?
+3. Guests: do people outside a family group ever need to vote? If not, item 4 is finished.
+4. Should the freezer be visible on the Dinner home screen ("3 portions of chilli waiting"), or stay inside Fridge?
