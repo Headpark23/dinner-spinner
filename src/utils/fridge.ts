@@ -1,4 +1,5 @@
 import { PantryItem, FreshnessLevel } from '../types';
+import { isDateOnly } from './leftovers';
 import { alreadyApplied, cleanOpId, remember } from './opIds';
 
 /** One change to the shared fridge. Applied identically on the server and on each phone. */
@@ -33,6 +34,7 @@ export const cleanItem = (raw: any): PantryItem | null => {
     freshness: FRESH.includes(raw?.freshness) ? raw.freshness : 'green',
     quantity: clip(raw?.quantity, 40) || undefined,
     addedDate: clip(raw?.addedDate, 10) || new Date().toISOString().slice(0, 10),
+    ...(isDateOnly(raw?.useBy) ? { useBy: raw.useBy } : {}),
   };
 };
 

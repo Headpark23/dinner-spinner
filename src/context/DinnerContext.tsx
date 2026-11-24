@@ -59,6 +59,7 @@ import {
   buildReverseTimerSteps,
 } from '../utils/dinnerEngine';
 import { mentionsAny } from '../utils/avoid';
+import { leftoverFridgeItem, MAX_LEFTOVER_PORTIONS } from '../utils/leftovers';
 import { DietMode, isDietMode, effectiveRestrictions, cleanPersonPrefs } from '../utils/memberDiets';
 import { missingCost, costLimitValue, type CostLimit } from '../utils/cost';
 import { buildReels, reelExtras, jackpotRecipeId, JACKPOT_FILL, type ComboMode } from '../utils/reelParts';
@@ -241,6 +242,8 @@ interface DinnerContextType {
 
   // After-dinner reviews
   saveDinnerReviews: (cookLogId: string, reviews: MealReview[]) => void;
+  /** "Made extra?": sends the rest to the fridge (use next, with an eat-by date) or the freezer, once per dinner. */
+  saveLeftovers: (cookLogId: string, route: 'fridge' | 'freezer', portions: number) => void;
 
   // Freezer: batch-cooked meals, ticked off a portion at a time
   freezer: FreezerItem[];
@@ -1526,6 +1529,19 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const clearUsedFreezer = () => queueFreezer([{ type: 'clearUsed' }]);
 
   // ---------- After-dinner reviews ----------
+  const saveLeftovers = (cookLogId: string, route: 'fridge' | 'freezer', portions: number) => {
+    const entry = cookLog.find((c) => c.id === cookLogId);
+    if (!entry || entry.leftovers) return;
+    const n = Math.min(MAX_LEFTOVER_PORTIONS, Math.max(1, Math.round(portions) || 1));
+    const meal = meals.find((m) => m.id === entry.mealId);
+    if (route === 'freezer') {
+      addFreezerItem({ name: entry.title, portions: n, mealId: entry.mealId, note: 'Leftovers' });
+    } else {
+      addPantryItem(leftoverFridgeItem({ title: entry.title, makesLeftovers: meal?.makesLeftovers }, n));
+    }
+    setCookLog((prev) => prev.map((c) => (c.id === cookLogId ? { ...c, leftovers: { route, portions: n } } : c)));
+  };
+
   const saveDinnerReviews = (cookLogId: string, reviews: MealReview[]) => {
     const entry = cookLog.find((c) => c.id === cookLogId);
     if (!entry) return;
@@ -2375,6 +2391,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         updateMealTweaks,
         setMealPhoto,
         saveDinnerReviews,
+        saveLeftovers,
         freezer,
         addFreezerItem,
         useFreezerPortion: useFreezerPortionById,
