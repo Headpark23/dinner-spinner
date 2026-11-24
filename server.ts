@@ -4,7 +4,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
-import { applyShoppingOp } from './src/utils/shopping';
+import { applyShoppingOpToState } from './src/utils/shopping';
 import { applyFridgeOp, type FridgeState } from './src/utils/fridge';
 import { applyFreezerOp, type FreezerState } from './src/utils/freezer';
 import { cleanLog, unionLog } from './src/utils/history';
@@ -293,8 +293,8 @@ app.post('/api/shopping/ops', smallJson, requireHousehold, async (req, res) => {
   if (ops.length === 0) return res.status(400).json({ error: 'No operations' });
   try {
     const shopping = await mutate(store, (req as AuthedRequest).householdId!, (h) => {
-      h.shopping.items = ops.reduce(applyShoppingOp, h.shopping.items);
-      h.shopping.version += 1;
+      const next = ops.reduce(applyShoppingOpToState, h.shopping);
+      h.shopping = { ...next, version: next.version + 1 };
       return h.shopping;
     });
     res.json(shopping);

@@ -26,7 +26,7 @@ import { createFreezerItem, applyFreezerOp, sanitizeFreezer, FreezerOp } from '.
 import { withOpIds } from '../utils/opIds';
 import { WORLD_RECIPES } from '../data/worldRecipes';
 import { adaptRecipes, describeTasteChange, lovedCount, TasteResult } from '../utils/taste';
-import { applyShoppingOp, newShoppingId, ShoppingOp } from '../utils/shopping';
+import { applyShoppingOp, applyShoppingOpToState, newShoppingId, ShoppingOp } from '../utils/shopping';
 import { applyFridgeOp, FridgeOp } from '../utils/fridge';
 import {
   STARTER_MEALS,
@@ -649,7 +649,9 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         persistQueue();
       }
       // Re-apply anything queued meanwhile so local edits never flicker away.
-      setShoppingList(pendingShoppingOps.current.reduce(applyShoppingOp, json.items as ShoppingItem[]));
+      setShoppingList(
+        pendingShoppingOps.current.reduce(applyShoppingOpToState, { version: json.version, items: json.items as ShoppingItem[], applied: json.applied }).items
+      );
       setShoppingOnline(true);
     } catch {
       setShoppingOnline(false);
@@ -848,8 +850,9 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return () => clearTimeout(t);
   }, [cookLog, syncHistory]);
 
-  const queueShopping = (ops: ShoppingOp[]) => {
-    if (ops.length === 0) return;
+  const queueShopping = (rawOps: ShoppingOp[]) => {
+    if (rawOps.length === 0) return;
+    const ops = withOpIds(rawOps); // an id per operation, so a resend after a lost reply is not counted twice
     setShoppingList((prev) => ops.reduce(applyShoppingOp, prev));
     pendingShoppingOps.current = [...pendingShoppingOps.current, ...ops];
     persistQueue();

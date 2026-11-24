@@ -325,7 +325,22 @@ test('Operation ids: a resent operation is applied once, in the fridge and the f
   assert.equal(seen!.at(-1), 'id399');
 });
 
-test('Server: a resent freezer or fridge operation is not applied twice', async () => {
+test('Operation ids: a resent shopping operation is applied once', async () => {
+  const { applyShoppingOpToState } = await import('./shopping');
+  let st: any = { version: 0, items: [] };
+  st = applyShoppingOpToState(st, { type: 'add', item: { id: 'a', name: 'Limes' }, opId: 's1' });
+  const toggle = { type: 'toggle', id: 'a', by: 'Sam', opId: 's2' };
+  st = applyShoppingOpToState(st, toggle);
+  st = applyShoppingOpToState(st, toggle); // resend: must not untick it
+  assert.equal(st.items[0].checked, true, 'a resent toggle does not flip it back');
+  st = applyShoppingOpToState(st, { ...toggle, opId: 's3' });
+  assert.equal(st.items[0].checked, false, 'a new toggle still works');
+  st = applyShoppingOpToState(st, { type: 'toggle', id: 'a' });
+  assert.equal(st.items[0].checked, true, 'ops without an id still work');
+  assert.deepEqual(st.applied, ['s1', 's2', 's3']);
+});
+
+test('Server: a resent freezer, fridge or shopping operation is not applied twice', async () => {
   await withServer(async (baseUrl) => {
     const a = await newHousehold(baseUrl);
     const post = (path: string, ops: any[]) => fetch(`${baseUrl}${path}`, { method: 'POST', headers: authed(a), body: JSON.stringify({ ops }) }).then((r) => r.json());
@@ -343,6 +358,15 @@ test('Server: a resent freezer or fridge operation is not applied twice', async 
     await post('/api/fridge/ops', [cycle]);
     const fridge = await post('/api/fridge/ops', [cycle]);
     assert.equal(fridge.items[0].freshness, 'amber');
+
+    const shop = await fetch(`${baseUrl}/api/shopping/ops`, { method: 'POST', headers: authed(a), body: JSON.stringify({ ops: [{ type: 'add', item: { id: 'p1', name: 'Pasta' }, opId: 'c1' }] }) });
+    assert.equal(shop.status, 200);
+    const flip = { type: 'toggle', id: 'p1', by: 'Sam', opId: 'c2' };
+    const send = () => fetch(`${baseUrl}/api/shopping/ops`, { method: 'POST', headers: authed(a), body: JSON.stringify({ ops: [flip] }) }).then((r) => r.json());
+    await send();
+    const list = await send(); // the phone resends after a lost reply
+    assert.equal(list.items[0].checked, true, 'the repeat does not untick it');
+    assert.ok(list.applied.includes('c2'));
   });
 });
 

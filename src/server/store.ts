@@ -13,7 +13,7 @@ export type Household = {
   google?: { name: string; email: string }[];
   createdAt: string;
   snapshotAt: string | null;
-  shopping: { version: number; items: ShoppingItem[] };
+  shopping: { version: number; items: ShoppingItem[]; applied?: string[] };
   tonight?: unknown;
   /** The shared fridge (small operations, like the shopping list). */
   fridge?: { version: number; seeded: boolean; items: unknown[] };
