@@ -70,6 +70,10 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
     diets,
     toggleDiet,
     toggleBannedIngredient,
+    likedIngredients,
+    addLikedIngredient,
+    removeLikedIngredient,
+    shelvedMeals,
     meals,
     addMeal,
     deleteMeal,
@@ -127,6 +131,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
   const [newItemFreshness, setNewItemFreshness] = useState<FreshnessLevel>('green');
   const [newStapleName, setNewStapleName] = useState('');
   const [newBannedName, setNewBannedName] = useState('');
+  const [newLovedName, setNewLovedName] = useState('');
 
   const [copiedShopping, setCopiedShopping] = useState(false);
 
@@ -303,7 +308,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
           { id: 'fridge', label: 'In the fridge', count: pantry.length },
           { id: 'camera', label: 'Add by photo' },
           { id: 'staples', label: 'Always have' },
-          { id: 'banned', label: 'Never use' },
+          { id: 'banned', label: 'Likes and dislikes' },
         ]
       : [];
 
@@ -950,7 +955,10 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
             <p className="text-[15px] font-semibold">Diets</p>
             <DietPicker value={diets} onToggle={toggleDiet} />
             <p className="pt-2 text-[15px] font-semibold">Never</p>
-            <p className="text-[14px] text-ink-2">The spinner will never land on a dish containing these.</p>
+            <p className="text-[14px] text-ink-2">
+              Dishes with these leave your recipes and are replaced by ones you might like. Take an ingredient off and its
+              dishes come back.
+            </p>
             {bannedIngredients.length === 0 ? (
               <p className="text-[14px] text-ink-3">Nothing on the list.</p>
             ) : (
@@ -958,7 +966,14 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
                 {bannedIngredients.map((ing) => (
                   <li key={ing} className="inline-flex items-center gap-1 rounded-full bg-tomato-soft py-1 pr-1 pl-3 text-[13px] text-tomato">
                     {ing}
-                    <button onClick={() => toggleBannedIngredient(ing)} aria-label={`Allow ${ing} again`} className="rounded-full p-1 opacity-70 hover:opacity-100">
+                    <button
+                      onClick={() => {
+                        const note = toggleBannedIngredient(ing);
+                        if (note) flash(note);
+                      }}
+                      aria-label={`Allow ${ing} again`}
+                      className="rounded-full p-1 opacity-70 hover:opacity-100"
+                    >
                       <X className="h-3.5 w-3.5" />
                     </button>
                   </li>
@@ -970,13 +985,53 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!newBannedName.trim()) return;
-                toggleBannedIngredient(newBannedName.trim());
+                const note = toggleBannedIngredient(newBannedName.trim());
+                if (note) flash(note);
                 setNewBannedName('');
               }}
             >
               <TextInput value={newBannedName} onChange={(e) => setNewBannedName(e.target.value)} placeholder="e.g. Olives" aria-label="Ingredient to avoid" />
               <Button type="submit" variant="secondary" disabled={!newBannedName.trim()}>
                 Avoid
+              </Button>
+            </form>
+            {shelvedMeals.length > 0 && (
+              <p className="text-[13px] text-ink-3">
+                {shelvedMeals.length} {shelvedMeals.length === 1 ? 'dish is' : 'dishes are'} set aside because of this list.
+              </p>
+            )}
+
+            <p className="pt-3 text-[15px] font-semibold">Love</p>
+            <p className="text-[14px] text-ink-2">
+              Add what you enjoy and we’ll bring in more dishes built on it, and favour it when replacing anything.
+            </p>
+            {likedIngredients.length === 0 ? (
+              <p className="text-[14px] text-ink-3">Nothing here yet.</p>
+            ) : (
+              <ul className="flex flex-wrap gap-1.5">
+                {likedIngredients.map((ing) => (
+                  <li key={ing} className="inline-flex items-center gap-1 rounded-full bg-sage-soft py-1 pr-1 pl-3 text-[13px] text-sage">
+                    {ing}
+                    <button onClick={() => removeLikedIngredient(ing)} aria-label={`Stop favouring ${ing}`} className="rounded-full p-1 opacity-70 hover:opacity-100">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <form
+              className={CHIP_LIST_INPUT}
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!newLovedName.trim()) return;
+                const note = addLikedIngredient(newLovedName.trim());
+                if (note) flash(note);
+                setNewLovedName('');
+              }}
+            >
+              <TextInput value={newLovedName} onChange={(e) => setNewLovedName(e.target.value)} placeholder="e.g. Chilli" aria-label="Ingredient you love" />
+              <Button type="submit" variant="secondary" disabled={!newLovedName.trim()}>
+                Love
               </Button>
             </form>
           </Card>

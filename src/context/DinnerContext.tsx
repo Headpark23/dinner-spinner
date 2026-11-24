@@ -21,6 +21,7 @@ import {
   LiveVote,
 } from '../types';
 import { WORLD_RECIPES } from '../data/worldRecipes';
+import { adaptRecipes, describeTasteChange, lovedCount, TasteResult } from '../utils/taste';
 import { applyShoppingOp, newShoppingId, ShoppingOp } from '../utils/shopping';
 import { applyFridgeOp, FridgeOp } from '../utils/fridge';
 import {
@@ -29,7 +30,6 @@ import {
   STARTER_MEMBERS,
   INITIAL_MEALS,
   INITIAL_STAPLES,
-  INITIAL_LIKED_INGREDIENTS,
   INITIAL_USER_PROFILE,
   REEL_CARBS,
   REEL_PROTEINS,
@@ -102,8 +102,13 @@ interface DinnerContextType {
   addStaple: (name: string) => void;
   removeStaple: (name: string) => void;
   likedIngredients: string[];
+  /** Dishes taken out of the rotation because they contain something on the never list. */
+  shelvedMeals: Meal[];
+  addLikedIngredient: (name: string) => string | null;
+  removeLikedIngredient: (name: string) => void;
   bannedIngredients: string[];
-  toggleBannedIngredient: (name: string) => void;
+  /** Adds or removes an ingredient from the never list; returns a sentence about what changed in the recipes. */
+  toggleBannedIngredient: (name: string) => string | null;
   diets: DietId[];
   toggleDiet: (id: DietId) => void;
   servings: number;
@@ -188,7 +193,7 @@ interface DinnerContextType {
 
   // First-run setup
   onboarded: boolean;
-  completeOnboarding: (names: string[], avoid: string[], diets?: DietId[]) => void;
+  completeOnboarding: (names: string[], avoid: string[], diets?: DietId[], loves?: string[]) => void;
   resetToFactoryDefaults: () => void;
   isSyncing: boolean;
 
@@ -282,7 +287,8 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [bannedIngredients, setBannedIngredients] = useState<string[]>(() =>
     loadStored<string[]>('banned', [])
   );
-  const [likedIngredients] = useState<string[]>(INITIAL_LIKED_INGREDIENTS);
+  const [likedIngredients, setLikedIngredients] = useState<string[]>(() => loadStored<string[]>('liked', []));
+  const [shelvedMeals, setShelvedMeals] = useState<Meal[]>(() => loadStored<Meal[]>('shelved', []));
   const [userProfile, setUserProfile] = useState<UserProfile>(() =>
     loadStored('profile', INITIAL_USER_PROFILE)
   );
@@ -440,6 +446,12 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY}_banned`, JSON.stringify(bannedIngredients));
   }, [bannedIngredients]);
+  useEffect(() => {
+    localStorage.setItem(`${STORAGE_KEY}_liked`, JSON.stringify(likedIngredients));
+  }, [likedIngredients]);
+  useEffect(() => {
+    localStorage.setItem(`${STORAGE_KEY}_shelved`, JSON.stringify(shelvedMeals));
+  }, [shelvedMeals]);
   useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY}_diets`, JSON.stringify(diets));
   }, [diets]);
@@ -1203,6 +1215,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         )
     );
     const score = (r: Meal) =>
+      lovedCount(r, likedIngredients) * 3 +
       (r.cuisine === gone.cuisine ? 4 : 0) +
       (r.timeStake === gone.timeStake ? 2 : 0) +
       (r.effort === gone.effort ? 1 : 0) +
@@ -1326,11 +1339,62 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setStaples((prev) => prev.filter((s) => s !== name));
   };
 
-  const toggleBannedIngredient = (name: string) => {
+  /** Applies a taste change to the recipe book and tidies anything that was on screen. */
+  const applyTaste = (result: TasteResult) => {
+    setMeals(result.meals);
+    setShelvedMeals(result.shelved);
+    const gone = new Set(result.removed.map((m) => m.id));
+    if (activeMealResult && gone.has(activeMealResult.id)) setActiveMealResult(null);
+  };
+
+  const toggleBannedIngredient = (name: string): string | null => {
+    const clean = name.trim().slice(0, 40);
+    if (!clean) return null;
     sound.playHold();
-    setBannedIngredients((prev) =>
-      prev.includes(name) ? prev.filter((i) => i !== name) : [...prev, name]
+    const exists = bannedIngredients.some((b) => b.toLowerCase() === clean.toLowerCase());
+    const nextBanned = exists
+      ? bannedIngredients.filter((b) => b.toLowerCase() !== clean.toLowerCase())
+      : [...bannedIngredients, clean];
+    setBannedIngredients(nextBanned);
+    const result = adaptRecipes({
+      meals,
+      shelved: shelvedMeals,
+      rejectedIds: rejectedMealIds,
+      banned: nextBanned,
+      loved: likedIngredients,
+      diets,
+      library: WORLD_RECIPES,
+    });
+    applyTaste(result);
+    return describeTasteChange(result, { never: clean });
+  };
+
+  const addLikedIngredient = (name: string): string | null => {
+    const clean = name.trim().slice(0, 40);
+    if (!clean || likedIngredients.some((l) => l.toLowerCase() === clean.toLowerCase())) return null;
+    sound.playHold();
+    const nextLiked = [...likedIngredients, clean].slice(0, 30);
+    setLikedIngredients(nextLiked);
+    const result = adaptRecipes({
+      meals,
+      shelved: shelvedMeals,
+      rejectedIds: rejectedMealIds,
+      banned: bannedIngredients,
+      loved: nextLiked,
+      diets,
+      library: WORLD_RECIPES,
+      extraSlots: 3,
+      mustContain: clean,
+    });
+    applyTaste(result);
+    return (
+      describeTasteChange(result, { love: clean }) ||
+      `No new dishes with ${clean} in the World Kitchen that suit your household, but ${clean} now counts when picking replacements.`
     );
+  };
+
+  const removeLikedIngredient = (name: string) => {
+    setLikedIngredients((prev) => prev.filter((l) => l.toLowerCase() !== name.toLowerCase()));
   };
 
   const addMeal = (
@@ -1475,6 +1539,8 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             takeaways,
             members: householdMembers,
             banned: bannedIngredients,
+            liked: likedIngredients,
+            shelved: shelvedMeals,
             diets,
             weekPlan,
             weekThemes,
@@ -1520,6 +1586,10 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (Array.isArray(payload.banned || payload.bannedIngredients)) {
       setBannedIngredients(payload.banned || payload.bannedIngredients);
     }
+    if (Array.isArray(payload.liked) && payload.liked.every((x: unknown) => typeof x === 'string')) {
+      setLikedIngredients(payload.liked.slice(0, 30));
+    }
+    if (Array.isArray(payload.shelved)) setShelvedMeals(payload.shelved);
     if (Array.isArray(payload.diets)) setDiets(payload.diets.filter(isDietId));
     if (payload.weekPlan && typeof payload.weekPlan === 'object' && !Array.isArray(payload.weekPlan)) {
       setWeekPlan(
@@ -1804,8 +1874,9 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const toggleDiet = (id: DietId) =>
     setDiets((prev) => (prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id]));
 
-  const completeOnboarding = (names: string[], avoid: string[], chosenDiets: DietId[] = []) => {
-    setDiets(chosenDiets.filter(isDietId));
+  const completeOnboarding = (names: string[], avoid: string[], chosenDiets: DietId[] = [], loves: string[] = []) => {
+    const dietList = chosenDiets.filter(isDietId);
+    setDiets(dietList);
     const cleanNames = names.map((n) => n.trim().slice(0, 30)).filter(Boolean).slice(0, 8);
     const avatars = ['🙂', '😋', '🧑‍🍳', '😎', '🤓', '🥳', '🙃', '😊'];
     if (cleanNames.length > 0) {
@@ -1819,7 +1890,23 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setDoorDutyPerson(members[0]);
     }
     const cleanAvoid = Array.from(new Set(avoid.map((a) => a.trim().slice(0, 40)).filter(Boolean))).slice(0, 20);
+    const cleanLoves = Array.from(new Set(loves.map((a) => a.trim().slice(0, 40)).filter(Boolean))).slice(0, 20);
     if (cleanAvoid.length > 0) setBannedIngredients(cleanAvoid);
+    if (cleanLoves.length > 0) setLikedIngredients(cleanLoves);
+    if (cleanAvoid.length > 0 || cleanLoves.length > 0 || dietList.length > 0) {
+      // Start the recipe book out already shaped to this household's tastes.
+      const result = adaptRecipes({
+        meals,
+        shelved: shelvedMeals,
+        rejectedIds: rejectedMealIds,
+        banned: cleanAvoid,
+        loved: cleanLoves,
+        diets: dietList,
+        library: WORLD_RECIPES,
+        extraSlots: cleanLoves.length > 0 ? 4 : 0,
+      });
+      applyTaste(result);
+    }
     setOnboarded(true);
     try {
       localStorage.setItem(`${STORAGE_KEY}_onboarded`, 'true');
@@ -1835,6 +1922,8 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setHouseholdMembers(STARTER_MEMBERS);
     setStaples(INITIAL_STAPLES);
     setBannedIngredients([]);
+    setLikedIngredients([]);
+    setShelvedMeals([]);
     setVoteLogs([]);
     historyReplace.current = true;
     setCookLog([]);
@@ -1895,6 +1984,9 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         addStaple,
         removeStaple,
         likedIngredients,
+        shelvedMeals,
+        addLikedIngredient,
+        removeLikedIngredient,
         bannedIngredients,
         diets,
         toggleDiet,
