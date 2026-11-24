@@ -19,7 +19,7 @@ Effort: S = under a day, M = 1 to 3 days, L = a week or more.
 | 9 | Share a recipe card | **Built as a picture.** "Share as a picture" on the recipe sheet (share sheet, else copy, else download), with the photo credit printed. | A shareable link, only if a public site is planned. |
 | 10 | Surprise me from the fridge | **Mostly built.** "Cook from what we have" now offers the freezer first and has a one-tap "photo of the fridge, then spin" start. | Check the photo hand-off with a real scan. |
 | 11 | Seasonal dishes | **Built.** `utils/seasons.ts`, a mild 1.25x / 0.85x nudge in the single-dish spin, with a "Favour dishes in season" switch in More. | Use it in the week planner; a hemisphere setting. |
-| 12 | Streaks and milestones | **Partly built.** Stats shows a "N-night streak" of home-cooked dinners (`ScorecardView.tsx`). | Milestones (rescued items, takeaway-free runs, freezer portions eaten). |
+| 12 | Streaks and milestones | **Built.** `utils/milestones.ts` (streak, home dinners, takeaway-free days, rescued items, freezer portions eaten) with a Milestones card on History. | A moment of celebration when a step is first reached. |
 
 ## Freezer follow-ups (PR 31)
 
@@ -98,8 +98,11 @@ The Freezer tab is built and, as of PR 31, shared with the household like the fr
 - ~~Setting~~ **Done.** "Favour dishes in season" in More, on by default, stored as `seasonal` in the context.
 - **Still open.** The week planner does not use the season yet. Southern-hemisphere users get the wrong months. Tests: `utils/seasons.test.ts` (including a sweep that shows the 1.25 to 0.85 split, and that the setting off gives an even one).
 
-### 12. Milestones (S)
-- The streak is computed inside `ScorecardView.tsx`. Move it to `utils/milestones.ts` as pure, tested functions, then add: takeaway-free runs, items rescued (already counted), freezer portions eaten. Celebrate; avoid shaming a takeaway night.
+### 12. Milestones (done)
+- ~~Streak out of the view~~ **Done.** `utils/milestones.ts` holds `cookingStreak`, `homeCookedThisWeek`, `takeawayFreeDays`, `freezerPortionsEaten`, `statsFrom` and `milestones`, all pure and tested; `ScorecardView.tsx` only draws them.
+- ~~New milestones~~ **Done.** Ladders for cooking in a row (3, 7, 14, 30), home dinners (10, 25, 50, 100), days since the last takeaway (7, 14, 30), items rescued (5, 10, 25, 50) and freezer portions eaten (3, 10, 25). The History page shows the highest step reached in each as a chip, and one "Next:" line for whichever is closest.
+- ~~Celebrate, never shame~~ **Done.** Nothing is shown for a ladder that has not started, a takeaway only ends the takeaway-free count, there is no "lost" or "broke" wording (a test checks the words), and a takeaway night in the week row is now amber instead of red.
+- **Still open.** No toast when a step is first reached (it only shows on History). Freezer portions eaten forget a batch once it is removed. Tests: `utils/milestones.test.ts`.
 
 ## Suggested order
 
@@ -107,7 +110,7 @@ The Freezer tab is built and, as of PR 31, shared with the household like the fr
 2. **Quick wins that finish half-built features:** wake lock and locked-screen alerts (3), update and install prompts (2), merge the shop lists (7), cost per head (8).
 3. **Planner upgrades** (1) together with freezer nights and "Cook from what we have" (follow-ups 2 and 3, item 10), since all touch the same plan and spin code.
 4. **Engine pass** for per-person diets (5), leftovers (6) and seasons (11), so `filterEligibleMeals` and `selectWeightedMeal` change once with shared tests.
-5. **Milestones** (12), then the **share card** (9).
+5. ~~Milestones (12), then the share card (9).~~ Done.
 
 ## Cross-cutting
 
