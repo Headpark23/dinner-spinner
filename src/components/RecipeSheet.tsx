@@ -4,7 +4,8 @@ import { Meal, MealTweaks } from '../types';
 import { withTweaks } from '../utils/dinnerEngine';
 import { quantityFor, hasQuantities } from '../utils/quantities';
 import { photoFor, PHOTO_CREDITS } from '../data/photos';
-import { Check, Plus, X, Send, Dices, Star, ThumbsDown, Heart, ShoppingBasket } from 'lucide-react';
+import { Check, Plus, X, Send, Dices, Star, ThumbsDown, Heart, ShoppingBasket, ImageDown } from 'lucide-react';
+import { shareRecipeCard } from '../utils/shareRecipeCard';
 import { costPerHeadText } from '../utils/cost';
 import { Button, Chip, IconButton, Segmented, Sheet, TextInput, cx, timeLabel, effortLabel } from './ui';
 
@@ -40,6 +41,7 @@ export const RecipeSheet: React.FC<{
   const inRotation = !!current && meals.some((m) => m.id === current.id);
 
   const [haveOverrides, setHaveOverrides] = useState<Record<string, boolean>>({});
+  const [cardNote, setCardNote] = useState<string | null>(null);
   const [listStarted, setListStarted] = useState(false);
   const [newIng, setNewIng] = useState('');
   const [newStep, setNewStep] = useState('');
@@ -327,6 +329,26 @@ export const RecipeSheet: React.FC<{
 
       {/* Actions */}
       <div className="mt-6 space-y-2 border-t border-line pt-4">
+        <Button
+          variant="secondary"
+          block
+          onClick={async () => {
+            setCardNote('Making the picture…');
+            try {
+              const r = await shareRecipeCard(effective, { photo: photo || undefined, credit });
+              setCardNote(r === 'copied' ? 'Picture copied. Paste it into a message.' : r === 'downloaded' ? 'Picture saved to your downloads.' : null);
+            } catch {
+              setCardNote('Couldn’t make the picture. Try again.');
+            }
+          }}
+        >
+          <ImageDown className="h-4 w-4" /> Share as a picture
+        </Button>
+        {cardNote && (
+          <p role="status" className="text-center text-[13px] text-ink-2">
+            {cardNote}
+          </p>
+        )}
         {inRotation ? (
           <>
             <Button
