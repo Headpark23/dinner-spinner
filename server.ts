@@ -645,30 +645,34 @@ async function fallbackModels(): Promise<string[]> {
 
 async function generateWithFallback(request: any): Promise<any> {
   const started = Date.now();
-  const tryModel = (model: string, ms: number) =>
-    withTimeout(ai!.models.generateContent({ ...request, model, config: { ...request.config, abortSignal: AbortSignal.timeout(ms) } }), ms);
   const left = () => GEMINI_BUDGET_MS - (Date.now() - started);
   let last: any;
-  const queue: (string | null)[] = [PRIMARY_MODEL, null, PRIMARY_MODEL]; // null = "the fallbacks"
-  const tried = new Set<string>();
-  for (let i = 0; i < queue.length; i++) {
-    let models: string[];
-    if (queue[i] === null) models = (await fallbackModels()).filter((m) => !tried.has(m)).slice(0, 1);
-    else models = [queue[i] as string];
-    for (const model of models) {
-      const ms = Math.min(i === 0 ? 10000 : 8000, left() - 500);
-      if (ms < 2000) throw last || new Error('Gemini timed out');
+  const dead = new Set<string>(); // models that don't exist (404) are skipped
+  let fallbacks: string[] | null = null;
+  // Overload spikes are short and a refused call comes back in about a second, so keep rotating through the models
+  // (main, a fallback, main, the other fallback, ...) with a short pause, until the time budget is spent.
+  for (let round = 0; ; round++) {
+    if (round === 1) fallbacks = await fallbackModels();
+    const model =
+      round % 2 === 0 ? PRIMARY_MODEL : (fallbacks || []).filter((m) => !dead.has(m))[Math.floor(round / 2) % Math.max(1, (fallbacks || []).length)];
+    if (model && !dead.has(model)) {
+      const ms = Math.min(round === 0 ? 12000 : 9000, left() - 300);
+      if (ms < 2500) throw last || new Error('Gemini timed out');
       try {
-        return await tryModel(model, ms);
+        return await withTimeout(
+          ai!.models.generateContent({ ...request, model, config: { ...request.config, abortSignal: AbortSignal.timeout(ms) } }),
+          ms
+        );
       } catch (e) {
         last = e;
-        tried.add(model);
         if (!isBusyError(e)) throw e;
-        console.warn(`Gemini ${model} unavailable, trying again:`, (e as any)?.message);
+        if (/\b404\b|NOT_FOUND/i.test(String((e as any)?.message))) dead.add(model);
+        console.warn(`Gemini ${model} unavailable (round ${round + 1}):`, String((e as any)?.message).slice(0, 160));
       }
     }
+    if (left() < 3500) throw last || new Error('Gemini timed out');
+    await new Promise((r) => setTimeout(r, 900));
   }
-  throw last;
 }
 
 // Realistic UK Kitchen Demo Fallbacks when GEMINI_API_KEY is not configured

@@ -471,8 +471,8 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
             </form>
             )}
             {analyzing && (
-              <p className="text-[13px] text-ink-2" role="status">
-                Reading it now. This can take up to 20 seconds.
+              <p className="rounded-xl bg-saffron-soft px-3 py-2.5 text-[13px] text-ink" role="status">
+                <span className="font-semibold">Reading it now. Please wait, this can take up to 30 seconds.</span> Keep this screen open until it finishes.
               </p>
             )}
     </div>
