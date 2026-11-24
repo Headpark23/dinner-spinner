@@ -4,8 +4,9 @@ import { photoFor } from '../../data/photos';
 import { useDinner } from '../../context/DinnerContext';
 import { ReelWindow } from '../ReelWindow';
 import { TimeFilter, EffortFilter, MachineMode } from '../../types';
-import { Heart, Check, ShoppingBasket, Star, Snowflake, BookOpen, SlidersHorizontal, Dices, Bike, ChevronRight, ThumbsUp, Globe2, CalendarDays, ChevronDown } from 'lucide-react';
+import { Heart, Check, ShoppingBasket, Star, Snowflake, BookOpen, SlidersHorizontal, Dices, Bike, ChevronRight, ThumbsUp, Globe2, CalendarDays, ChevronDown, Refrigerator, Trophy } from 'lucide-react';
 import { PlannerSheet } from '../PlannerSheet';
+import { CupboardSheet } from '../CupboardSheet';
 import { Card, Chip, Notice, DishTile, Segmented, Switch, Button, IconButton, Sheet, PageHeader, cx, timeLabel, effortLabel } from '../ui';
 
 const dayPart = () => {
@@ -57,7 +58,10 @@ export const MachineView: React.FC = () => {
     setActiveView,
     isCoolingOff,
     getCoolingOffDays,
+    householdCode,
+    shared,
   } = useDinner();
+  const leagueTop = householdCode ? shared.league.find((r) => r.votes > 0) : undefined;
 
   const resultRef = useRef<HTMLDivElement | null>(null);
   const wasSpinning = useRef(false);
@@ -75,6 +79,7 @@ export const MachineView: React.FC = () => {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [plannerOpen, setPlannerOpen] = useState(false);
+  const [cupboardOpen, setCupboardOpen] = useState(false);
   const [swapNote, setSwapNote] = useState<string | null>(null);
   const redItems = pantry.filter((p) => p.freshness === 'red');
   const pantryMatch = activeMealResult ? getMealPantryMatch(activeMealResult) : null;
@@ -95,6 +100,45 @@ export const MachineView: React.FC = () => {
   return (
     <div className="space-y-3.5">
       <PageHeader title="What’s for dinner?" subtitle={dayPart()} />
+
+      <button
+        onClick={() => setCupboardOpen(true)}
+        className="flex w-full items-center gap-3.5 rounded-2xl border border-line bg-card p-3.5 text-left transition-colors hover:border-line-strong"
+      >
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-saffron-soft text-saffron">
+          <Refrigerator className="h-5 w-5" strokeWidth={1.75} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[16px] font-semibold">Cook from what we have</span>
+          <span className="mt-0.5 block text-[13px] leading-snug text-ink-2">
+            {redItems.length > 0
+              ? `Surprise dinners from the fridge and cupboard. Rescues ${redItems.length} ${redItems.length === 1 ? 'item' : 'items'} that need using up.`
+              : 'Surprise dinners from the fridge, tins and staples. No shopping trip.'}
+          </span>
+        </span>
+        <ChevronRight className="h-5 w-5 shrink-0 text-ink-3" />
+      </button>
+      <CupboardSheet isOpen={cupboardOpen} onClose={() => setCupboardOpen(false)} />
+
+      <button
+        onClick={() => setActiveView(1)}
+        className="flex w-full items-center gap-3.5 rounded-2xl border border-line bg-card p-3.5 text-left transition-colors hover:border-line-strong"
+      >
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brass/15 text-brass">
+          <Trophy className="h-5 w-5" strokeWidth={1.75} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[16px] font-semibold">Family takeaway league</span>
+          <span className="mt-0.5 block text-[13px] leading-snug text-ink-2">
+            {leagueTop
+              ? `Top of the table: ${leagueTop.spot.name}, ${leagueTop.average.toFixed(1)} ★ from ${leagueTop.votes} ${leagueTop.votes === 1 ? 'vote' : 'votes'}.`
+              : householdCode
+                ? 'Find the takeaways in your town and score them together.'
+                : 'Find local takeaways and rank them as a family.'}
+          </span>
+        </span>
+        <ChevronRight className="h-5 w-5 shrink-0 text-ink-3" />
+      </button>
 
       <Segmented<MachineMode>
         label="What to spin"

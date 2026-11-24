@@ -380,7 +380,7 @@ test('React UI Component Suite: renders every screen and modal cleanly without e
     { name: 'Shopping', el: React.createElement(PantryView, { scope: 'shop' }), expectedText: '>Shopping</h1>' },
     {
       name: 'MoreView',
-      el: React.createElement(MoreView, { onOpenProfile: () => {}, onOpenRules: () => {} }),
+      el: React.createElement(MoreView, { onOpenProfile: () => {}, onOpenRules: () => {}, onOpenFamily: () => {} }),
       expectedText: 'Order takeaway',
     },
     { name: 'DinnerSteps', el: React.createElement(DinnerSteps), expectedText: 'Pick' },
@@ -681,7 +681,7 @@ test('Planner: supermarket links encode the search term', () => {
 // Hosted storage: the same server behaviour on a Redis-style store, including
 // two phones writing at the same moment.
 // ---------------------------------------------------------------------------
-import { createRedisStore, mutate, Store } from '../server/store';
+import { createRedisStore, createFileStore, mutate, Store, HttpError } from '../server/store';
 
 /** A stand-in for Upstash's REST API that understands GET, SET and the compare-and-set script. */
 async function withFakeRedis(run: (url: string, data: Map<string, string>) => Promise<void>) {
@@ -781,6 +781,68 @@ test('Hosted storage: households, shopping, saved copy and live vote work on a R
   });
 });
 
+test('Google sign-in: one family group across phones, kept apart from others', async () => {
+  const { useGoogleVerifier, useStore } = await import('../../server');
+  useStore(createFileStore(null));
+  const people: Record<string, { sub: string; email: string; name: string }> = {
+    mum: { sub: 'g-mum', email: 'mum@example.com', name: 'Mum' },
+    dad: { sub: 'g-dad', email: 'dad@example.com', name: 'Dad' },
+    other: { sub: 'g-other', email: 'other@example.com', name: 'Other' },
+  };
+  useGoogleVerifier(async (cred) => {
+    if (!people[cred]) throw new HttpError(401, { error: 'bad token' });
+    return people[cred];
+  });
+  await withServer(async (baseUrl) => {
+    const signIn = (credential: string, joinCode?: string) =>
+      fetch(`${baseUrl}/api/auth/google`, { method: 'POST', headers: json, body: JSON.stringify({ credential, joinCode }) });
+
+    // A bad token is refused.
+    assert.equal((await signIn('nope')).status, 401);
+
+    // First sign-in makes a family group.
+    const first = await (await signIn('mum')).json();
+    assert.equal(first.created, true);
+    assert.deepEqual(first.familyNames, ['Mum']);
+
+    // Mum's data is reachable with the key she was given.
+    await fetch(`${baseUrl}/api/shopping/ops`, {
+      method: 'POST',
+      headers: authed(first),
+      body: JSON.stringify({ ops: [{ type: 'add', item: { id: 's1', name: 'Milk', addedBy: 'Mum' } }] }),
+    });
+
+    // Signing in again, on another phone, lands in the same group with a different key.
+    const second = await (await signIn('mum')).json();
+    assert.equal(second.created, false);
+    assert.equal(second.householdId, first.householdId);
+    assert.notEqual(second.key, first.key);
+    const list = await (await fetch(`${baseUrl}/api/shopping`, { headers: authed(second) })).json();
+    assert.equal(list.items.length, 1);
+    // The first phone still works.
+    assert.equal((await fetch(`${baseUrl}/api/shopping`, { headers: authed(first) })).status, 200);
+
+    // Dad joins Mum's group with her code; a stranger gets their own.
+    const dad = await (await signIn('dad', first.code)).json();
+    assert.equal(dad.householdId, first.householdId);
+    assert.deepEqual(dad.familyNames.sort(), ['Dad', 'Mum']);
+    const other = await (await signIn('other')).json();
+    assert.notEqual(other.householdId, first.householdId);
+    assert.equal((await fetch(`${baseUrl}/api/shopping`, { headers: authed(other) })).status, 200);
+    assert.equal(
+      (await (await fetch(`${baseUrl}/api/shopping`, { headers: authed(other) })).json()).items.length,
+      0
+    );
+
+    // A wrong family code is refused and nothing is created.
+    assert.equal((await signIn('other', 'h_aaaaaaaaaaaa.wrong')).status, 400);
+
+    // Dad, signing in later with no code, returns to Mum's group.
+    const dadAgain = await (await signIn('dad')).json();
+    assert.equal(dadAgain.householdId, first.householdId);
+  });
+});
+
 test('Hosted storage: a failing store gives a calm error, not a crash', async () => {
   const broken: Store = {
     async get() {
@@ -795,6 +857,12 @@ test('Hosted storage: a failing store gives a calm error, not a crash', async ()
     async putSnapshot() {
       throw new Error('down');
     },
+    async getUser() {
+      throw new Error('down');
+    },
+    async putUser() {
+      throw new Error('down');
+    },
   };
   const { useStore } = await import('../../server');
   useStore(broken);
@@ -806,4 +874,94 @@ test('Hosted storage: a failing store gives a calm error, not a crash', async ()
     assert.ok(typeof (await me.json()).error === 'string');
   });
   await assert.rejects(mutate(broken, 'h_aaaaaaaaaaaa', () => 1));
+});
+
+test('Cook from what we have: ideas come only from stock, rescue use-next items, respect bans and diets', async () => {
+  const { cupboardCandidates, pickSurprise } = await import('./cupboard');
+  const item = (name: string, freshness: 'green' | 'amber' | 'red' = 'green') => ({
+    id: name, name, category: 'Fridge', freshness, addedDate: '2026-01-01',
+  });
+  const base = { meals: [], banned: [], diets: [] as any[] };
+
+  // Default staples: pasta, tinned tomatoes, garlic, oil, rice, onions, butter.
+  const ids = (c: { meal: { id: string } }[]) => c.map((x) => x.meal.id);
+  const plain = cupboardCandidates({ ...base, pantry: [], staples: INITIAL_STAPLES });
+  assert.ok(ids(plain).includes('idea_aglio'));
+  assert.ok(ids(plain).includes('idea_tomato-pasta'));
+  assert.ok(!ids(plain).includes('idea_frittata'), 'no eggs, no frittata');
+
+  // Eggs and a wilting spinach unlock a frittata that rescues the spinach.
+  const withEggs = cupboardCandidates({ ...base, pantry: [item('Eggs'), item('Spinach', 'red')], staples: INITIAL_STAPLES });
+  const frittata = withEggs.find((c) => c.meal.id === 'idea_frittata');
+  assert.ok(frittata);
+  assert.deepEqual(frittata!.rescues, ['Spinach']);
+  assert.ok(frittata!.meal.ingredients.includes('Eggs'));
+
+  // Nothing is invented: every ingredient is something the household has.
+  const have = new Set([...INITIAL_STAPLES, 'Eggs', 'Spinach']);
+  for (const c of withEggs.filter((x) => x.kind === 'idea')) {
+    for (const ing of c.meal.ingredients) assert.ok(have.has(ing), `${c.meal.id} invented ${ing}`);
+  }
+
+  // A banned ingredient removes dishes that need it; a vegan household gets no egg dishes.
+  const noGarlic = cupboardCandidates({ ...base, banned: ['garlic'], pantry: [], staples: INITIAL_STAPLES });
+  assert.ok(!ids(noGarlic).includes('idea_aglio'));
+  const vegan = cupboardCandidates({ ...base, diets: ['vegan'], pantry: [item('Eggs')], staples: INITIAL_STAPLES });
+  assert.ok(!vegan.some((c) => c.meal.ingredients.some((i) => /egg/i.test(i))));
+
+  // A saved recipe only appears when everything in it is in the house.
+  const recipe = { ...INITIAL_MEALS[0], ingredients: ['Basmati Rice', 'Butter'], lastCookedDate: null };
+  const saved = cupboardCandidates({ ...base, meals: [recipe, { ...INITIAL_MEALS[1], ingredients: ['Unobtainium', 'Butter'], lastCookedDate: null }], pantry: [], staples: INITIAL_STAPLES });
+  assert.ok(saved.some((c) => c.kind === 'saved' && c.meal.id === recipe.id));
+  assert.ok(!saved.some((c) => c.meal.id === INITIAL_MEALS[1].id));
+
+  // The surprise skips recent picks when it can, and handles an empty cupboard.
+  assert.equal(pickSurprise([]), null);
+  const first = pickSurprise(plain, [], () => 0)!;
+  const second = pickSurprise(plain, [first.meal.id], () => 0)!;
+  assert.notEqual(second.meal.id, first.meal.id);
+});
+
+test('Cook from what we have: peppercorns are not a vegetable', async () => {
+  const { cupboardCandidates } = await import('./cupboard');
+  const c = cupboardCandidates({ meals: [], pantry: [], staples: INITIAL_STAPLES, banned: [], diets: [] });
+  assert.ok(!c.some((x) => x.meal.ingredients.some((i) => /peppercorn/i.test(i))), 'spices are never the vegetable');
+  assert.ok(!c.some((x) => x.meal.id === 'idea_rice-bowl'), 'stock cubes are not leftover chicken');
+});
+
+test('Taste engine: dislikes shelve and replace dishes, likes bring in more, and it is reversible', async () => {
+  const { adaptRecipes, mealContains } = await import('./taste');
+  const { WORLD_RECIPES } = await import('../data/worldRecipes');
+  const { STARTER_MEALS } = await import('../data/initialData');
+  const base = { meals: STARTER_MEALS.slice(0, 6), shelved: [] as any[], rejectedIds: [] as string[], loved: [] as string[], diets: [] as any[], library: WORLD_RECIPES };
+
+  // Pick an ingredient that really is in some of the starter dishes.
+  const term = base.meals[0].ingredients[0].split(' ').pop()!.toLowerCase();
+  const hit = base.meals.filter((m) => mealContains(m, [term]));
+  assert.ok(hit.length >= 1);
+
+  const r1 = adaptRecipes({ ...base, banned: [term] });
+  assert.equal(r1.removed.length, hit.length);
+  assert.ok(r1.meals.every((m) => !mealContains(m, [term])), 'nothing left in the rotation contains the refused ingredient');
+  assert.ok(r1.added.length > 0 && r1.added.length <= hit.length, 'replaced, never more than were removed');
+  assert.equal(r1.meals.length, base.meals.length - r1.removed.length + r1.added.length);
+  assert.deepEqual(r1.shelved.map((m) => m.id).sort(), hit.map((m) => m.id).sort());
+
+  // Taking it off the list brings the shelved dishes back.
+  const r2 = adaptRecipes({ ...base, meals: r1.meals, shelved: r1.shelved, banned: [] });
+  assert.deepEqual(r2.restored.map((m) => m.id).sort(), hit.map((m) => m.id).sort());
+  assert.equal(r2.shelved.length, 0);
+
+  // Loving something brings in dishes that contain it, none that are refused, hidden, or already there.
+  const loved = adaptRecipes({ ...base, banned: ['mushroom'], loved: ['chilli'], extraSlots: 3, mustContain: 'chilli' });
+  assert.ok(loved.added.length > 0 && loved.added.length <= 3);
+  assert.ok(loved.added.every((m) => mealContains(m, ['chilli']) && !mealContains(m, ['mushroom'])));
+  const ids = loved.meals.map((m) => m.id);
+  assert.equal(new Set(ids).size, ids.length, 'no duplicates');
+  const hidden = adaptRecipes({ ...base, banned: [], loved: ['chilli'], extraSlots: 50, mustContain: 'chilli', rejectedIds: loved.added.map((m) => m.id) });
+  assert.ok(!hidden.added.some((m) => loved.added.some((l) => l.id === m.id)), 'hidden dishes stay hidden');
+
+  // Diets are respected for the new dishes.
+  const vegan = adaptRecipes({ ...base, banned: [term], diets: ['vegan'] });
+  assert.ok(vegan.added.every((m) => !m.ingredients.some((i) => /chicken|beef|pork|cheese|egg|milk|butter/i.test(i))));
 });

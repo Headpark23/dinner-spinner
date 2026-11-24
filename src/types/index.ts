@@ -21,7 +21,7 @@ export interface Meal {
   servings?: number;
   estimatedCostPerHead?: number;
   origin?: string; // country or region, for World Kitchen dishes
-  source?: 'starter' | 'world' | 'own' | 'scanned';
+  source?: 'starter' | 'world' | 'own' | 'scanned' | 'idea';
   tweaks?: MealTweaks;
 }
 

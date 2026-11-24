@@ -21,6 +21,7 @@ import {
   LiveVote,
 } from '../types';
 import { WORLD_RECIPES } from '../data/worldRecipes';
+import { adaptRecipes, describeTasteChange, lovedCount, TasteResult } from '../utils/taste';
 import { applyShoppingOp, newShoppingId, ShoppingOp } from '../utils/shopping';
 import { applyFridgeOp, FridgeOp } from '../utils/fridge';
 import {
@@ -29,7 +30,6 @@ import {
   STARTER_MEMBERS,
   INITIAL_MEALS,
   INITIAL_STAPLES,
-  INITIAL_LIKED_INGREDIENTS,
   INITIAL_USER_PROFILE,
   REEL_CARBS,
   REEL_PROTEINS,
@@ -41,6 +41,8 @@ import {
   SUNDAY_VEG_GRAVY,
 } from '../data/initialData';
 import { sound } from '../utils/audio';
+import { pickWeighted, spinWeight } from '../utils/takeaways';
+import { useSharedTakeaways, type SharedTakeaways } from './useSharedTakeaways';
 import { checkBackup, BackupCheck } from '../utils/backup';
 import { DietId, isDietId, mealFitsDiets } from '../utils/diets';
 import { WeekPlan, ThemeId, THEMES, StoreId, STORES, nextDays, suggestWeek, tidyPlan, weekShopping } from '../utils/planner';
@@ -92,6 +94,12 @@ interface DinnerContextType {
   updateUsualOrder: (takeawayId: string, memberName: string, orderText: string) => void;
   addTakeawayOption: (name: string, category: string, badge: string) => void;
   recordTakeawayOrdered: (takeawayId: string) => void;
+  /** The family's shared local takeaways, scores and notes (empty and idle outside a family group). */
+  shared: SharedTakeaways;
+  /** True when the reel is drawing from the family's shared takeaways instead of the on-phone list. */
+  usingSharedTakeaways: boolean;
+  /** The name scores and notes are filed under on this phone. */
+  whoAmI: string;
 
   // Pantry & Recipes
   pantry: PantryItem[];
@@ -102,8 +110,13 @@ interface DinnerContextType {
   addStaple: (name: string) => void;
   removeStaple: (name: string) => void;
   likedIngredients: string[];
+  /** Dishes taken out of the rotation because they contain something on the never list. */
+  shelvedMeals: Meal[];
+  addLikedIngredient: (name: string) => string | null;
+  removeLikedIngredient: (name: string) => void;
   bannedIngredients: string[];
-  toggleBannedIngredient: (name: string) => void;
+  /** Adds or removes an ingredient from the never list; returns a sentence about what changed in the recipes. */
+  toggleBannedIngredient: (name: string) => string | null;
   diets: DietId[];
   toggleDiet: (id: DietId) => void;
   servings: number;
@@ -170,6 +183,14 @@ interface DinnerContextType {
   createHousehold: () => Promise<{ success: boolean; message: string }>;
   joinHousehold: (code: string) => Promise<{ success: boolean; message: string }>;
   leaveHousehold: () => void;
+  /** Google sign-in for family groups. googleClientId is null when the server has none set up. */
+  googleClientId: string | null;
+  googleProfile: { name: string; email: string; picture: string } | null;
+  familyNames: string[];
+  signInWithGoogle: (
+    credential: string,
+    joinCode?: string
+  ) => Promise<{ success: boolean; message: string; created?: boolean }>;
 
   // Live vote across phones
   tonight: LiveVote | null;
@@ -180,7 +201,7 @@ interface DinnerContextType {
 
   // First-run setup
   onboarded: boolean;
-  completeOnboarding: (names: string[], avoid: string[], diets?: DietId[]) => void;
+  completeOnboarding: (names: string[], avoid: string[], diets?: DietId[], loves?: string[]) => void;
   resetToFactoryDefaults: () => void;
   isSyncing: boolean;
 
@@ -274,7 +295,8 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [bannedIngredients, setBannedIngredients] = useState<string[]>(() =>
     loadStored<string[]>('banned', [])
   );
-  const [likedIngredients] = useState<string[]>(INITIAL_LIKED_INGREDIENTS);
+  const [likedIngredients, setLikedIngredients] = useState<string[]>(() => loadStored<string[]>('liked', []));
+  const [shelvedMeals, setShelvedMeals] = useState<Meal[]>(() => loadStored<Meal[]>('shelved', []));
   const [userProfile, setUserProfile] = useState<UserProfile>(() =>
     loadStored('profile', INITIAL_USER_PROFILE)
   );
@@ -297,6 +319,11 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   );
   const householdRef = useRef(household);
   householdRef.current = household;
+  const [googleClientId, setGoogleClientId] = useState<string | null>(null);
+  const [googleProfile, setGoogleProfile] = useState<{ name: string; email: string; picture: string } | null>(() =>
+    loadStored('google_profile', null)
+  );
+  const [familyNames, setFamilyNames] = useState<string[]>([]);
   // People who already have saved data skip the welcome screen.
   const [onboarded, setOnboarded] = useState<boolean>(() => {
     const saved = loadStored<boolean | null>('onboarded', null);
@@ -428,6 +455,12 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     localStorage.setItem(`${STORAGE_KEY}_banned`, JSON.stringify(bannedIngredients));
   }, [bannedIngredients]);
   useEffect(() => {
+    localStorage.setItem(`${STORAGE_KEY}_liked`, JSON.stringify(likedIngredients));
+  }, [likedIngredients]);
+  useEffect(() => {
+    localStorage.setItem(`${STORAGE_KEY}_shelved`, JSON.stringify(shelvedMeals));
+  }, [shelvedMeals]);
+  useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY}_diets`, JSON.stringify(diets));
   }, [diets]);
   useEffect(() => {
@@ -518,6 +551,27 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const h = householdRef.current;
     return h ? { 'x-household-id': h.id, 'x-household-key': h.key } : {};
   };
+
+  const shared = useSharedTakeaways(household, STORAGE_KEY, authHeaders);
+  const whoAmI =
+    householdMembers.find((m) => m.id === meId)?.name || googleProfile?.name?.split(' ')[0] || householdMembers[0]?.name || 'Someone';
+  // Inside a family group the reel and the spinner draw from the shared list, favourites more often.
+  const usingShared = !!household && shared.league.length > 0;
+  const sharedPool: TakeawayOption[] = shared.league.map((row) => {
+    const local = takeaways.find((t) => t.id === row.spot.id);
+    return {
+      id: row.spot.id,
+      name: row.spot.name,
+      category: row.spot.cuisine,
+      badge: row.votes ? `${row.average.toFixed(1)}★ from ${row.votes}` : row.spot.address || '',
+      color: '#f59e0b',
+      usualOrders: local?.usualOrders ?? [],
+      orderCount: local?.orderCount,
+      lastOrderedDate: local?.lastOrderedDate ?? null,
+    };
+  });
+  const takeawayPool = usingShared ? sharedPool : takeaways;
+  const shownWinner = usingShared ? sharedPool.find((t) => t.id === winningTakeaway?.id) ?? null : winningTakeaway;
 
   const syncShopping = useCallback(async () => {
     // Without a household the list stays on this phone; changes queue until one is set up.
@@ -818,7 +872,9 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setTimeout(() => {
       clearInterval(interval);
       sound.playReelLock();
-      const randomTakeaway = takeaways[Math.floor(Math.random() * takeaways.length)];
+      const randomTakeaway = usingShared
+        ? pickWeighted(sharedPool, (o) => spinWeight(shared.league.find((r) => r.spot.id === o.id) || { average: 0, votes: 0 }), Math.random())!
+        : takeaways[Math.floor(Math.random() * takeaways.length)];
       const randomDoorPerson =
         householdMembers[Math.floor(Math.random() * householdMembers.length)];
 
@@ -831,6 +887,12 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const addTakeawayOption = (name: string, category: string, badge: string) => {
     if (!name.trim()) return;
+    if (household) {
+      // Family groups share the list, so a new spot goes to everyone.
+      const id = shared.addSpot(name, category || 'Takeaway', whoAmI);
+      if (id) setWinningTakeaway({ id, name: name.trim(), category: category || 'Takeaway', badge: '', color: '#f59e0b', usualOrders: [], orderCount: 0, lastOrderedDate: null });
+      return;
+    }
     const newOption: TakeawayOption = {
       id: 'takeaway_' + Date.now(),
       name: name.trim(),
@@ -850,7 +912,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const recordTakeawayOrdered = (takeawayId: string) => {
     sound.playWin();
-    const spot = takeaways.find((t) => t.id === takeawayId);
+    const spot = takeawayPool.find((t) => t.id === takeawayId);
     setTakeawayLog((prev) => [
       {
         id: 'tlog_' + Date.now(),
@@ -860,8 +922,9 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       },
       ...prev,
     ]);
-    setTakeaways((prev) =>
-      prev.map((t) =>
+    setTakeaways((prevRaw) => {
+      const prev = !prevRaw.some((t) => t.id === takeawayId) && spot ? [spot, ...prevRaw] : prevRaw;
+      return prev.map((t) =>
         t.id === takeawayId
           ? {
               ...t,
@@ -869,8 +932,8 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               lastOrderedDate: new Date().toISOString(),
             }
           : t
-      )
-    );
+      );
+    });
   };
 
   // Voting Actions
@@ -1190,6 +1253,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         )
     );
     const score = (r: Meal) =>
+      lovedCount(r, likedIngredients) * 3 +
       (r.cuisine === gone.cuisine ? 4 : 0) +
       (r.timeStake === gone.timeStake ? 2 : 0) +
       (r.effort === gone.effort ? 1 : 0) +
@@ -1313,11 +1377,62 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setStaples((prev) => prev.filter((s) => s !== name));
   };
 
-  const toggleBannedIngredient = (name: string) => {
+  /** Applies a taste change to the recipe book and tidies anything that was on screen. */
+  const applyTaste = (result: TasteResult) => {
+    setMeals(result.meals);
+    setShelvedMeals(result.shelved);
+    const gone = new Set(result.removed.map((m) => m.id));
+    if (activeMealResult && gone.has(activeMealResult.id)) setActiveMealResult(null);
+  };
+
+  const toggleBannedIngredient = (name: string): string | null => {
+    const clean = name.trim().slice(0, 40);
+    if (!clean) return null;
     sound.playHold();
-    setBannedIngredients((prev) =>
-      prev.includes(name) ? prev.filter((i) => i !== name) : [...prev, name]
+    const exists = bannedIngredients.some((b) => b.toLowerCase() === clean.toLowerCase());
+    const nextBanned = exists
+      ? bannedIngredients.filter((b) => b.toLowerCase() !== clean.toLowerCase())
+      : [...bannedIngredients, clean];
+    setBannedIngredients(nextBanned);
+    const result = adaptRecipes({
+      meals,
+      shelved: shelvedMeals,
+      rejectedIds: rejectedMealIds,
+      banned: nextBanned,
+      loved: likedIngredients,
+      diets,
+      library: WORLD_RECIPES,
+    });
+    applyTaste(result);
+    return describeTasteChange(result, { never: clean });
+  };
+
+  const addLikedIngredient = (name: string): string | null => {
+    const clean = name.trim().slice(0, 40);
+    if (!clean || likedIngredients.some((l) => l.toLowerCase() === clean.toLowerCase())) return null;
+    sound.playHold();
+    const nextLiked = [...likedIngredients, clean].slice(0, 30);
+    setLikedIngredients(nextLiked);
+    const result = adaptRecipes({
+      meals,
+      shelved: shelvedMeals,
+      rejectedIds: rejectedMealIds,
+      banned: bannedIngredients,
+      loved: nextLiked,
+      diets,
+      library: WORLD_RECIPES,
+      extraSlots: 3,
+      mustContain: clean,
+    });
+    applyTaste(result);
+    return (
+      describeTasteChange(result, { love: clean }) ||
+      `No new dishes with ${clean} in the World Kitchen that suit your household, but ${clean} now counts when picking replacements.`
     );
+  };
+
+  const removeLikedIngredient = (name: string) => {
+    setLikedIngredients((prev) => prev.filter((l) => l.toLowerCase() !== name.toLowerCase()));
   };
 
   const addMeal = (
@@ -1421,8 +1536,10 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateUsualOrder = (takeawayId: string, memberName: string, orderText: string) => {
-    setTakeaways((prev) =>
-      prev.map((t) => {
+    const known = takeawayPool.find((t) => t.id === takeawayId);
+    setTakeaways((prevRaw) => {
+      const prev = !prevRaw.some((t) => t.id === takeawayId) && known ? [known, ...prevRaw] : prevRaw;
+      return prev.map((t) => {
         if (t.id === takeawayId) {
           const updatedOrders = t.usualOrders.map((uo) =>
             uo.memberName === memberName ? { ...uo, order: orderText } : uo
@@ -1437,8 +1554,8 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           return updated;
         }
         return t;
-      })
-    );
+      });
+    });
   };
 
   const updateUserProfile = (updates: Partial<UserProfile>) => {
@@ -1462,6 +1579,8 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             takeaways,
             members: householdMembers,
             banned: bannedIngredients,
+            liked: likedIngredients,
+            shelved: shelvedMeals,
             diets,
             weekPlan,
             weekThemes,
@@ -1507,6 +1626,10 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (Array.isArray(payload.banned || payload.bannedIngredients)) {
       setBannedIngredients(payload.banned || payload.bannedIngredients);
     }
+    if (Array.isArray(payload.liked) && payload.liked.every((x: unknown) => typeof x === 'string')) {
+      setLikedIngredients(payload.liked.slice(0, 30));
+    }
+    if (Array.isArray(payload.shelved)) setShelvedMeals(payload.shelved);
     if (Array.isArray(payload.diets)) setDiets(payload.diets.filter(isDietId));
     if (payload.weekPlan && typeof payload.weekPlan === 'object' && !Array.isArray(payload.weekPlan)) {
       setWeekPlan(
@@ -1615,6 +1738,77 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const leaveHousehold = () => {
     saveHousehold(null);
     setShoppingOnline(null);
+    setGoogleProfile(null);
+    setFamilyNames([]);
+    try {
+      localStorage.removeItem(`${STORAGE_KEY}_google_profile`);
+    } catch {
+      // ignore
+    }
+  };
+
+  // Is Google sign-in set up on this server? (Decides whether the button is shown at all.)
+  useEffect(() => {
+    let live = true;
+    fetch('/api/health')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (live && j && typeof j.googleClientId === 'string' && j.googleClientId) setGoogleClientId(j.googleClientId);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  // Who else is in the family group, for the "Mum and Dad are in" line.
+  useEffect(() => {
+    if (!household) return;
+    let live = true;
+    fetch('/api/households/me', { headers: { 'x-household-id': household.id, 'x-household-key': household.key } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (live && j && Array.isArray(j.familyNames)) setFamilyNames(j.familyNames.map(String));
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [household]);
+
+  const signInWithGoogle = async (
+    credential: string,
+    joinCode?: string
+  ): Promise<{ success: boolean; message: string; created?: boolean }> => {
+    try {
+      const res = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential, joinCode }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) return { success: false, message: j.error || 'Google sign-in didn’t work. Try again.' };
+      saveHousehold({ id: j.householdId, key: j.key });
+      const profile = {
+        name: String(j.profile?.name || ''),
+        email: String(j.profile?.email || ''),
+        picture: String(j.profile?.picture || ''),
+      };
+      setGoogleProfile(profile);
+      setFamilyNames(Array.isArray(j.familyNames) ? j.familyNames.map(String) : []);
+      try {
+        localStorage.setItem(`${STORAGE_KEY}_google_profile`, JSON.stringify(profile));
+      } catch {
+        // ignore
+      }
+      return {
+        success: true,
+        created: Boolean(j.created),
+        message: j.created ? 'Your family group is ready.' : 'Signed in. You’re in your family group.',
+      };
+    } catch {
+      return { success: false, message: 'Couldn’t reach the server.' };
+    }
   };
 
   // ---- Live vote: every phone in the household votes on one proposal -------
@@ -1720,8 +1914,9 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const toggleDiet = (id: DietId) =>
     setDiets((prev) => (prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id]));
 
-  const completeOnboarding = (names: string[], avoid: string[], chosenDiets: DietId[] = []) => {
-    setDiets(chosenDiets.filter(isDietId));
+  const completeOnboarding = (names: string[], avoid: string[], chosenDiets: DietId[] = [], loves: string[] = []) => {
+    const dietList = chosenDiets.filter(isDietId);
+    setDiets(dietList);
     const cleanNames = names.map((n) => n.trim().slice(0, 30)).filter(Boolean).slice(0, 8);
     const avatars = ['🙂', '😋', '🧑‍🍳', '😎', '🤓', '🥳', '🙃', '😊'];
     if (cleanNames.length > 0) {
@@ -1735,7 +1930,23 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setDoorDutyPerson(members[0]);
     }
     const cleanAvoid = Array.from(new Set(avoid.map((a) => a.trim().slice(0, 40)).filter(Boolean))).slice(0, 20);
+    const cleanLoves = Array.from(new Set(loves.map((a) => a.trim().slice(0, 40)).filter(Boolean))).slice(0, 20);
     if (cleanAvoid.length > 0) setBannedIngredients(cleanAvoid);
+    if (cleanLoves.length > 0) setLikedIngredients(cleanLoves);
+    if (cleanAvoid.length > 0 || cleanLoves.length > 0 || dietList.length > 0) {
+      // Start the recipe book out already shaped to this household's tastes.
+      const result = adaptRecipes({
+        meals,
+        shelved: shelvedMeals,
+        rejectedIds: rejectedMealIds,
+        banned: cleanAvoid,
+        loved: cleanLoves,
+        diets: dietList,
+        library: WORLD_RECIPES,
+        extraSlots: cleanLoves.length > 0 ? 4 : 0,
+      });
+      applyTaste(result);
+    }
     setOnboarded(true);
     try {
       localStorage.setItem(`${STORAGE_KEY}_onboarded`, 'true');
@@ -1751,6 +1962,8 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setHouseholdMembers(STARTER_MEMBERS);
     setStaples(INITIAL_STAPLES);
     setBannedIngredients([]);
+    setLikedIngredients([]);
+    setShelvedMeals([]);
     setVoteLogs([]);
     historyReplace.current = true;
     setCookLog([]);
@@ -1794,8 +2007,11 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         consecutiveRejections,
         takeawayOverrideActive,
         setTakeawayOverrideActive,
-        takeaways,
-        winningTakeaway,
+        takeaways: takeawayPool,
+        winningTakeaway: shownWinner,
+        shared,
+        usingSharedTakeaways: usingShared,
+        whoAmI,
         doorDutyPerson,
         isTakeawaySpinning,
         spinTakeaway,
@@ -1811,6 +2027,9 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         addStaple,
         removeStaple,
         likedIngredients,
+        shelvedMeals,
+        addLikedIngredient,
+        removeLikedIngredient,
         bannedIngredients,
         diets,
         toggleDiet,
@@ -1871,6 +2090,10 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         createHousehold,
         joinHousehold,
         leaveHousehold,
+        googleClientId,
+        googleProfile,
+        familyNames,
+        signInWithGoogle,
         tonight,
         startLiveVote,
         castLiveVote,
