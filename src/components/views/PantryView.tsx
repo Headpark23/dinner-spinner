@@ -93,6 +93,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
     agreedMeal,
     sendToVote,
     setActiveView,
+    authHeaders,
     getMealPantryMatch,
     worldRecipes,
     rejectedMealIds,
@@ -123,6 +124,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
     }
   });
   const [worldCuisine, setWorldCuisine] = useState('all');
+  const [analyzeTry, setAnalyzeTry] = useState(1);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [sheetMeal, setSheetMeal] = useState<Meal | null>(null);
   const [newShopName, setNewShopName] = useState('');
@@ -241,17 +243,35 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
     setAnalyzing(type);
     setAnalysisError(null);
     setAnalysisSuccess(null);
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 35000);
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
-      const res = await fetch('/api/pantry/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, ...body }),
-        signal: controller.signal,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'The scanner couldn’t read that.');
+      // The reader is sometimes swamped. If so, wait a few seconds and ask again, up to three goes in all.
+      let res!: Response;
+      let data: any = {};
+      for (let n = 1; n <= 3; n++) {
+        setAnalyzeTry(n);
+        const controller = new AbortController();
+        timeout = setTimeout(() => controller.abort(), 40000);
+        res = await fetch('/api/pantry/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({ type, ...body }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        data = await res.json().catch(() => ({}));
+        if (!(res.status === 503 && data.busy) || n === 3) break;
+        await new Promise((r) => setTimeout(r, 4000));
+      }
+      if (!res.ok) {
+        throw new Error(
+          res.status === 401
+            ? 'Start a family group first, because the scanner and recipe writer are for groups. You can still add a recipe by hand or from a web link.'
+            : res.status === 413
+              ? 'That photo is too big to send. Try a smaller one.'
+              : data.error || 'The scanner couldn’t read that.'
+        );
+      }
       processApiResult(type, data);
       if (type === 'recipe-text') setAiRecipePrompt('');
     } catch (err: any) {
@@ -263,6 +283,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
     } finally {
       clearTimeout(timeout);
       setAnalyzing(null);
+      setAnalyzeTry(1);
     }
   };
 
@@ -478,7 +499,8 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
             )}
             {analyzing && (
               <p className="rounded-xl bg-saffron-soft px-3 py-2.5 text-[13px] text-ink" role="status">
-                <span className="font-semibold">Reading it now. Please wait, this can take up to 30 seconds.</span> Keep this screen open until it finishes.
+                <span className="font-semibold">Working on it. Please wait, this can take up to a minute.</span>{' '}
+                {analyzeTry > 1 ? `The reader is busy, so we're trying again (go ${analyzeTry} of 3). ` : ''}Keep this screen open until it finishes.
               </p>
             )}
     </div>
