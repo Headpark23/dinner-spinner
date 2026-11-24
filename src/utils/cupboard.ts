@@ -1,4 +1,5 @@
 import type { Meal, PantryItem, TimeStake, EffortLevel } from '../types';
+import { mentionsAny } from './avoid';
 import { calculateMealPantryMatch, isMealCoolingOff } from './dinnerEngine';
 import { DietId, mealFitsDiets } from './diets';
 
@@ -400,7 +401,7 @@ function buildIdea(t: Template, stock: StockItem[], banned: string[]): CupboardC
 
   const ingredientItems = [...needed, ...wanted.filter((w): w is StockItem => Boolean(w)), ...extras];
   const names = ingredientItems.map((i) => clean(i.name));
-  if (banned.some((b) => b && names.some((n) => n.toLowerCase().includes(b.toLowerCase())))) return null;
+  if (mentionsAny(names, banned)) return null;
 
   const n = needed.map((i) => clean(i.name).toLowerCase());
   const w = wanted.map((i) => (i ? clean(i.name).toLowerCase() : undefined));
@@ -453,7 +454,7 @@ export function cupboardCandidates({ meals, pantry, staples, banned, diets, nowM
     if (meal.ingredients.length < 2) continue;
     if (isMealCoolingOff(meal, nowMs)) continue;
     if (!mealFitsDiets(meal.ingredients, diets)) continue;
-    if (lowerBanned.some((b) => meal.ingredients.some((i) => i.toLowerCase().includes(b)))) continue;
+    if (mentionsAny([meal.title, ...meal.ingredients], lowerBanned)) continue;
     const match = calculateMealPantryMatch(meal, pantry, staples);
     if (match.missingItems.length > 0) continue;
     out.push({

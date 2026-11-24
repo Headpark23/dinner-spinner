@@ -7,6 +7,7 @@ import {
   PantryMatchInfo,
   ReverseTimerStep,
 } from '../types';
+import { mentionsAny } from './avoid';
 import { DietId, mealFitsDiets } from './diets';
 
 /**
@@ -138,16 +139,9 @@ export function filterEligibleMeals(
       return { pool: [], exactMatchCount: 0, timeStakeMatchCount: 0, isExactEffortMatch: false };
     }
   }
-  const nonBannedMeals = meals.filter((meal) => {
-    const containsBanned = meal.ingredients.some((ing) =>
-      bannedIngredients.some(
-        (banned) =>
-          banned.trim().length > 0 &&
-          ing.toLowerCase().includes(banned.toLowerCase())
-      )
-    );
-    return !containsBanned;
-  });
+  const nonBannedMeals = meals.filter(
+    (meal) => !mentionsAny([meal.title, ...withTweaks(meal).ingredients], bannedIngredients)
+  );
 
   const baseMeals = nonBannedMeals.length > 0 ? nonBannedMeals : meals;
 

@@ -35,7 +35,6 @@ import {
   REEL_CARBS,
   REEL_PROTEINS,
   REEL_SAUCES,
-  COMBO_REELS,
   SUNDAY_MEATS,
   SUNDAY_POTATOES,
   SUNDAY_STAR_SIDES,
@@ -56,6 +55,7 @@ import {
   buildComboMeal,
   buildReverseTimerSteps,
 } from '../utils/dinnerEngine';
+import { mentionsAny } from '../utils/avoid';
 import { buildReels, reelExtras, jackpotRecipeId, JACKPOT_FILL, type ComboMode } from '../utils/reelParts';
 
 interface DinnerContextType {
@@ -768,7 +768,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setModeState(nextMode);
     setHeldReels([false, false, false, false]);
     if (nextMode !== 'single') {
-      const initial = COMBO_REELS[nextMode].map((list) => list[0].label);
+      const initial = comboReels[nextMode].map((list) => list[0].label);
       setCustomReelResult(initial);
       setActiveMealResult(buildComboMeal(nextMode, initial, ...comboLimits(nextMode)));
     } else {
@@ -806,12 +806,18 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Saved recipes feed the 3 and 4 reel spinner: their parts join the reels, and the whole dish can land on Main.
   const reelAllowed = (label: string) =>
     mealFitsDiets([label], diets) &&
-    !bannedIngredients.some((b) => b.trim().length > 0 && label.toLowerCase().includes(b.toLowerCase()));
+    !mentionsAny([label], bannedIngredients);
   const extras = reelExtras(meals, reelAllowed);
+  // Nothing on the avoid list (or against the diets) stays on a reel, whether it is built in or from a saved recipe.
+  const allowedOnly = (lists: ReelComboItem[][]) =>
+    lists.map((list) => {
+      const ok = list.filter((i) => i.category === 'Our recipe' || reelAllowed(i.label));
+      return ok.length > 0 ? ok : list;
+    });
   const comboReels: Record<ComboMode, ReelComboItem[][]> = {
-    '3-reel': buildReels('3-reel', extras),
-    '4-reel': buildReels('4-reel', extras),
-    sunday: buildReels('sunday', extras),
+    '3-reel': allowedOnly(buildReels('3-reel', extras)),
+    '4-reel': allowedOnly(buildReels('4-reel', extras)),
+    sunday: allowedOnly(buildReels('sunday', extras)),
   };
   /** Settles a set of reel labels: a whole saved dish if Main landed on one, otherwise a plate built from the parts. */
   const settleReels = (m: MachineMode, labels: string[]): { labels: string[]; meal: Meal } => {
@@ -1294,9 +1300,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         !hidden.has(r.id) &&
         !inRotation.has(r.id) &&
         mealFitsDiets(r.ingredients, diets) &&
-        !r.ingredients.some((ing) =>
-          bannedIngredients.some((b) => b.trim() && ing.toLowerCase().includes(b.toLowerCase()))
-        )
+        !mentionsAny([r.title, ...r.ingredients], bannedIngredients)
     );
     const score = (r: Meal) =>
       lovedCount(r, likedIngredients) * 3 +
