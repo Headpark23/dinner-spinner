@@ -10,6 +10,10 @@ export type Household = {
   snapshotAt: string | null;
   shopping: { version: number; items: ShoppingItem[] };
   tonight?: unknown;
+  /** The shared fridge (small operations, like the shopping list). */
+  fridge?: { version: number; seeded: boolean; items: unknown[] };
+  /** Dinners the household has cooked, merged from every phone. */
+  cookLog?: unknown[];
   /** Bumped on every save so two phones writing at once can't silently overwrite each other. */
   _rev?: number;
   /** Older files kept the saved copy inline. Only the file store still uses this. */

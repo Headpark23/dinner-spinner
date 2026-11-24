@@ -263,6 +263,39 @@ test('Server: shared shopping list round trip, isolated per household', async ()
   });
 });
 
+test('Server: shared fridge and cooking history, isolated per household', async () => {
+  await withServer(async (baseUrl) => {
+    for (const [method, path] of [['GET', '/api/fridge'], ['POST', '/api/fridge/ops'], ['GET', '/api/history'], ['POST', '/api/history']]) {
+      const res = await fetch(`${baseUrl}${path}`, { method, headers: json, body: method === 'POST' ? JSON.stringify({ ops: [{ type: 'remove', id: 'x' }] }) : undefined });
+      assert.equal(res.status, 401, `${method} ${path} should be 401`);
+    }
+    const a = await newHousehold(baseUrl);
+    const b = await newHousehold(baseUrl);
+    const item = (id: string, name: string, freshness = 'green') => ({ id, name, category: 'Fridge', freshness, addedDate: '2026-01-01' });
+    const send = (h: any, ops: any[]) => fetch(`${baseUrl}/api/fridge/ops`, { method: 'POST', headers: authed(h), body: JSON.stringify({ ops }) }).then((r) => r.json());
+
+    const empty = await (await fetch(`${baseUrl}/api/fridge`, { headers: authed(a) })).json();
+    assert.equal(empty.seeded, false);
+    const first = await send(a, [{ type: 'seed', items: [item('f1', 'Milk'), item('f2', 'Courgettes', 'red')] }]);
+    assert.equal(first.items.length, 2);
+    const second = await send(a, [{ type: 'seed', items: [item('z', 'Other')] }]);
+    assert.equal(second.items.length, 2, 'a second phone cannot overwrite the first seed');
+    const edited = await send(a, [{ type: 'cycle', id: 'f1' }, { type: 'add', item: item('f3', 'Eggs') }, { type: 'remove', id: 'f2' }]);
+    assert.deepEqual(edited.items.map((i: any) => i.id).sort(), ['f1', 'f3']);
+    assert.equal(edited.items.find((i: any) => i.id === 'f1').freshness, 'amber');
+    assert.equal((await (await fetch(`${baseUrl}/api/fridge`, { headers: authed(b) })).json()).items.length, 0, 'other households see nothing');
+
+    const log = (id: string, date: string, title = 'Curry') => ({ id, mealId: 'm1', title, cuisine: 'x', date, rescued: [] });
+    const postHistory = (h: any, body: any) => fetch(`${baseUrl}/api/history`, { method: 'POST', headers: authed(h), body: JSON.stringify(body) }).then((r) => r.json());
+    await postHistory(a, { entries: [log('l1', '2026-01-01')] });
+    const merged = await postHistory(a, { entries: [log('l2', '2026-02-01'), { id: 5 }] });
+    assert.deepEqual(merged.entries.map((e: any) => e.id), ['l2', 'l1'], 'newest first, junk dropped, nothing lost');
+    const reset = await postHistory(a, { entries: [], replace: true });
+    assert.equal(reset.entries.length, 0);
+    assert.equal((await (await fetch(`${baseUrl}/api/history`, { headers: authed(b) })).json()).entries.length, 0);
+  });
+});
+
 test('Server: scanning never invents a result for something the user asked for', async () => {
   await withServer(async (baseUrl) => {
     // No AI key in tests: a real request is refused honestly...
@@ -429,33 +462,6 @@ test('Item icons: keywords map to graphics with a basket fallback', async () => 
   assert.equal(itemIcon('Free-Range Chicken Thighs'), '🍗');
   assert.equal(itemIcon('Greek yoghurt'), '🥣');
   assert.equal(itemIcon('Mystery thing'), '🛒');
-});
-
-test('Recipe book sync: latest recipes win, history merges, joiners keep their extras', async () => {
-  const { emptyLibrary, applyLibraryPut, cleanPayload, joinPayload, unionLog } = await import('./library');
-  const meal = (id: string) => ({ id, title: id }) as any;
-  const log = (id: string, date: string) => ({ id, mealId: 'm1', title: 'm1', cuisine: 'x', date, rescued: [] }) as any;
-  assert.equal(cleanPayload({ nope: 1 }), null);
-  assert.equal(cleanPayload({ meals: [{ id: 1 }, meal('ok')], cookLog: [{ id: 'a' }] })!.meals.length, 1, 'malformed entries are dropped');
-
-  let lib = applyLibraryPut(emptyLibrary(), { meals: [meal('a'), meal('b')], rejectedMealIds: ['z'], cookLog: [log('l1', '2026-01-01')] });
-  assert.equal(lib.version, 1);
-  assert.equal(lib.seeded, true);
-  // Another phone saves different recipes and one new dinner: recipes are replaced, history is merged.
-  lib = applyLibraryPut(lib, { meals: [meal('a')], rejectedMealIds: [], cookLog: [log('l2', '2026-02-01')] });
-  assert.deepEqual(lib.meals.map((m: any) => m.id), ['a']);
-  assert.deepEqual(lib.cookLog.map((e: any) => e.id), ['l2', 'l1'], 'newest first, nothing lost');
-  // A deliberate reset replaces the log.
-  lib = applyLibraryPut(lib, { meals: [meal('a')], rejectedMealIds: [], cookLog: [], replaceLog: true });
-  assert.equal(lib.cookLog.length, 0);
-
-  const joined = joinPayload(
-    { meals: [meal('a')], rejectedMealIds: ['gone'], cookLog: [log('l1', '2026-01-01')] },
-    { meals: [meal('a'), meal('mine'), meal('gone')], rejectedMealIds: [], cookLog: [log('l9', '2026-03-01')] }
-  );
-  assert.deepEqual(joined.meals.map((m: any) => m.id), ['a', 'mine'], 'own recipe kept, hidden dish not resurrected');
-  assert.equal(joined.cookLog.length, 2);
-  assert.equal(unionLog([log('x', '2026-01-01')], [{ ...log('x', '2026-01-01'), title: 'edited' }])[0].title, 'edited');
 });
 
 test('Shopping list ops: add dedupes, ticks record who, clear removes ticked', async () => {

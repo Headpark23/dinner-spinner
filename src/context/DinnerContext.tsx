@@ -23,7 +23,6 @@ import {
 import { WORLD_RECIPES } from '../data/worldRecipes';
 import { applyShoppingOp, newShoppingId, ShoppingOp } from '../utils/shopping';
 import { applyFridgeOp, FridgeOp } from '../utils/fridge';
-import { joinPayload, LibraryPayload } from '../utils/library';
 import {
   STARTER_MEALS,
   STARTER_TAKEAWAYS,
@@ -558,10 +557,8 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return () => clearInterval(timer);
   }, [syncShopping, household]);
 
-  // ---------- Shared fridge sync (same idea as the shopping list) ----------
-  const postFridgeOps = (ops: FridgeOp[]) =>
-    fetch('/api/fridge/ops', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ops }) });
-
+  // ---------- Shared fridge (once the household is set up) ----------
+  // Same pattern as the shopping list: edits apply here at once, queue, and go to the server.
   const saveFridgeQueue = () => {
     try {
       localStorage.setItem(`${STORAGE_KEY}_fridge_queue`, JSON.stringify(pendingFridgeOps.current));
@@ -570,7 +567,15 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  const postFridgeOps = (ops: FridgeOp[]) =>
+    fetch('/api/fridge/ops', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ ops }),
+    });
+
   const syncFridge = useCallback(async () => {
+    if (!householdRef.current) return; // without a household the fridge stays on this phone
     if (fridgeBusy.current) {
       fridgeDirty.current = true;
       return;
@@ -580,7 +585,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       do {
         fridgeDirty.current = false;
         const queued = pendingFridgeOps.current;
-        let res = queued.length ? await postFridgeOps(queued) : await fetch('/api/fridge');
+        let res = queued.length ? await postFridgeOps(queued) : await fetch('/api/fridge', { headers: authHeaders() });
         if (!res.ok) throw new Error('fridge sync failed');
         let json = await res.json();
         if (queued.length) {
@@ -588,7 +593,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           saveFridgeQueue();
         }
         if (!json.seeded) {
-          // First phone to arrive shares what it has; the server ignores this if someone beat us to it.
+          // First phone in the household shares what it has; the server ignores this if someone beat us to it.
           res = await postFridgeOps([{ type: 'seed', items: pantryRef.current }]);
           if (!res.ok) throw new Error('fridge seed failed');
           json = await res.json();
@@ -610,84 +615,59 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (document.visibilityState === 'visible') syncFridge();
     }, 5000);
     return () => clearInterval(timer);
-  }, [syncFridge]);
+  }, [syncFridge, household]);
 
   const queueFridge = (ops: FridgeOp[]) => {
     if (ops.length === 0) return;
     setPantry((prev) => ops.reduce(applyFridgeOp, { version: 0, seeded: true, items: prev }).items);
+    if (!householdRef.current) return;
     pendingFridgeOps.current = [...pendingFridgeOps.current, ...ops];
     saveFridgeQueue();
     syncFridge();
   };
 
-  // ---------- Shared recipe book: recipes, hidden dishes and history ----------
-  const libVersion = useRef(0);
-  const libSynced = useRef('');
-  const libBusy = useRef(false);
-  const libReplaceLog = useRef(false);
-  const libRef = useRef<LibraryPayload>({ meals: [], rejectedMealIds: [], cookLog: [] });
-  libRef.current = { meals, rejectedMealIds, cookLog };
+  // ---------- Shared cooking history ----------
+  const historyBusy = useRef(false);
+  const historyReplace = useRef(false);
+  const cookLogRef = useRef<CookLogEntry[]>([]);
+  cookLogRef.current = cookLog;
 
-  const syncLibrary = useCallback(async () => {
-    if (libBusy.current) return;
-    libBusy.current = true;
-    const joinedKey = `${STORAGE_KEY}_library_joined`;
-    const put = async (payload: LibraryPayload) => {
-      const r = await fetch('/api/library', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      if (!r.ok) throw new Error('library save failed');
-      return r.json();
-    };
-    const adopt = (lib: LibraryPayload & { version: number }) => {
-      libVersion.current = lib.version;
-      libSynced.current = JSON.stringify({ meals: lib.meals, rejectedMealIds: lib.rejectedMealIds, cookLog: lib.cookLog });
-      setMeals(lib.meals);
-      setRejectedMealIds(lib.rejectedMealIds);
-      setCookLog(lib.cookLog);
-    };
+  const syncHistory = useCallback(async () => {
+    if (!householdRef.current || historyBusy.current) return;
+    historyBusy.current = true;
     try {
-      const local = libRef.current;
-      const localJson = JSON.stringify(local);
-      const res = await fetch('/api/library');
-      if (!res.ok) throw new Error('library sync failed');
-      const lib = await res.json();
-      const joined = localStorage.getItem(joinedKey) === '1';
-      let toSend: LibraryPayload | null = null;
-      if (!lib.seeded) toSend = local; // first phone shares its recipe book
-      else if (!joined) toSend = joinPayload(lib, local); // keep this phone's extra recipes and history
-      else if (libReplaceLog.current || localJson !== libSynced.current) toSend = { ...local, replaceLog: libReplaceLog.current };
-      if (toSend) {
-        const out = await put(toSend);
-        libReplaceLog.current = false;
-        localStorage.setItem(joinedKey, '1');
-        if (JSON.stringify(libRef.current) === localJson) adopt(out);
-        else {
-          // Edited again while saving: keep the newer local state and send it next round.
-          libVersion.current = out.version;
-          libSynced.current = JSON.stringify({ meals: toSend.meals, rejectedMealIds: toSend.rejectedMealIds, cookLog: toSend.cookLog });
-        }
-      } else if (lib.version > libVersion.current) {
-        adopt(lib);
-      }
+      const sent = cookLogRef.current;
+      const replace = historyReplace.current;
+      const res = await fetch('/api/history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ entries: sent, replace }),
+      });
+      if (!res.ok) throw new Error('history sync failed');
+      const { entries } = (await res.json()) as { entries: CookLogEntry[] };
+      historyReplace.current = false;
+      // Only adopt the merged history if nothing changed while we were talking to the server.
+      if (cookLogRef.current === sent && JSON.stringify(entries) !== JSON.stringify(sent)) setCookLog(entries);
     } catch {
-      // offline: local changes are sent on a later round
+      // offline: local entries are sent on a later round
     } finally {
-      libBusy.current = false;
+      historyBusy.current = false;
     }
   }, []);
 
   useEffect(() => {
-    syncLibrary();
+    syncHistory();
     const timer = setInterval(() => {
-      if (document.visibilityState === 'visible') syncLibrary();
+      if (document.visibilityState === 'visible') syncHistory();
     }, 5000);
     return () => clearInterval(timer);
-  }, [syncLibrary]);
+  }, [syncHistory, household]);
 
-  // Send edits a moment after they happen instead of waiting for the next poll.
+  // Send a new dinner or review a moment after it happens instead of waiting for the next poll.
   useEffect(() => {
-    const t = setTimeout(syncLibrary, 1000);
+    const t = setTimeout(syncHistory, 800);
     return () => clearTimeout(t);
-  }, [meals, rejectedMealIds, cookLog, syncLibrary]);
+  }, [cookLog, syncHistory]);
 
   const queueShopping = (ops: ShoppingOp[]) => {
     if (ops.length === 0) return;
@@ -1518,7 +1498,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setMeals(payload.meals);
       restoredCount += payload.meals.length;
     }
-    if (Array.isArray(payload.pantry)) setPantry(payload.pantry);
+    if (Array.isArray(payload.pantry)) queueFridge([{ type: 'replaceAll', items: payload.pantry }]);
     if (Array.isArray(payload.staples)) setStaples(payload.staples);
     if (Array.isArray(payload.takeaways)) setTakeaways(payload.takeaways);
     if (Array.isArray(payload.members || payload.householdMembers)) {
@@ -1548,7 +1528,10 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
     if (Array.isArray(payload.voteLogs)) setVoteLogs(payload.voteLogs);
     if (typeof payload.rescuedItemsCount === 'number') setRescuedItemsCount(payload.rescuedItemsCount);
-    if (Array.isArray(payload.cookLog)) setCookLog(payload.cookLog);
+    if (Array.isArray(payload.cookLog)) {
+      historyReplace.current = true; // a restore replaces the shared history instead of merging into it
+      setCookLog(payload.cookLog);
+    }
     if (Array.isArray(payload.takeawayLog)) setTakeawayLog(payload.takeawayLog);
     if (Array.isArray(payload.rejectedMealIds)) setRejectedMealIds(payload.rejectedMealIds);
     // Keep this device's own identity; only the display name and last-saved time carry over.
@@ -1763,13 +1746,13 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const resetToFactoryDefaults = () => {
     setMeals(STARTER_MEALS);
-    setPantry([]);
+    queueFridge([{ type: 'replaceAll', items: [] }]);
     setTakeaways(STARTER_TAKEAWAYS);
     setHouseholdMembers(STARTER_MEMBERS);
     setStaples(INITIAL_STAPLES);
     setBannedIngredients([]);
     setVoteLogs([]);
-    libReplaceLog.current = true;
+    historyReplace.current = true;
     setCookLog([]);
     setTakeawayLog([]);
     setRejectedMealIds([]);
