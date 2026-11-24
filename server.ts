@@ -17,7 +17,14 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
-const SYNC_CACHE_PATH = path.resolve(__dirname, '.cloud-sync-cache.json');
+// Saved household data lives in DATA_DIR so a hosted copy can point it at a persistent disk.
+const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : __dirname;
+try {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+} catch {
+  // read-only filesystem: data stays in memory
+}
+const SYNC_CACHE_PATH = path.resolve(DATA_DIR, '.cloud-sync-cache.json');
 
 app.use(express.json({ limit: '25mb' }));
 
@@ -133,7 +140,7 @@ app.get('/api/sync/cloud', (_req, res) => {
 // Clients send small operations; the server applies them in order and bumps a
 // version number that clients poll.
 // ---------------------------------------------------------------------------
-const SHOPPING_PATH = process.env.NODE_ENV === 'test' ? null : path.resolve(__dirname, '.shopping-list.json');
+const SHOPPING_PATH = process.env.NODE_ENV === 'test' ? null : path.resolve(DATA_DIR, '.shopping-list.json');
 
 let shopping: { version: number; items: ShoppingItem[] } = { version: 0, items: [] };
 try {
@@ -144,7 +151,7 @@ try {
   shopping = { version: 0, items: [] };
 }
 
-const FRIDGE_PATH = process.env.NODE_ENV === 'test' ? null : path.resolve(__dirname, '.fridge.json');
+const FRIDGE_PATH = process.env.NODE_ENV === 'test' ? null : path.resolve(DATA_DIR, '.fridge.json');
 let fridge: FridgeState = { version: 0, seeded: false, items: [] };
 try {
   if (FRIDGE_PATH && fs.existsSync(FRIDGE_PATH)) fridge = JSON.parse(fs.readFileSync(FRIDGE_PATH, 'utf-8'));
@@ -171,7 +178,7 @@ app.post('/api/fridge/ops', (req, res) => {
   res.json(fridge);
 });
 
-const LIBRARY_PATH = process.env.NODE_ENV === 'test' ? null : path.resolve(__dirname, '.library.json');
+const LIBRARY_PATH = process.env.NODE_ENV === 'test' ? null : path.resolve(DATA_DIR, '.library.json');
 let library: Library = emptyLibrary();
 try {
   if (LIBRARY_PATH && fs.existsSync(LIBRARY_PATH)) library = JSON.parse(fs.readFileSync(LIBRARY_PATH, 'utf-8'));

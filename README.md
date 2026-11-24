@@ -66,3 +66,17 @@ python -I scripts/fetch_photos.py --override w_pho="File:Some better photo.jpg"
 ```
 
 See `DESIGN.md` for the design system and `SCAFFOLD_HEALTH.md` for the original audit.
+
+## Put it online
+
+Everything runs as one Node server, so it needs a host that keeps a process running (Render, Fly.io, Railway, Cloud Run). Serverless hosts will not work: voting rooms live in server memory.
+
+```bash
+docker build -t dinner-spinner .
+docker run -p 8080:8080 -v dinner-data:/data dinner-spinner
+```
+
+- Mount a persistent disk at `/data` (or set `DATA_DIR`). The fridge, shopping list and recipe book are saved there; without a disk they reset on restart.
+- Use HTTPS. Installing to the home screen and offline use need it.
+- Set `GEMINI_API_KEY` for live scanning (optional).
+- There are no accounts: anyone with the address shares one household. Keep the address private, or put the host behind a password.

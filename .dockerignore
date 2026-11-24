@@ -1,0 +1,9 @@
+node_modules
+dist
+.git
+.claude
+.env
+.shopping-list.json
+.fridge.json
+.library.json
+.cloud-sync-cache.json
