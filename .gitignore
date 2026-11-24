@@ -12,3 +12,4 @@ coverage/
 .shopping-list.json
 .worktrees/
 .fridge.json
+.library.json

@@ -20,6 +20,7 @@ import {
 import { WORLD_RECIPES } from '../data/worldRecipes';
 import { applyShoppingOp, newShoppingId, ShoppingOp } from '../utils/shopping';
 import { applyFridgeOp, FridgeOp } from '../utils/fridge';
+import { joinPayload, LibraryPayload } from '../utils/library';
 import {
   INITIAL_MEALS,
   INITIAL_PANTRY,
@@ -459,6 +460,75 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     saveFridgeQueue();
     syncFridge();
   };
+
+  // ---------- Shared recipe book: recipes, hidden dishes and history ----------
+  const libVersion = useRef(0);
+  const libSynced = useRef('');
+  const libBusy = useRef(false);
+  const libReplaceLog = useRef(false);
+  const libRef = useRef<LibraryPayload>({ meals: [], rejectedMealIds: [], cookLog: [] });
+  libRef.current = { meals, rejectedMealIds, cookLog };
+
+  const syncLibrary = useCallback(async () => {
+    if (libBusy.current) return;
+    libBusy.current = true;
+    const joinedKey = `${STORAGE_KEY}_library_joined`;
+    const put = async (payload: LibraryPayload) => {
+      const r = await fetch('/api/library', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (!r.ok) throw new Error('library save failed');
+      return r.json();
+    };
+    const adopt = (lib: LibraryPayload & { version: number }) => {
+      libVersion.current = lib.version;
+      libSynced.current = JSON.stringify({ meals: lib.meals, rejectedMealIds: lib.rejectedMealIds, cookLog: lib.cookLog });
+      setMeals(lib.meals);
+      setRejectedMealIds(lib.rejectedMealIds);
+      setCookLog(lib.cookLog);
+    };
+    try {
+      const local = libRef.current;
+      const localJson = JSON.stringify(local);
+      const res = await fetch('/api/library');
+      if (!res.ok) throw new Error('library sync failed');
+      const lib = await res.json();
+      const joined = localStorage.getItem(joinedKey) === '1';
+      let toSend: LibraryPayload | null = null;
+      if (!lib.seeded) toSend = local; // first phone shares its recipe book
+      else if (!joined) toSend = joinPayload(lib, local); // keep this phone's extra recipes and history
+      else if (libReplaceLog.current || localJson !== libSynced.current) toSend = { ...local, replaceLog: libReplaceLog.current };
+      if (toSend) {
+        const out = await put(toSend);
+        libReplaceLog.current = false;
+        localStorage.setItem(joinedKey, '1');
+        if (JSON.stringify(libRef.current) === localJson) adopt(out);
+        else {
+          // Edited again while saving: keep the newer local state and send it next round.
+          libVersion.current = out.version;
+          libSynced.current = JSON.stringify({ meals: toSend.meals, rejectedMealIds: toSend.rejectedMealIds, cookLog: toSend.cookLog });
+        }
+      } else if (lib.version > libVersion.current) {
+        adopt(lib);
+      }
+    } catch {
+      // offline: local changes are sent on a later round
+    } finally {
+      libBusy.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    syncLibrary();
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') syncLibrary();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [syncLibrary]);
+
+  // Send edits a moment after they happen instead of waiting for the next poll.
+  useEffect(() => {
+    const t = setTimeout(syncLibrary, 1000);
+    return () => clearTimeout(t);
+  }, [meals, rejectedMealIds, cookLog, syncLibrary]);
 
   const queueShopping = (ops: ShoppingOp[]) => {
     if (ops.length === 0) return;
@@ -1292,6 +1362,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setRescuedItemsCount(payload.rescuedItemsCount);
       }
       if (Array.isArray(payload.cookLog)) {
+        libReplaceLog.current = true;
         setCookLog(payload.cookLog);
       }
       if (Array.isArray(payload.takeawayLog)) {
@@ -1345,6 +1416,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setStaples(INITIAL_STAPLES);
     setBannedIngredients(INITIAL_BANNED_INGREDIENTS);
     setVoteLogs([]);
+    libReplaceLog.current = true;
     setCookLog([]);
     setTakeawayLog([]);
     setRejectedMealIds([]);

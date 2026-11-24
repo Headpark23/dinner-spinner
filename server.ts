@@ -8,6 +8,7 @@ import { applyShoppingOp } from './src/utils/shopping';
 import type { ShoppingItem } from './src/types';
 import { RoomStore, cleanState } from './src/utils/rooms';
 import { applyFridgeOp, type FridgeState } from './src/utils/fridge';
+import { applyLibraryPut, cleanPayload, emptyLibrary, type Library } from './src/utils/library';
 
 dotenv.config();
 
@@ -168,6 +169,32 @@ app.post('/api/fridge/ops', (req, res) => {
     }
   }
   res.json(fridge);
+});
+
+const LIBRARY_PATH = process.env.NODE_ENV === 'test' ? null : path.resolve(__dirname, '.library.json');
+let library: Library = emptyLibrary();
+try {
+  if (LIBRARY_PATH && fs.existsSync(LIBRARY_PATH)) library = JSON.parse(fs.readFileSync(LIBRARY_PATH, 'utf-8'));
+} catch {
+  library = emptyLibrary();
+}
+
+app.get('/api/library', (_req, res) => {
+  res.json(library);
+});
+
+app.put('/api/library', (req, res) => {
+  const incoming = cleanPayload(req.body);
+  if (!incoming) return res.status(400).json({ error: 'Bad library' });
+  library = applyLibraryPut(library, incoming);
+  if (LIBRARY_PATH) {
+    try {
+      fs.writeFileSync(LIBRARY_PATH, JSON.stringify(library), 'utf-8');
+    } catch {
+      // Read-only filesystem: the recipe book still lives in memory.
+    }
+  }
+  res.json(library);
 });
 
 // Shared voting rooms (in memory, expire after a day)

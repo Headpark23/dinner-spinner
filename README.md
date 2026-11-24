@@ -30,6 +30,7 @@ Five tabs, each named for what you'll find there:
 - **Shopping links and reminders**: pick a supermarket (Tesco, Sainsbury's, Asda, Ocado, Aldi) to search each item, and turn on cooking reminders for a notification when each step is due.
 - **Install it**: in a production build the app can be added to a phone home screen and still opens offline. This needs HTTPS.
 - **Shared fridge**: the fridge lives on the server too, so adding, removing or changing freshness on one phone shows on the others within seconds. The first phone to open a fresh server shares its fridge.
+- **Shared recipe book**: your recipes, hidden dishes, favourites, ratings and cooking history sync between phones too. If two phones edit recipes at the same moment the latest save wins; history is always merged, never lost. A phone joining a household keeps its own extra recipes and history.
 - **Stats**: built only from what you've actually logged.
 
 ## Run locally

@@ -307,6 +307,33 @@ test('Item icons: keywords map to graphics with a basket fallback', async () => 
   assert.equal(itemIcon('Mystery thing'), '🛒');
 });
 
+test('Recipe book sync: latest recipes win, history merges, joiners keep their extras', async () => {
+  const { emptyLibrary, applyLibraryPut, cleanPayload, joinPayload, unionLog } = await import('./library');
+  const meal = (id: string) => ({ id, title: id }) as any;
+  const log = (id: string, date: string) => ({ id, mealId: 'm1', title: 'm1', cuisine: 'x', date, rescued: [] }) as any;
+  assert.equal(cleanPayload({ nope: 1 }), null);
+  assert.equal(cleanPayload({ meals: [{ id: 1 }, meal('ok')], cookLog: [{ id: 'a' }] })!.meals.length, 1, 'malformed entries are dropped');
+
+  let lib = applyLibraryPut(emptyLibrary(), { meals: [meal('a'), meal('b')], rejectedMealIds: ['z'], cookLog: [log('l1', '2026-01-01')] });
+  assert.equal(lib.version, 1);
+  assert.equal(lib.seeded, true);
+  // Another phone saves different recipes and one new dinner: recipes are replaced, history is merged.
+  lib = applyLibraryPut(lib, { meals: [meal('a')], rejectedMealIds: [], cookLog: [log('l2', '2026-02-01')] });
+  assert.deepEqual(lib.meals.map((m: any) => m.id), ['a']);
+  assert.deepEqual(lib.cookLog.map((e: any) => e.id), ['l2', 'l1'], 'newest first, nothing lost');
+  // A deliberate reset replaces the log.
+  lib = applyLibraryPut(lib, { meals: [meal('a')], rejectedMealIds: [], cookLog: [], replaceLog: true });
+  assert.equal(lib.cookLog.length, 0);
+
+  const joined = joinPayload(
+    { meals: [meal('a')], rejectedMealIds: ['gone'], cookLog: [log('l1', '2026-01-01')] },
+    { meals: [meal('a'), meal('mine'), meal('gone')], rejectedMealIds: [], cookLog: [log('l9', '2026-03-01')] }
+  );
+  assert.deepEqual(joined.meals.map((m: any) => m.id), ['a', 'mine'], 'own recipe kept, hidden dish not resurrected');
+  assert.equal(joined.cookLog.length, 2);
+  assert.equal(unionLog([log('x', '2026-01-01')], [{ ...log('x', '2026-01-01'), title: 'edited' }])[0].title, 'edited');
+});
+
 test('Rooms: create, join, update, sanitise and expire', async () => {
   const { RoomStore, cleanState, normaliseCode } = await import('./rooms');
   let t = 1000;
