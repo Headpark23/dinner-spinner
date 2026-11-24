@@ -9,18 +9,16 @@ export const FamilyPrompt: React.FC<{ onOpen: () => void }> = ({ onOpen }) => {
   return (
     <button
       onClick={onOpen}
-      className="flex w-full items-center gap-3.5 rounded-2xl border border-sage bg-sage-soft p-3.5 text-left"
+      className="flex w-full items-center gap-2.5 rounded-xl border border-sage bg-sage-soft px-3 py-2 text-left"
     >
-      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sage text-white">
-        <UsersRound className="h-5 w-5" />
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sage text-white">
+        <UsersRound className="h-4 w-4" />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-[16px] font-semibold">Start a family group</span>
-        <span className="mt-0.5 block text-[13px] leading-snug text-ink-2">
-          Everyone votes from their own phone and shares one list and fridge.
-        </span>
+        <span className="block text-[14px] font-semibold leading-tight">Start a family group</span>
+        <span className="block truncate text-[12px] text-ink-2">Everyone votes from their own phone</span>
       </span>
-      <ChevronRight className="h-5 w-5 shrink-0 text-ink-2" />
+      <ChevronRight className="h-4 w-4 shrink-0 text-ink-2" />
     </button>
   );
 };

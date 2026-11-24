@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check, ArrowRight } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { useDinner } from '../context/DinnerContext';
 import { cx } from './ui';
 
@@ -24,47 +24,39 @@ export const useDinnerStage = (): DinnerStage => {
   return 'pick';
 };
 
-/** The whole evening on one slim line, so the app always answers "what am I doing and what's next?" */
+const STEP_HINT: Record<DinnerStage, string> = {
+  pick: 'Pick tonight’s dinner',
+  vote: 'Put it to a vote',
+  cook: 'Cook it',
+  rate: 'How was it?',
+};
+
+/**
+ * Where tonight's dinner has got to. It is a progress line, not a set of buttons: nothing here can be tapped, so it
+ * reads as information. (The Dinner tab and the banner below it are how you move between the screens.)
+ */
 export const DinnerSteps: React.FC = () => {
-  const { activeView, setActiveView } = useDinner();
   const stage = useDinnerStage();
-  const stageIdx = STEPS.findIndex((s) => s.id === stage);
-  const viewingIdx = activeView === 0 ? 0 : stageIdx;
+  const idx = STEPS.findIndex((s) => s.id === stage);
+  const next = STEPS[idx + 1]?.label;
 
   return (
-    <ol className="flex items-center rounded-2xl bg-sunk p-1" aria-label="Tonight’s dinner, in four steps">
-      {STEPS.map((step, i) => {
-        const done = i < stageIdx;
-        const current = i === stageIdx;
-        const reachable = i === 0 || i <= stageIdx;
-        const viewing = i === viewingIdx;
-        return (
-          <li key={step.id} className="min-w-0 flex-1">
-            <button
-              disabled={!reachable}
-              onClick={() => setActiveView(i === 0 ? 0 : 3)}
-              aria-current={viewing ? 'step' : undefined}
-              className={cx(
-                'flex h-10 w-full items-center justify-center gap-1.5 rounded-xl text-[13px] transition-colors disabled:cursor-default',
-                viewing ? 'bg-card font-bold text-ink shadow-[0_1px_2px_rgba(31,26,21,0.14)]' : 'font-medium text-ink-2'
-              )}
-            >
-              <span
-                className={cx(
-                  'flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold',
-                  done && 'bg-sage text-white',
-                  current && 'bg-tomato text-white',
-                  !done && !current && 'border border-line-strong text-ink-3'
-                )}
-              >
-                {done ? <Check className="h-3 w-3" strokeWidth={3.5} /> : i + 1}
-              </span>
-              {step.label}
-            </button>
-          </li>
-        );
-      })}
-    </ol>
+    <div role="group" aria-label={`Tonight’s dinner: step ${idx + 1} of ${STEPS.length}, ${STEP_HINT[stage]}`} className="select-none">
+      <div className="flex items-baseline justify-between gap-2 text-[12px]">
+        <p>
+          <span className="font-semibold text-ink">
+            Step {idx + 1} of {STEPS.length}
+          </span>
+          <span className="text-ink-2"> · {STEP_HINT[stage]}</span>
+        </p>
+        {next && <p className="text-ink-3">Then: {next}</p>}
+      </div>
+      <div className="mt-1.5 flex gap-1" aria-hidden="true">
+        {STEPS.map((step, i) => (
+          <span key={step.id} className={cx('h-1.5 flex-1 rounded-full', i < idx ? 'bg-sage' : i === idx ? 'bg-tomato' : 'bg-line')} />
+        ))}
+      </div>
+    </div>
   );
 };
 
