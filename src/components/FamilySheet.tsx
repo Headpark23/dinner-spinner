@@ -6,12 +6,22 @@ import { FamilyStart } from './FamilyStart';
 
 /** Family group: start or join one, or see who's in it and invite more people. Opened from More or the Dinner prompt. */
 export const FamilySheet: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
-  const { householdCode, googleProfile, familyNames, leaveHousehold } = useDinner();
+  const { householdCode, googleProfile, familyNames, leaveHousehold, syncWithCloud } = useDinner();
   const [copied, setCopied] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
 
   const inviteLink = householdCode ? `${window.location.origin}/?join=${encodeURIComponent(householdCode)}` : '';
+  // The family's recipes live on this phone, so save a copy before the invite goes out. Whoever joins
+  // is then offered them. Best effort: the invite works even if this fails.
+  const saveCopyFirst = async () => {
+    try {
+      await syncWithCloud();
+    } catch {
+      // ignore
+    }
+  };
   const copy = async () => {
+    await saveCopyFirst();
     try {
       await navigator.clipboard.writeText(inviteLink);
       setCopied(true);
@@ -21,6 +31,7 @@ export const FamilySheet: React.FC<{ isOpen: boolean; onClose: () => void }> = (
     }
   };
   const share = async () => {
+    await saveCopyFirst();
     try {
       if (navigator.share) await navigator.share({ title: 'Join our Dinner Spinner family', url: inviteLink });
       else await copy();

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Check, CircleAlert, Users, X } from 'lucide-react';
 import { useDinner } from '../context/DinnerContext';
 import { Button, Card, Notice, Sheet, cx } from './ui';
+import { GoogleSignInButton } from './FamilyStart';
 
 const loadAs = (): string => {
   try {
@@ -161,12 +162,38 @@ export const LiveVoteBanner: React.FC = () => {
   );
 };
 
+/** Tells whoever sent an invite that it was used. Shows until they dismiss it. */
+export const JoinedBanner: React.FC = () => {
+  const { newJoiners, dismissJoiners } = useDinner();
+  if (newJoiners.length === 0) return null;
+  return (
+    <div className="mb-3 flex min-h-11 items-center gap-2 rounded-xl bg-sage-soft px-3.5 py-2.5 text-[14px] font-semibold text-sage" role="status">
+      <Users className="h-4 w-4 shrink-0" />
+      <span className="flex-1">{newJoiners.join(' and ')} joined your family group.</span>
+      <button onClick={dismissJoiners} aria-label="Dismiss" className="grid h-8 w-8 place-items-center rounded-full">
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  );
+};
+
 /** Opens from an invite link (?join=code). Never joins until the person agrees. */
 export const JoinSheet: React.FC = () => {
-  const { joinHousehold, householdCode } = useDinner();
+  const { joinHousehold, householdCode, googleClientId, signInWithGoogle, fetchCloudSnapshot, importBackupData } = useDinner();
   const [code, setCode] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // After joining: the family's saved recipes, offered rather than loaded without asking.
+  const [offer, setOffer] = useState<{ raw: any; recipes: number } | null>(null);
+
+  const afterJoin = async () => {
+    const snap = await fetchCloudSnapshot();
+    if (snap.success && snap.check && snap.check.ok && snap.check.summary.recipes > 0) {
+      setOffer({ raw: snap.check.payload, recipes: snap.check.summary.recipes });
+    } else {
+      setCode(null);
+    }
+  };
 
   useEffect(() => {
     try {
@@ -187,32 +214,84 @@ export const JoinSheet: React.FC = () => {
 
   const join = async () => {
     setBusy(true);
+    setMessage(null);
     const r = await joinHousehold(code);
+    if (!r.success) {
+      setBusy(false);
+      setMessage(r.message);
+      return;
+    }
+    await afterJoin();
     setBusy(false);
-    if (r.success) setCode(null);
-    else setMessage(r.message);
   };
+
+  const joinWithGoogle = async (credential: string) => {
+    setBusy(true);
+    setMessage(null);
+    const r = await signInWithGoogle(credential, code);
+    if (!r.success) {
+      setBusy(false);
+      setMessage(r.message);
+      return;
+    }
+    await afterJoin();
+    setBusy(false);
+  };
+
+  if (offer) {
+    return (
+      <Sheet isOpen onClose={() => setCode(null)} title="You’re in" subtitle="The shopping list, fridge and vote are now shared." labelledBy="join-title">
+        <div className="space-y-3">
+          <p className="text-[14px] text-ink-2">
+            The family has {offer.recipes} saved recipes. Load them onto this phone? This replaces the recipes and kitchen
+            settings on this phone with theirs.
+          </p>
+          <Button
+            variant="primary"
+            block
+            onClick={() => {
+              importBackupData(offer.raw);
+              setCode(null);
+            }}
+          >
+            Load the family’s recipes
+          </Button>
+          <Button variant="quiet" block onClick={() => setCode(null)}>
+            Keep what’s on this phone
+          </Button>
+        </div>
+      </Sheet>
+    );
+  }
 
   return (
     <Sheet
       isOpen
       onClose={() => setCode(null)}
-      title="Join this household?"
-      subtitle="Someone invited you to share their shopping list and dinner votes."
+      title="Join this family?"
+      subtitle="Someone invited you to share their shopping list, fridge and dinner votes."
       labelledBy="join-title"
     >
       <div className="space-y-3">
         <p className="text-[14px] text-ink-2">
-          Joining shares the shopping list and lets you vote from this phone. Your own recipes and settings stay on this
-          phone unless you choose to load the household’s saved copy later, in Household &amp; backup.
+          Joining shares the shopping list and lets you vote from this phone. Next you can choose to load the family’s
+          saved recipes.
         </p>
         {message && (
           <Notice tone="tomato" icon={<CircleAlert className="h-4 w-4" />}>
             {message}
           </Notice>
         )}
-        <Button variant="primary" block disabled={busy} onClick={join}>
-          Join household
+        {googleClientId && (
+          <div className="space-y-1.5">
+            <GoogleSignInButton onCredential={joinWithGoogle} />
+            <p className="text-center text-[12px] text-ink-3">
+              Signing in lets you open the family group on any phone. Nothing is posted to Google.
+            </p>
+          </div>
+        )}
+        <Button variant={googleClientId ? 'secondary' : 'primary'} block disabled={busy} onClick={join}>
+          {googleClientId ? 'Join without signing in' : 'Join family'}
         </Button>
         <Button variant="quiet" block onClick={() => setCode(null)}>
           Not now

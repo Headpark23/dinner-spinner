@@ -19,7 +19,7 @@ import { DinnerSteps, InProgressBanner, useDinnerStage } from './components/Dinn
 import { ProfileSyncModal } from './components/ProfileSyncModal';
 import { RulesModal } from './components/RulesModal';
 import { WelcomeSheet } from './components/WelcomeSheet';
-import { JoinSheet, LiveVoteBanner } from './components/LiveVote';
+import { JoinSheet, JoinedBanner, LiveVoteBanner } from './components/LiveVote';
 import { FamilySheet } from './components/FamilySheet';
 import { Card, FreshDot, Switch, cx } from './components/ui';
 import { ArrowRight, Check, ChevronLeft } from 'lucide-react';
@@ -177,6 +177,7 @@ const MainCabinet: React.FC = () => {
         <main id="main" className="flex-1 px-4 pt-5 pb-10">
           <UpdateNotice />
           <MilestoneToast />
+          <JoinedBanner />
           <LiveVoteBanner />
           <div key={activeView} className="fade-up">
             {(activeView === 0 || activeView === 3) && (
