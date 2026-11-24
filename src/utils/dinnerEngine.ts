@@ -9,7 +9,7 @@ import {
 } from '../types';
 import { mentionsAny } from './avoid';
 import { DietId, mealFitsDiets } from './diets';
-import { seasonWeight } from './seasons';
+import { seasonWeight, Hemisphere } from './seasons';
 
 /**
  * Returns the meal as the household actually cooks it: the original recipe plus
@@ -234,7 +234,7 @@ export function selectWeightedMeal(
   nowMs: number = Date.now(),
   randomFn: () => number = Math.random,
   /** Nudge winter dishes up in winter and down in summer (and the reverse). Off unless asked for. */
-  seasonal: boolean = false
+  seasonal: boolean | Hemisphere = false
 ): Meal {
   const redPantryItems = pantry
     .filter((p) => p.freshness === 'red')
@@ -269,7 +269,7 @@ export function selectWeightedMeal(
     }
 
     if (seasonal) {
-      weight *= seasonWeight(meal, new Date(nowMs));
+      weight *= seasonWeight(meal, new Date(nowMs), seasonal === 'south' ? 'south' : 'north');
     }
 
     return { meal, weight };

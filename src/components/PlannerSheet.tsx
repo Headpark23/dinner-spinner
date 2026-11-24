@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { costText, overCostLimit } from '../utils/cost';
 import { RefreshCw, ShoppingBasket, Wand2, X } from 'lucide-react';
 import { useDinner } from '../context/DinnerContext';
 import { Button, Notice, Select, Sheet, IconButton } from './ui';
@@ -92,7 +93,14 @@ export const PlannerSheet: React.FC<{ isOpen: boolean; onClose: () => void }> = 
                 </div>
                 {entry ? (
                   <div className="flex items-center gap-1">
-                    <span className="min-w-0 flex-1 truncate text-[15px]">{entry.title}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[15px]">{entry.title}</span>
+                      {meal && overCostLimit(meal, costRule) !== null && (
+                        <span className="block text-[12px] text-saffron">
+                          {costText(overCostLimit(meal, costRule)!)}, above your cost limit
+                        </span>
+                      )}
+                    </span>
                     {i === 0 && meal && (
                       <Button
                         variant="secondary"

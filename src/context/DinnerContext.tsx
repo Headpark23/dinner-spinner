@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Meal,
   TimeStake,
@@ -59,7 +59,7 @@ import {
   buildReverseTimerSteps,
 } from '../utils/dinnerEngine';
 import { mentionsAny } from '../utils/avoid';
-import { leftoverFridgeItem, MAX_LEFTOVER_PORTIONS } from '../utils/leftovers';
+import { leftoverFridgeItem, MAX_LEFTOVER_PORTIONS, withDueFreshness, toDateOnly } from '../utils/leftovers';
 import { DietMode, isDietMode, effectiveRestrictions, cleanPersonPrefs } from '../utils/memberDiets';
 import { missingCost, costPerHead, costLimitValue, type CostLimit } from '../utils/cost';
 import { buildReels, reelExtras, jackpotRecipeId, JACKPOT_FILL, type ComboMode } from '../utils/reelParts';
@@ -102,6 +102,9 @@ interface DinnerContextType {
   /** Nudge in-season dishes up and out-of-season ones down when spinning. On by default. */
   seasonal: boolean;
   setSeasonal: (on: boolean) => void;
+  /** Which half of the world's seasons to follow. */
+  hemisphere: 'north' | 'south';
+  setHemisphere: (h: 'north' | 'south') => void;
   toggleSound: () => void;
   eligiblePoolCount: number;
   eligiblePool: Meal[];
@@ -236,7 +239,7 @@ interface DinnerContextType {
 
   // First-run setup
   onboarded: boolean;
-  completeOnboarding: (names: string[], avoid: string[], diets?: DietId[], loves?: string[]) => void;
+  completeOnboarding: (names: string[], avoid: string[], diets?: DietId[], loves?: string[], personDiets?: DietId[][]) => void;
   resetToFactoryDefaults: () => void;
   isSyncing: boolean;
 
@@ -313,7 +316,11 @@ function loadStored<T>(suffix: string, fallback: T): T {
 
 export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [meals, setMeals] = useState<Meal[]>(() => loadStored('meals', STARTER_MEALS));
-  const [pantry, setPantry] = useState<PantryItem[]>(() => loadStored<PantryItem[]>('pantry', []));
+  const [storedPantry, setPantry] = useState<PantryItem[]>(() => loadStored<PantryItem[]>('pantry', []));
+  // What the app reads: an item due within two days counts as "use next". The stored list is left as typed.
+  const today = toDateOnly(new Date());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const pantry = useMemo(() => withDueFreshness(storedPantry), [storedPantry, today]);
   const [takeaways, setTakeaways] = useState<TakeawayOption[]>(() =>
     loadStored('takeaways', STARTER_TAKEAWAYS)
   );
@@ -372,7 +379,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const freezerBusy = useRef(false);
   const freezerDirty = useRef(false);
   const pantryRef = useRef<PantryItem[]>([]);
-  pantryRef.current = pantry;
+  pantryRef.current = storedPantry;
   const freezerRef = useRef<FreezerItem[]>([]);
   freezerRef.current = freezer;
   const pendingShoppingOps = useRef<ShoppingOp[]>(loadStored('shopping_queue', []));
@@ -438,6 +445,10 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY}_seasonal`, JSON.stringify(seasonal));
   }, [seasonal]);
+  const [hemisphere, setHemisphere] = useState<'north' | 'south'>(() => (loadStored<string>('hemisphere', 'north') === 'south' ? 'south' : 'north'));
+  useEffect(() => {
+    localStorage.setItem(`${STORAGE_KEY}_hemisphere`, JSON.stringify(hemisphere));
+  }, [hemisphere]);
 
   // Takeaway override
   const [consecutiveRejections, setConsecutiveRejections] = useState<number>(() =>
@@ -513,8 +524,8 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [meals]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_pantry`, JSON.stringify(pantry));
-  }, [pantry]);
+    localStorage.setItem(`${STORAGE_KEY}_pantry`, JSON.stringify(storedPantry));
+  }, [storedPantry]);
 
   useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY}_takeaways`, JSON.stringify(takeaways));
@@ -1034,7 +1045,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           // Every dish clashes with the household's diets: show nothing rather than a wrong dish.
           setActiveMealResult(null);
         } else {
-          const chosen = selectWeightedMeal(pool, pantry, clearoutActive, effort, Date.now(), Math.random, seasonal);
+          const chosen = selectWeightedMeal(pool, pantry, clearoutActive, effort, Date.now(), Math.random, seasonal ? hemisphere : false);
           sound.playReelLock();
           setActiveMealResult(chosen);
           sound.playWin();
@@ -1843,7 +1854,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           data: {
             userProfile,
             meals,
-            pantry,
+            pantry: storedPantry,
             staples,
             takeaways,
             members: householdMembers,
@@ -2195,10 +2206,12 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const toggleDiet = (id: DietId) =>
     setDiets((prev) => (prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id]));
 
-  const completeOnboarding = (names: string[], avoid: string[], chosenDiets: DietId[] = [], loves: string[] = []) => {
+  const completeOnboarding = (names: string[], avoid: string[], chosenDiets: DietId[] = [], loves: string[] = [], personDiets: DietId[][] = []) => {
     const dietList = chosenDiets.filter(isDietId);
     setDiets(dietList);
-    const cleanNames = names.map((n) => n.trim().slice(0, 30)).filter(Boolean).slice(0, 8);
+    // Keep each person's own diets with their name, whichever blank rows are dropped.
+    const kept = names.map((n, i) => ({ name: n.trim().slice(0, 30), own: cleanPersonPrefs({ diets: personDiets[i] }).diets })).filter((p) => p.name).slice(0, 8);
+    const cleanNames = kept.map((p) => p.name);
     const avatars = ['🙂', '😋', '🧑‍🍳', '😎', '🤓', '🥳', '🙃', '😊'];
     if (cleanNames.length > 0) {
       const members = cleanNames.map((name, i) => ({
@@ -2206,6 +2219,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         name,
         avatar: avatars[i % avatars.length],
         vetoTokensRemaining: 3,
+        ...(kept[i].own.length > 0 ? { diets: kept[i].own } : {}),
       }));
       setHouseholdMembers(members);
       setDoorDutyPerson(members[0]);
@@ -2283,6 +2297,8 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         soundMuted,
         seasonal,
         setSeasonal,
+        hemisphere,
+        setHemisphere,
         toggleSound,
         eligiblePoolCount,
         eligiblePool: eligibleInfo.pool,

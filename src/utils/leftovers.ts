@@ -77,3 +77,14 @@ export function useByLabel(useBy: string | undefined, now: Date = new Date()): s
   if (d === 1) return 'Eat by tomorrow';
   return `Eat within ${d} days`;
 }
+
+/**
+ * An item whose eat-by date is within two days (or past) counts as "use next" whatever it was set to, so the spinner
+ * favours it and the fridge lists it first. The stored value is left alone; this is only how it is read.
+ */
+export function withDueFreshness<T extends { freshness: string; useBy?: string }>(items: T[], now: Date = new Date()): T[] {
+  return items.map((i) => {
+    const status = useByStatus(i.useBy, now);
+    return (status === 'soon' || status === 'today' || status === 'over') && i.freshness !== 'red' ? { ...i, freshness: 'red' } : i;
+  });
+}

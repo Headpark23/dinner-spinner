@@ -9,17 +9,17 @@ Effort: S = under a day, M = 1 to 3 days, L = a week or more.
 | # | Idea | Status on main | What is left |
 | --- | --- | --- | --- |
 | 1 | Week planner | **Mostly built.** `PlannerSheet.tsx`, `utils/planner.ts` (`suggestWeek`, themes per night, `tidyPlan`, `weekShopping`), "shop for the week" in one tap. | Freezer nights, household sharing, cost cap, cuisine variety. |
-| 2 | Installable and offline | **Built.** `public/manifest.webmanifest`, `public/sw.js` (app shell, assets, photos, fonts cached), registered in `main.tsx`, offline shopping queue, install and update prompts. | Build-generated `VERSION`. |
+| 2 | Installable and offline | **Built.** `public/manifest.webmanifest`, `public/sw.js` (app shell, assets, photos, fonts cached), registered in `main.tsx`, offline shopping queue, install and update prompts. | Nothing left. `VERSION` is now stamped by the build. |
 | 3 | Step alerts | **Mostly built.** Screen wake lock, service-worker notifications and an in-app banner when a step is due. | Real background push (needs a server), install prompt for iPhone. |
 | 4 | Voting from separate phones | **Done, different design.** Household-wide live vote (`LiveVote.tsx`, `/api/tonight`), decided on the server, phones poll. Uses Google-sign-in family groups instead of a 4-digit room code. | Nothing: guests do not need to vote, so no code. |
-| 5 | Dietary needs per person | **Mostly built.** `utils/diets.ts` (vegetarian, vegan, pescatarian, gluten-free, dairy-free, nut-free), `DietPicker`, avoid list with plural matching. | Ask per-person diets during onboarding. |
-| 6 | Leftovers | **Mostly built.** "Made extra?" after dinner sends the rest to the fridge (use next, eat-by date) or the freezer; fridge rows show the use-by. | Use-by on ordinary items, auto use-next near the date, `makesLeftovers` on recipes. |
+| 5 | Dietary needs per person | **Mostly built.** `utils/diets.ts` (vegetarian, vegan, pescatarian, gluten-free, dairy-free, nut-free), `DietPicker`, avoid list with plural matching. | Nothing left. Onboarding asks each person's own diet. |
+| 6 | Leftovers | **Mostly built.** "Made extra?" after dinner sends the rest to the fridge (use next, eat-by date) or the freezer; fridge rows show the use-by. | `makesLeftovers` on recipes that obviously make extra. |
 | 7 | Supermarket links | **Done.** `utils/delivery.ts` (Tesco, Sainsbury's, Asda, Morrisons, Ocado, Waitrose, plus Uber Eats and Just Eat) and `DeliverySheet.tsx`. The shopping tab's `STORES` is built from the same list. | Nothing. |
 | 8 | Cost per serving | **Done.** `utils/cost.ts` estimates what you would have to *buy* tonight and a per-head figure from the same price table. Cost filter (Free, £5, £10, no limit) applies to spins and the week planner. | Show which planner nights went over the cap. |
 | 9 | Share a recipe card | **Built as a picture.** "Share as a picture" on the recipe sheet (share sheet, else copy, else download), with the photo credit printed. | A shareable link, only if a public site is planned. |
 | 10 | Surprise me from the fridge | **Mostly built.** "Cook from what we have" now offers the freezer first and has a one-tap "photo of the fridge, then spin" start. | Check the photo hand-off with a real scan. |
-| 11 | Seasonal dishes | **Built.** `utils/seasons.ts`, a mild 1.25x / 0.85x nudge in the single-dish spin, with a "Favour dishes in season" switch in More. | Use it in the week planner; a hemisphere setting. |
-| 12 | Streaks and milestones | **Built.** `utils/milestones.ts` (streak, home dinners, takeaway-free days, rescued items, freezer portions eaten) with a Milestones card on History. | A moment of celebration when a step is first reached. |
+| 11 | Seasonal dishes | **Built.** `utils/seasons.ts`, a mild 1.25x / 0.85x nudge in the single-dish spin, with a "Favour dishes in season" switch in More. | Use it in the week planner. |
+| 12 | Streaks and milestones | **Built.** `utils/milestones.ts` (streak, home dinners, takeaway-free days, rescued items, freezer portions eaten) with a Milestones card on History. | Nothing left. A note appears when a step is first reached. |
 
 ## Freezer follow-ups (PR 31)
 
@@ -46,7 +46,7 @@ The Freezer tab is built and, as of PR 31, shared with the household like the fr
 - ~~Update prompt~~ **Done.** `sw.js` no longer calls `skipWaiting()` on install. A new version waits, `utils/swUpdate.ts` (`watchForUpdate`) notices it (already waiting, or `updatefound` then `installed`, and only when a controller exists so a first visit is not an "update"), and `UpdateNotice` in `components/InstallUpdate.tsx` shows "A new version is ready, Refresh". Tapping posts `SKIP_WAITING` to the waiting worker and the page reloads on `controllerchange`, so nobody is reloaded mid-recipe. The app also re-checks for a new version whenever it returns to the foreground.
 - ~~Install prompt~~ **Done.** `utils/installPrompt.ts` captures `beforeinstallprompt` (Android and desktop Chrome) for an "Install" button, and on iPhone and iPad Safari (which has no such event) shows "Tap Share, then Add to Home Screen". It is hidden when `display-mode: standalone` or `navigator.standalone` is true, and a dismissal is remembered for 30 days. It sits at the top of the More view as `InstallCard`. The iPhone wording says step reminders (item 3) need the app installed, which is why the two pair up.
 - Tests: `utils/installUpdate.test.ts`. Not checkable in a dev build: the service worker only registers in production, so the waiting-worker flow and a real install dialog need a production build on a device.
-- **Still open.** Bump `VERSION` in `sw.js` on each release that changes the shell (now `v3`). Consider generating it from the build so this cannot be forgotten.
+- ~~Build-generated `VERSION`~~ **Done.** A small Vite plugin in `vite.config.ts` rewrites `const VERSION` in `dist/sw.js` to a hash of the built `index.html` (whose asset names carry content hashes), so the cache name changes exactly when the shell does. The source file keeps a placeholder value.
 
 ### 3. Step alerts (S to M)
 - ~~Wake lock~~ **Done.** `src/utils/wakeLock.ts` holds the screen awake while a dinner is agreed and steps remain (a "Keep the screen on while I cook" tick, on by default), asks again when the page becomes visible, and does nothing where the browser lacks it.
@@ -61,14 +61,14 @@ The Freezer tab is built and, as of PR 31, shared with the household like the fr
 - ~~Skip or warn~~ **Done.** `dietMode` ("Skip it", the default, or "Just warn"). `utils/memberDiets.ts` `effectiveRestrictions` feeds the spin pool, reels, week planner and swap suggestions. Recipes are never shelved by one person's list: only the household never list changes the recipe book.
 - ~~Vote clash chip~~ **Done.** The vote screen says "Doesn't suit Sam (vegetarian) and Jo (avoids mushrooms)" using `dishClashes` per member.
 - ~~Plain-language note~~ **Done.** The Per person card says it is a preference, not an allergy check; ticking nut-free adds a "read every label" warning.
-- **Still open.** Per-member diets are not asked during onboarding yet, and the clash chip names members only for whole dishes, not single reel parts. Tests: `utils/memberDiets.test.ts`.
+- ~~Ask per-person diets in onboarding~~ **Done.** Under each name in the welcome sheet, a "Their own diet?" row of the same diet chips; `completeOnboarding` keeps them on that member. **Still open.** The clash chip names members only for whole dishes, not single reel parts. Tests: `utils/memberDiets.test.ts`.
 
 ### 6. Leftovers (mostly done)
 - ~~Made extra?~~ **Done.** After "We've eaten. Log it", `LeftoversStep.tsx` asks how many portions are left and offers "Keep in fridge" or "Freeze it", once per dinner (recorded on the cook log entry as `leftovers`). `Meal.makesLeftovers?: { portions; keepDays }` is in the type to seed the defaults (2 portions, 3 days); no recipe sets it yet.
 - ~~Fridge route~~ **Done.** `utils/leftovers.ts` `leftoverFridgeItem` adds "Leftover <dish>" flagged use next with an eat-by date, so the existing use-next boost and "Use these up" pick it up. Added through the normal fridge queue, so it syncs.
 - ~~Freezer route~~ **Done.** Creates a `FreezerItem` with the dish's `mealId` and a "Leftovers" note.
 - ~~`PantryItem.useBy`~~ **Done.** Optional YYYY-MM-DD, cleaned in `cleanItem` (so the server keeps it). Fridge rows show "Eat within 3 days" (grey), "Eat by tomorrow" (amber), "Eat today" or "Past its date" (red). It is not yet an input for ordinary items.
-- **Still open.** A use-by field when adding an ordinary fridge item; let a use-by date that has passed or arrives soon raise the item to use next on its own; set `makesLeftovers` on recipes that obviously make extra. Tests: `utils/leftovers.test.ts`.
+- ~~Use-by on ordinary items~~ **Done.** The add-item form on the Fridge has an optional "Use by" date, and `withDueFreshness` (`utils/leftovers.ts`) reads any item due within two days, or past its date, as use next. The stored value is left as typed; only what the app reads changes. **Still open.** Set `makesLeftovers` on recipes that obviously make extra. Tests: `utils/leftovers.test.ts`, `utils/followUps.test.ts`.
 
 ### 7. Supermarket links (done)
 - ~~One shop list~~ **Done.** `planner.ts` `STORES` is now built from the supermarkets in `DELIVERY_SHOPS`, so the shopping tab's store picker offers all six (Tesco, Sainsbury's, Asda, Morrisons, Ocado, Waitrose) and a changed URL is fixed once. `StoreId` is a plain string; a saved choice that no longer exists falls back to Tesco.
@@ -78,7 +78,7 @@ The Freezer tab is built and, as of PR 31, shared with the household like the fr
 - ~~Per-head figure~~ **Done.** `utils/cost.ts` `costPerHead`: every ingredient except the always-have staples, priced from the same table, divided by the four portions the table assumes, to the nearest 10p. It does not change with the serving size and ignores the fridge, so "about £3.20 a head" and "about £8 to buy" can both show. Shown on the recipe sheet and under the dish on the reel.
 - ~~`Meal.estimatedCostPerHead`~~ **Removed.** Nothing read or wrote it.
 - ~~Cost limit in the planner~~ **Done.** `suggestWeek` takes the same cost rule as the spin and relaxes it the same way if nothing is cheap enough. It is used when filling the week and when swapping one night. The planner sheet also now uses the effective diet and avoid lists from item 5 (it used the household lists only before).
-- **Still open.** The planner does not yet say which nights were over the cap. Tests: `utils/cost.test.ts`.
+- ~~Say which nights went over the cap~~ **Done.** A planned night above the cost limit shows "about £N to buy, above your cost limit" (`overCostLimit` in `utils/cost.ts`). Tests: `utils/cost.test.ts`, `utils/followUps.test.ts`.
 
 ### 9. Share a recipe card (picture done)
 - ~~Canvas card~~ **Done.** "Share as a picture" on the recipe sheet draws a 1080 by 1350 card (photo, title, place and time, up to ten ingredients with "+N more", app name) with `utils/recipeCard.ts` and shares it with `navigator.share({ files })`. Where that is not available it copies the image, and failing that downloads a PNG. `utils/shareRecipeCard.ts` holds the browser glue.
@@ -96,13 +96,13 @@ The Freezer tab is built and, as of PR 31, shared with the household like the fr
 - ~~Season from titles and tags~~ **Done.** `utils/seasons.ts` `seasonOf` reads winter (stew, roast, soup, pie, chilli, casserole and the like) or summer (salad, barbecue, kebab, gazpacho and the like) from the title and tags; a dish that reads as both, or neither, has no season. Nothing is hand-tagged.
 - ~~Mild nudge~~ **Done.** `selectWeightedMeal` takes a `seasonal` flag and multiplies by 1.25 in season and 0.85 out, far below the 4.5x use-next boost. Winter is November to March, summer June to August (northern hemisphere); April, May, September and October change nothing.
 - ~~Setting~~ **Done.** "Favour dishes in season" in More, on by default, stored as `seasonal` in the context.
-- **Still open.** The week planner does not use the season yet. Southern-hemisphere users get the wrong months. Tests: `utils/seasons.test.ts` (including a sweep that shows the 1.25 to 0.85 split, and that the setting off gives an even one).
+- ~~Hemisphere setting~~ **Done.** "Northern seasons / Southern seasons" under the seasonal switch in More; `seasonForMonth` shifts the months by six for the south. **Still open.** The week planner does not use the season yet. Tests: `utils/seasons.test.ts`, `utils/followUps.test.ts`.
 
 ### 12. Milestones (done)
 - ~~Streak out of the view~~ **Done.** `utils/milestones.ts` holds `cookingStreak`, `homeCookedThisWeek`, `takeawayFreeDays`, `freezerPortionsEaten`, `statsFrom` and `milestones`, all pure and tested; `ScorecardView.tsx` only draws them.
 - ~~New milestones~~ **Done.** Ladders for cooking in a row (3, 7, 14, 30), home dinners (10, 25, 50, 100), days since the last takeaway (7, 14, 30), items rescued (5, 10, 25, 50) and freezer portions eaten (3, 10, 25). The History page shows the highest step reached in each as a chip, and one "Next:" line for whichever is closest.
 - ~~Celebrate, never shame~~ **Done.** Nothing is shown for a ladder that has not started, a takeaway only ends the takeaway-free count, there is no "lost" or "broke" wording (a test checks the words), and a takeaway night in the week row is now amber instead of red.
-- **Still open.** No toast when a step is first reached (it only shows on History). Freezer portions eaten forget a batch once it is removed. Tests: `utils/milestones.test.ts`.
+- ~~Celebrate when a step is first reached~~ **Done.** `MilestoneToast` shows one note per new step, remembers what it has shown (`ds_milestones_seen`), and on a first run or after the update records what is already earned without announcing it. **Still open.** Freezer portions eaten forget a batch once it is removed. Tests: `utils/milestones.test.ts`, `utils/followUps.test.ts`.
 
 ## Suggested order
 
