@@ -1,6 +1,7 @@
 import React from 'react';
 import { useDinner } from '../context/DinnerContext';
-import { Volume2, VolumeX, CircleHelp, ArrowRight } from 'lucide-react';
+import { Volume2, VolumeX, CircleHelp, ArrowRight, Moon, Sun } from 'lucide-react';
+import { useTheme } from '../utils/theme';
 import { IconButton } from './ui';
 
 interface CabinetHeaderProps {
@@ -20,6 +21,7 @@ const Mark: React.FC = () => (
 
 /** Slim top bar: brand on the left, the two things you reach for mid-dinner on the right. */
 export const CabinetHeader: React.FC<CabinetHeaderProps> = ({ onOpenRules }) => {
+  const { theme, toggleTheme } = useTheme();
   const { takeawayOverrideActive, soundMuted, toggleSound, setActiveView, activeView } = useDinner();
 
   return (
@@ -37,6 +39,9 @@ export const CabinetHeader: React.FC<CabinetHeaderProps> = ({ onOpenRules }) => 
         </button>
 
         <div className="-mr-2 flex items-center">
+          <IconButton label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} onClick={toggleTheme}>
+            {theme === 'dark' ? <Sun className="h-5 w-5" strokeWidth={1.75} /> : <Moon className="h-5 w-5" strokeWidth={1.75} />}
+          </IconButton>
           <IconButton label={soundMuted ? 'Turn sound on' : 'Turn sound off'} onClick={toggleSound}>
             {soundMuted ? <VolumeX className="h-5 w-5" strokeWidth={1.75} /> : <Volume2 className="h-5 w-5" strokeWidth={1.75} />}
           </IconButton>
