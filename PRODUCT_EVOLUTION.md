@@ -21,7 +21,7 @@ Benchmarked against 12 category leaders (**Sorted Food Sidekick, SuperCook, What
 1. **Zero Audio/Asset Bloat**: All mechanical ticks, clunks, buzzers, klaxons, and jackpot fanfares are synthesized procedurally via Web Audio API (`src/utils/audio.ts`).
 2. **Mobile-First Arcade Ergonomics + Desktop Telemetry**: Primary cabinet maintains a thumb-friendly `480px–500px` arcade form factor, paired with a live 4-card Kitchen Companion Telemetry Deck on desktop viewports (`lg:`).
 3. **Strict Accessibility & Motion Safety**: Honors `@media (prefers-reduced-motion: reduce)`, high-contrast `:focus-visible` amber rings, keyboard shortcuts (`Space`, `N`, `1-4`, `M`), and ≥36–44px touch targets.
-4. **Offline & API-Key Resilience**: Installable as an app (`public/manifest.webmanifest`) and opens offline through a service worker (`public/sw.js`: app shell, built assets, dish photos and fonts cached; `/api` never cached). Data lives in `localStorage` with JSON backup/restore, and shared household data queues while offline. `/api/pantry/analyze` seamlessly falls back to realistic UK Kitchen AI simulations when `GEMINI_API_KEY` is absent.
+4. **Offline & API-Key Resilience**: Installable as an app (`public/manifest.webmanifest`) and opens offline through a service worker (`public/sw.js`: app shell, built assets, dish photos and fonts cached; `/api` never cached). The build stamps the worker's cache version from a hash of the built page, so it changes exactly when the shell does. Data lives in `localStorage` with JSON backup/restore, and shared household data queues while offline. `/api/pantry/analyze` seamlessly falls back to realistic UK Kitchen AI simulations when `GEMINI_API_KEY` is absent.
 5. **Preference, Not Allergy Check**: Diets and avoid lists read ingredient names only. Every place that offers them says so plainly and tells people with allergies to check labels (nut-free says it twice).
 6. **Celebrate, Never Shame**: Streaks, takeaway nights and milestones are worded kindly. A takeaway only ends a takeaway-free count; nothing says a streak was "lost".
 
@@ -36,17 +36,17 @@ Benchmarked against 12 category leaders (**Sorted Food Sidekick, SuperCook, What
 
 ### Since v2.0 (see `docs/ROADMAP.md` for detail and file names)
 - [x] **Household sync**: Google-sign-in family groups share the shopping list, fridge, freezer and a live dinner vote decided on the server, so every phone agrees. Fridge, freezer and shopping edits are small operations with ids, applied identically on the server and each phone, so a resend never double-counts.
-- [x] **Week planner**: seven themed nights, "shop for the week" in one tap, honouring diets, avoid lists and the cost limit.
+- [x] **Week planner**: seven themed nights, "shop for the week" in one tap, honouring diets, avoid lists and the cost limit, flagging any night above the limit, and leaning to each night's own season.
 - [x] **Freezer**: batch-cooked meals in portions, ticked off as eaten, shared with the household and shown on the Dinner screen.
 - [x] **Installable and offline**: install prompt (Android and desktop Chrome button; "Share, then Add to Home Screen" on iPhone) and a "new version is ready, Refresh" notice instead of silently serving an old shell.
 - [x] **Step alerts**: the screen stays awake while cooking, and reminders go through the service worker (with an in-app banner and chime when a step is due).
-- [x] **Per-person diets**: each member can have their own diets and avoid list on top of the household baseline; "skip" (default) or "just warn", and the vote screen names who a dish does not suit.
-- [x] **Leftovers**: "Made extra?" after dinner sends the rest to the fridge (flagged use next, with an eat-by date) or the freezer.
+- [x] **Per-person diets**: each member can have their own diets and avoid list on top of the household baseline (diets can be set per person in the welcome sheet); "skip" (default) or "just warn", and the vote screen names who a dish does not suit.
+- [x] **Leftovers**: "Made extra?" after dinner sends the rest to the fridge (flagged use next, with an eat-by date) or the freezer. Pot dishes start at 3 portions and 3 days (rice shortens that to a day, fish to two), guessed from the dish name. Ordinary fridge items can carry a use-by date too, and read as use next within two days of it.
 - [x] **Supermarket links**: one list of six supermarkets plus Uber Eats and Just Eat, shared by the delivery sheet and the shopping tab's store picker. Shops cannot be given a basket, so the app opens each item's search and offers the list to copy.
 - [x] **Cost**: what a dish would cost to buy tonight, and about what it costs a head, from one price table; the cost limit applies to spins and the planner.
 - [x] **Share a recipe as a picture**: a canvas card (photo, title, time, ingredients, licence credit) sent through the share sheet, else copied, else downloaded.
 - [x] **Surprise me from the fridge**: "Cook from what we have" offers freezer batches first and can start with a photo of the fridge.
-- [x] **Seasonal dishes**: a mild nudge (1.25x in season, 0.85x out) for winter and summer dishes read from titles and tags, with a switch in More.
+- [x] **Seasonal dishes**: a mild nudge (1.25x in season, 0.85x out) for winter and summer dishes read from titles and tags, with a switch and a northern/southern hemisphere setting in More, used by both the spin and the week planner.
 - [x] **Milestones**: streaks, home dinners, takeaway-free days, items rescued and freezer portions eaten, on the History page, with a one-time note when a step is first reached.
 
 ## 6. Deferred Opportunities & Prioritised Backlog
@@ -55,7 +55,7 @@ The earlier backlog (room-code voting, supermarket links, notifications, cost pe
 2. **Guest voting by room code (P3, only if wanted)**: Voting already works across phones inside a family group, and guests do not need to vote, so the 4-digit code was not built. Revisit only if that changes.
 3. **Nutrition tags (P3 — Experiment)**: Optional macro (protein, fibre) tags on meal cards. Cost per head is done; nutrition is not.
 4. **A shareable recipe link (P3)**: Needs a public recipe route, so only if a public site is planned. The picture card covers sharing today.
-5. **Small follow-ups (done)**: planner nights over the cost cap are flagged; onboarding asks each person's own diet; the fridge takes a use-by date and reads near dates as use next; milestones are announced once when first reached; seasons have a hemisphere setting; and the service worker `VERSION` is stamped by the build. Nothing is left against them; any other loose ends are listed per item in `docs/ROADMAP.md`.
+5. **Small follow-ups (done)**: every item once listed here, and all twelve roadmap items, are built. Remaining loose ends are small and listed per item in `docs/ROADMAP.md` (for example, freezer portions eaten forget a batch once it is removed).
 
 ## 7. Technical Risks & Safeguards
 - **Gemini API Quota / Missing Key**: Mitigated via `hasRealGeminiKey` detection and deterministic `getSimulatedVisionResponse()` fallback in `server.ts`.
