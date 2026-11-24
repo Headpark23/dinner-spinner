@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bike, BarChart3, Users, UsersRound, HardDriveDownload, CircleHelp, Volume2, VolumeX, ChevronRight } from 'lucide-react';
+import { Bike, BarChart3, Users, UsersRound, HardDriveDownload, CircleHelp, Volume2, VolumeX, ChevronRight, Leaf } from 'lucide-react';
 import { useDinner } from '../../context/DinnerContext';
 import { Card, PageHeader, cx } from '../ui';
 import { InstallCard } from '../InstallUpdate';
@@ -19,7 +19,7 @@ export const MoreView: React.FC<{ onOpenProfile: () => void; onOpenRules: () => 
   onOpenRules,
   onOpenFamily,
 }) => {
-  const { setActiveView, takeawayOverrideActive, soundMuted, toggleSound, householdMembers, cookLog, householdCode, familyNames } = useDinner();
+  const { setActiveView, takeawayOverrideActive, soundMuted, toggleSound, seasonal, setSeasonal, householdMembers, cookLog, householdCode, familyNames } = useDinner();
 
   const rows: Row[] = [
     {
@@ -103,6 +103,21 @@ export const MoreView: React.FC<{ onOpenProfile: () => void; onOpenRules: () => 
           </span>
           <span className={cx('relative h-7 w-12 shrink-0 rounded-full transition-colors', soundMuted ? 'bg-line-strong' : 'bg-sage')}>
             <span className={cx('absolute top-0.5 left-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform', !soundMuted && 'translate-x-5')} />
+          </span>
+        </button>
+      </Card>
+
+      <Card as="div" className="p-3.5">
+        <button onClick={() => setSeasonal(!seasonal)} className="flex w-full items-center gap-3.5 text-left" role="switch" aria-checked={seasonal}>
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sunk text-ink">
+            <Leaf className="h-5 w-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[16px] font-semibold">Favour dishes in season</span>
+            <span className="mt-0.5 block text-[13px] text-ink-2">Stews and roasts a bit likelier in winter, salads and barbecues in summer.</span>
+          </span>
+          <span className={cx('relative h-7 w-12 shrink-0 rounded-full transition-colors', seasonal ? 'bg-sage' : 'bg-line-strong')}>
+            <span className={cx('absolute top-0.5 left-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform', seasonal && 'translate-x-5')} />
           </span>
         </button>
       </Card>
