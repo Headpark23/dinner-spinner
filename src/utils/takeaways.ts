@@ -16,7 +16,7 @@ export type SharedSpot = {
   website?: string;
   lat?: number;
   lon?: number;
-  source: 'osm' | 'manual';
+  source: 'osm' | 'google' | 'manual';
   addedBy?: string;
   hidden?: boolean;
   /** A refresh could no longer find it on the map, so it may have closed. */
@@ -88,7 +88,7 @@ export function cleanSpot(raw: any, now = new Date().toISOString()): SharedSpot 
     website: safeUrl(raw?.website),
     lat: lat !== undefined && lon !== undefined ? lat : undefined,
     lon: lat !== undefined && lon !== undefined ? lon : undefined,
-    source: raw?.source === 'osm' ? 'osm' : 'manual',
+    source: raw?.source === 'osm' ? 'osm' : raw?.source === 'google' ? 'google' : 'manual',
     addedBy: clip(raw?.addedBy, 40) || undefined,
     hidden: raw?.hidden === true ? true : undefined,
     gone: raw?.gone === true ? true : undefined,
@@ -567,4 +567,71 @@ export function placeFromHtml(html: string): PlaceDetails | null {
   const raw = og?.[1] || (title ? title[1].split(/\s[|\u2013\u2014-]\s/)[0] : '');
   const name = clip(decode(raw), 80);
   return name ? { name } : null;
+}
+
+// ---------------------------------------------------------------------------
+// Google Places (optional, needs an API key on the server). Fuller coverage than the map data alone.
+// ---------------------------------------------------------------------------
+
+/** Searches sent to Google for one area. Each is one request, so this list is also the cost of a search. */
+export const GOOGLE_QUERIES = ['takeaway', 'pizza takeaway', 'chinese takeaway', 'indian takeaway', 'fish and chips', 'kebab', 'burger', 'fried chicken'];
+
+const GOOGLE_TYPES = new Set(['meal_takeaway', 'meal_delivery', 'fast_food_restaurant', 'pizza_restaurant', 'hamburger_restaurant', 'sandwich_shop', 'chicken_restaurant']);
+
+/** A name with the noise taken out, for telling whether two listings are the same shop. */
+const plainName = (n: string) => n.toLowerCase().replace(/&/g, 'and').replace(/^the\s+/, '').replace(/[^a-z0-9]+/g, '');
+
+/** True when two listings are the same place: same name, close together. Lets a Google result reuse a place found earlier on the map. */
+export function sameSpot(a: { name: string; lat?: number; lon?: number }, b: { name: string; lat?: number; lon?: number }): boolean {
+  if (!plainName(a.name) || plainName(a.name) !== plainName(b.name)) return false;
+  if (a.lat === undefined || a.lon === undefined || b.lat === undefined || b.lon === undefined) return true;
+  return distanceM({ lat: a.lat, lon: a.lon }, { lat: b.lat, lon: b.lon }) < 250;
+}
+
+const googleCuisine = (p: any): string => {
+  const label = String(p?.primaryTypeDisplayName?.text || '').replace(/\s*(restaurant|shop|store)$/i, '').trim();
+  if (!label || /^(meal takeaway|meal delivery|takeaway|food)$/i.test(label)) return 'Takeaway';
+  return label.slice(0, 40);
+};
+
+/**
+ * Turns Google Places (New) replies (one per search) into spots, nearest first. Closed places and anything that
+ * isn't a takeaway-style business are dropped; places outside the search circle are dropped too.
+ */
+export function parseGooglePlaces(replies: any[], here?: { lat: number; lon: number }, radiusM?: number): SharedSpot[] {
+  const now = new Date().toISOString();
+  const spots: { spot: SharedSpot; d: number }[] = [];
+  const seen = new Set<string>();
+  for (const reply of replies) {
+    for (const p of Array.isArray(reply?.places) ? reply.places : []) {
+      const name = clip(p?.displayName?.text, 80);
+      const pid = clip(p?.id, 50);
+      if (!name || !pid) continue;
+      if (p.businessStatus && p.businessStatus !== 'OPERATIONAL') continue;
+      const types: string[] = Array.isArray(p.types) ? p.types : [];
+      if (!(types.some((t) => GOOGLE_TYPES.has(t)) || TAKEAWAY_NAME.test(name))) continue;
+      const lat = num(p.location?.latitude, -90, 90);
+      const lon = num(p.location?.longitude, -180, 180);
+      const d = here && lat !== undefined && lon !== undefined ? distanceM(here, { lat, lon }) : Infinity;
+      if (radiusM !== undefined && d !== Infinity && d > radiusM * 1.05) continue;
+      const spot = cleanSpot(
+        {
+          id: 'g_' + pid,
+          name,
+          cuisine: googleCuisine(p),
+          address: String(p.formattedAddress || '').replace(/,\s*(UK|United Kingdom)$/i, ''),
+          phone: p.nationalPhoneNumber,
+          website: p.websiteUri,
+          lat,
+          lon,
+          source: 'google',
+        },
+        now
+      );
+      if (!spot || seen.has(spot.id)) continue;
+      seen.add(spot.id);
+      spots.push({ spot, d });
+    }
+  }
+  return oneOfEachChain(spots.sort((a, b) => (a.d === b.d ? 0 : a.d < b.d ? -1 : 1)).map((s) => s.spot));
 }

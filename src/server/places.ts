@@ -1,8 +1,10 @@
 import { HttpError } from './store';
 import {
   FALLBACK_TERMS,
+  GOOGLE_QUERIES,
   overpassQuery,
   parseGeocode,
+  parseGooglePlaces,
   parseNominatimSpots,
   parseOverpass,
   viewbox,
@@ -37,7 +39,19 @@ const OVERPASS_BUDGET_MS = 8_000;
 const FALLBACK_BUDGET_MS = 10_000;
 const sleepFor = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-export function createPlaces(doFetch: typeof fetch = fetch, sleep: (ms: number) => Promise<void> = sleepFor): Places {
+const GOOGLE_SEARCH = 'https://places.googleapis.com/v1/places:searchText';
+/** Only these fields are asked for: they decide which price band a request falls in. */
+const GOOGLE_FIELDS = 'places.id,places.displayName,places.formattedAddress,places.location,places.types,places.primaryTypeDisplayName,places.businessStatus,places.nationalPhoneNumber,places.websiteUri';
+
+/**
+ * With a Google Places key, takeaways come from Google (fuller coverage); without one, or if Google fails,
+ * from OpenStreetMap as before.
+ */
+export function createPlaces(
+  doFetch: typeof fetch = fetch,
+  sleep: (ms: number) => Promise<void> = sleepFor,
+  googleKey: string | undefined = undefined
+): Places {
   const withTimeout = async (url: string, init: RequestInit = {}, ms = 8_000) => {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), ms);
@@ -99,6 +113,38 @@ export function createPlaces(doFetch: typeof fetch = fetch, sleep: (ms: number) 
     return parseNominatimSpots(lists as any[], { lat, lon });
   };
 
+  /** One Google text search per cuisine, all at once. Undefined if Google gave nothing useful, so the map data is tried instead. */
+  const google = async (lat: number, lon: number, radiusM: number): Promise<SharedSpot[] | undefined> => {
+    const dLat = radiusM / 111_320;
+    const dLon = radiusM / (111_320 * Math.max(0.2, Math.cos((lat * Math.PI) / 180)));
+    const rectangle = {
+      low: { latitude: lat - dLat, longitude: lon - dLon },
+      high: { latitude: lat + dLat, longitude: lon + dLon },
+    };
+    const replies = await Promise.all(
+      GOOGLE_QUERIES.map(async (q) => {
+        try {
+          const res = await withTimeout(
+            GOOGLE_SEARCH,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': googleKey!, 'X-Goog-FieldMask': GOOGLE_FIELDS },
+              body: JSON.stringify({ textQuery: q, pageSize: 20, regionCode: 'GB', locationRestriction: { rectangle } }),
+            },
+            9_000
+          );
+          return res.ok ? await res.json() : undefined;
+        } catch {
+          return undefined;
+        }
+      })
+    );
+    const good = replies.filter((r) => r && Array.isArray((r as any).places));
+    if (good.length === 0) return undefined;
+    const spots = parseGooglePlaces(good, { lat, lon }, radiusM);
+    return spots.length > 0 ? spots : undefined;
+  };
+
   return {
     async geocode(query) {
       let json: unknown;
@@ -115,6 +161,10 @@ export function createPlaces(doFetch: typeof fetch = fetch, sleep: (ms: number) 
     },
 
     async takeawaysNear(lat, lon, radiusM) {
+      if (googleKey) {
+        const g = await google(lat, lon, radiusM);
+        if (g) return { spots: g, complete: false };
+      }
       const json = await overpass(lat, lon, radiusM);
       if (json !== undefined) return { spots: parseOverpass(json, { lat, lon }), complete: true };
       return { spots: await nominatimFallback(lat, lon, radiusM), complete: false };

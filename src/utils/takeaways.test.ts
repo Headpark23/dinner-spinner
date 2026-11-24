@@ -366,3 +366,49 @@ test('Takeaways: a place can be added from its own website', async () => {
   const { fetchPublicPage } = await import('../server/fetchPage');
   usePageFetcher(fetchPublicPage);
 });
+
+test('Takeaways: with a Google key, places come from Google (closed and non-takeaways left out), and OpenStreetMap is the fallback', async () => {
+  const { createPlaces } = await import('../server/places');
+  const { sameSpot } = await import('./takeaways');
+  const calls: { url: string; headers: Record<string, string>; body: any }[] = [];
+  const reply = {
+    places: [
+      { id: 'abc1', displayName: { text: 'Golden Wok' }, formattedAddress: '1 High St, Harrogate HG1 1AA, UK', location: { latitude: 53.991, longitude: -1.541 }, types: ['meal_takeaway', 'restaurant'], primaryTypeDisplayName: { text: 'Chinese restaurant' }, businessStatus: 'OPERATIONAL', nationalPhoneNumber: '01423 111111', websiteUri: 'https://goldenwok.example' },
+      { id: 'abc2', displayName: { text: 'Shut Down Pizza' }, location: { latitude: 53.99, longitude: -1.54 }, types: ['pizza_restaurant'], businessStatus: 'CLOSED_PERMANENTLY' },
+      { id: 'abc3', displayName: { text: 'Posh Dining Room' }, location: { latitude: 53.99, longitude: -1.54 }, types: ['restaurant'], businessStatus: 'OPERATIONAL' },
+      { id: 'abc4', displayName: { text: 'Far Away Kebabs' }, location: { latitude: 54.5, longitude: -1.54 }, types: ['meal_takeaway'], businessStatus: 'OPERATIONAL' },
+    ],
+  };
+  const fake = (async (url: string, init: any) => {
+    if (String(url).includes('places.googleapis.com')) {
+      calls.push({ url: String(url), headers: init.headers, body: JSON.parse(init.body) });
+      return new Response(JSON.stringify(reply));
+    }
+    throw new Error('should not reach the map service');
+  }) as unknown as typeof fetch;
+  const near = await createPlaces(fake, async () => {}, 'test-key').takeawaysNear(53.99, -1.54, 3000);
+  assert.deepEqual(near.spots.map((s) => s.name), ['Golden Wok'], 'one entry even though eight searches all returned it');
+  assert.equal(near.spots[0].source, 'google');
+  assert.equal(near.spots[0].cuisine, 'Chinese');
+  assert.equal(near.spots[0].address, '1 High St, Harrogate HG1 1AA');
+  assert.equal(near.spots[0].phone, '01423 111111');
+  assert.equal(near.complete, false);
+  assert.equal(calls.length, 8);
+  assert.equal(calls[0].headers['X-Goog-Api-Key'], 'test-key');
+  assert.ok(calls[0].headers['X-Goog-FieldMask'].includes('websiteUri'));
+  assert.ok(!calls[0].headers['X-Goog-FieldMask'].includes('reviews'), 'asks only for cheap fields');
+
+  // Google down: the map data takes over.
+  let overpassTried = false;
+  const down = (async (url: string) => {
+    if (String(url).includes('places.googleapis.com')) return new Response('quota', { status: 429 });
+    overpassTried = true;
+    return new Response(JSON.stringify({ elements: [{ type: 'node', id: 9, lat: 53.99, lon: -1.54, tags: { name: 'Curry Palace', amenity: 'fast_food', cuisine: 'indian' } }] }));
+  }) as unknown as typeof fetch;
+  const fb = await createPlaces(down, async () => {}, 'test-key').takeawaysNear(53.99, -1.54, 3000);
+  assert.ok(overpassTried);
+  assert.deepEqual(fb.spots.map((s) => s.name), ['Curry Palace']);
+
+  assert.ok(sameSpot({ name: 'The Golden Wok', lat: 53.991, lon: -1.541 }, { name: 'Golden Wok', lat: 53.9911, lon: -1.5411 }));
+  assert.ok(!sameSpot({ name: 'Golden Wok', lat: 53.991, lon: -1.541 }, { name: 'Golden Wok', lat: 54.1, lon: -1.541 }), 'same name far apart is a different shop');
+});

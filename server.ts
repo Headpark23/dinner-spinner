@@ -7,7 +7,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { applyShoppingOp } from './src/utils/shopping';
 import { applyFridgeOp, type FridgeState } from './src/utils/fridge';
 import { cleanLog, unionLog } from './src/utils/history';
-import { DEFAULT_RADIUS_M, MAX_RADIUS_M, chainOf, cleanHub, distanceM, emptyHub, mergeHub, placeFromHtml, type SharedSpot } from './src/utils/takeaways';
+import { DEFAULT_RADIUS_M, MAX_RADIUS_M, chainOf, cleanHub, distanceM, emptyHub, mergeHub, placeFromHtml, sameSpot, type SharedSpot } from './src/utils/takeaways';
 import { createPlaces, type Places } from './src/server/places';
 import { fetchPublicPage } from './src/server/fetchPage';
 import { extractRecipeFromHtml, htmlToText } from './src/utils/recipeImport';
@@ -353,7 +353,7 @@ app.post('/api/history', smallJson, requireHousehold, async (req, res) => {
 // merged result back. Merging is by id and newest edit wins, so two phones never lose each other's votes.
 // The town is looked up with Nominatim and the shops with Overpass (OpenStreetMap, free, no key).
 // ---------------------------------------------------------------------------
-let places: Places = createPlaces();
+let places: Places = createPlaces(fetch, undefined, process.env.GOOGLE_PLACES_API_KEY || undefined);
 /** Tests swap in a fake map service. */
 export const usePlaces = (next: Places) => {
   places = next;
@@ -434,7 +434,10 @@ app.post('/api/takeaways/discover', smallJson, requireHousehold, rateLimit('take
       const changes: SharedSpot[] = [];
       // A chain already in the list (any branch) is not added again from another branch.
       const haveChains = new Set(current.spots.filter((s) => !s.gone).map((s) => chainOf(s.name)).filter(Boolean));
-      for (const f of found) {
+      for (const raw of found) {
+        // A Google result for a shop already in the list (found earlier on the map) keeps the existing entry and its scores.
+        const twin = byId.has(raw.id) ? undefined : current.spots.find((s) => !s.gone && sameSpot(s, raw));
+        const f = twin ? { ...raw, id: twin.id } : raw;
         const have = byId.get(f.id);
         const chain = chainOf(f.name);
         if (!have && chain && haveChains.has(chain)) continue;
