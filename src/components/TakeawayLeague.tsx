@@ -514,7 +514,7 @@ export const LocalTakeaways: React.FC<{ onOpenFamily?: () => void }> = ({ onOpen
 
       <AddPlace />
 
-      <p className="text-[11px] text-ink-3">Places from OpenStreetMap contributors (openstreetmap.org/copyright).</p>
+      <p className="text-[11px] text-ink-3">Places from Google Maps and OpenStreetMap contributors (openstreetmap.org/copyright).</p>
     </section>
   );
 };
