@@ -6,7 +6,8 @@ import { DeliverySheet } from '../DeliverySheet';
 import type { ImportedRecipe } from '../../utils/recipeImport';
 import { mealFitsDiets } from '../../utils/diets';
 import { lovedCount } from '../../utils/taste';
-import { POPULAR_CUISINES, canShowFlag } from '../../data/popularCuisines';
+import { POPULAR_CUISINES } from '../../data/popularCuisines';
+import { CuisineFlag } from '../CuisineFlag';
 import { STORES, StoreId } from '../../utils/planner';
 import {
   Camera,
@@ -725,7 +726,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
             ) : (
               <div className="space-y-2">
                 <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 scrollbar-none" role="radiogroup" aria-label="Cuisine">
-                  {[{ id: 'all', label: 'All', flag: '🌍' }, ...POPULAR_CUISINES, { id: 'other', label: 'Other', flag: '🍽️' }].map((c) => (
+                  {[{ id: 'all', label: 'All', symbol: '🌍' }, ...POPULAR_CUISINES, { id: 'other', label: 'Other', symbol: '🍽️' }].map((c) => (
                     <button
                       key={c.id}
                       role="radio"
@@ -736,11 +737,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
                         worldCuisine === c.id ? 'border-ink bg-ink text-paper' : 'border-line text-ink-2 hover:border-line-strong'
                       )}
                     >
-                      {canShowFlag(c.flag) && (
-                        <span aria-hidden="true" className="text-[15px] leading-none">
-                          {c.flag}
-                        </span>
-                      )}
+                      <CuisineFlag code={(c as { code?: string }).code} symbol={(c as { symbol?: string }).symbol} />
                       {c.label}
                     </button>
                   ))}
