@@ -5,6 +5,7 @@ import { ImportRecipe } from '../ImportRecipe';
 import { DeliverySheet } from '../DeliverySheet';
 import type { ImportedRecipe } from '../../utils/recipeImport';
 import { mealFitsDiets } from '../../utils/diets';
+import { lovedCount } from '../../utils/taste';
 import { STORES, StoreId } from '../../utils/planner';
 import {
   Camera,
@@ -90,6 +91,8 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
     worldRecipes,
     rejectedMealIds,
     restoreRejected,
+    rejectMeal,
+    hideLibraryRecipe,
     shoppingList,
     shoppingOnline,
     householdMembers,
@@ -114,6 +117,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
     }
   });
   const [worldCuisine, setWorldCuisine] = useState('all');
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [sheetMeal, setSheetMeal] = useState<Meal | null>(null);
   const [newShopName, setNewShopName] = useState('');
   const toBuy = shoppingList.filter((i) => !i.checked);
@@ -281,6 +285,24 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
       r.ingredients.some((i) => i.toLowerCase().includes(q))
     );
   });
+
+  // The World Kitchen opens on a short list of picks (varied cuisines, loved ingredients first). Remove one, or add it
+  // to our recipes, and the next dish takes its place. Searching or choosing a cuisine looks through the whole library.
+  const WORLD_PICKS = 30;
+  const inOurs = new Set(meals.map((m) => m.id));
+  const worldAvailable = worldRecipes.filter((r) => !rejectedMealIds.includes(r.id) && !inOurs.has(r.id) && mealFitsDiets(r.ingredients, diets));
+  const browsingPicks = recipeScope === 'world' && worldCuisine === 'all' && !vaultSearch.trim();
+  const worldPicks = (() => {
+    const ranked = [...worldAvailable].sort((a, b) => lovedCount(b, likedIngredients) - lovedCount(a, likedIngredients));
+    const byCuisine = new Map<string, Meal[]>();
+    for (const r of ranked) byCuisine.set(r.cuisine, [...(byCuisine.get(r.cuisine) || []), r]);
+    const lanes = [...byCuisine.values()];
+    const out: Meal[] = [];
+    for (let i = 0; out.length < WORLD_PICKS && lanes.some((l) => l.length > i); i++) {
+      for (const lane of lanes) if (lane[i] && out.length < WORLD_PICKS) out.push(lane[i]);
+    }
+    return out;
+  })();
 
   const filteredVaultMeals = meals.filter((meal) => {
     const q = vaultSearch.trim().toLowerCase();
@@ -656,7 +678,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
               onChange={setRecipeScope}
               options={[
                 { value: 'ours', label: `Our recipes · ${meals.length}` },
-                { value: 'world', label: `World kitchen · ${worldRecipes.length}` },
+                { value: 'world', label: `World kitchen · ${worldAvailable.length}` },
               ]}
             />
             <div className="relative">
@@ -705,18 +727,19 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
               </Select>
             )}
 
-            {(recipeScope === 'ours' ? filteredVaultMeals : filteredWorld).length === 0 ? (
+            {(recipeScope === 'ours' ? filteredVaultMeals : browsingPicks ? worldPicks : filteredWorld).length === 0 ? (
               <p className="py-8 text-center text-[14px] text-ink-2">Nothing matches. Try another search.</p>
             ) : (
               <ul className="space-y-2">
-                {(recipeScope === 'ours' ? filteredVaultMeals : filteredWorld).map((meal) => {
+                {(recipeScope === 'ours' ? filteredVaultMeals : browsingPicks ? worldPicks : filteredWorld).map((meal) => {
                   const match = getMealPantryMatch(meal);
                   const added = recipeScope === 'world' && meals.some((m) => m.id === meal.id);
                   return (
                     <li key={meal.id}>
+                      <div className="flex items-stretch gap-2">
                       <button
                         onClick={() => setSheetMeal(meal)}
-                        className="flex w-full items-center gap-3 rounded-2xl border border-line bg-card p-2.5 text-left transition-colors hover:border-line-strong"
+                        className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl border border-line bg-card p-2.5 text-left transition-colors hover:border-line-strong"
                       >
                         <DishTile cuisine={meal.cuisine} imageUrl={meal.imageUrl || photoFor(meal.id)} size={56} />
                         <span className="min-w-0 flex-1">
@@ -736,10 +759,60 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
                         {added && <Chip tone="sage">Added</Chip>}
                         {recipeScope === 'ours' && meal.isFavorite && <Heart className="h-4 w-4 shrink-0 fill-tomato text-tomato" aria-label="Favourite" />}
                       </button>
+                      {!added && (
+                        <button
+                          aria-label={`Remove ${meal.title}`}
+                          aria-expanded={confirmRemove === meal.id}
+                          onClick={() => setConfirmRemove(confirmRemove === meal.id ? null : meal.id)}
+                          className="flex w-11 shrink-0 items-center justify-center rounded-2xl border border-line bg-card text-ink-3 transition-colors hover:border-line-strong hover:text-tomato"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                      </div>
+                      {confirmRemove === meal.id && (
+                        <div className="fade-up mt-1.5 rounded-xl bg-tomato-soft p-3 text-[14px] text-tomato">
+                          <p>
+                            {recipeScope === 'ours'
+                              ? `Remove “${meal.title}” from our recipes? We’ll swap in a similar dish from the World Kitchen.`
+                              : `Take “${meal.title}” out of the World Kitchen? Another dish will take its place.`}
+                          </p>
+                          <div className="mt-2 flex gap-2">
+                            <Button variant="secondary" size="sm" onClick={() => setConfirmRemove(null)}>
+                              Keep it
+                            </Button>
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={() => {
+                                setConfirmRemove(null);
+                                if (recipeScope === 'ours') {
+                                  const replacement = rejectMeal(meal.id);
+                                  flash(
+                                    replacement
+                                      ? `“${meal.title}” removed. “${replacement.title}” has taken its place.`
+                                      : `“${meal.title}” removed.`
+                                  );
+                                } else {
+                                  hideLibraryRecipe(meal.id);
+                                  flash(`“${meal.title}” taken out of the World Kitchen.`);
+                                }
+                              }}
+                            >
+                              {recipeScope === 'ours' ? 'Remove and replace' : 'Take it out'}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </li>
                   );
                 })}
               </ul>
+            )}
+            {browsingPicks && worldAvailable.length > worldPicks.length && (
+              <p className="px-1 text-center text-[12px] text-ink-3">
+                Showing {worldPicks.length} of {worldAvailable.length} dishes. Search or choose a cuisine to see them all.
+              </p>
             )}
 
             {recipeScope === 'ours' && (
