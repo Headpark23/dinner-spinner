@@ -2,6 +2,7 @@ import { Meal, PantryItem } from '../types';
 import { calculateMealPantryMatch, filterEligibleMeals, isMealCoolingOff } from './dinnerEngine';
 import { DietId, ingredientBreaks } from './diets';
 import { DELIVERY_SHOPS } from './delivery';
+import { Hemisphere, seasonWeight } from './seasons';
 
 /** A week plan: local date (YYYY-MM-DD) -> the dish for that night. */
 export type WeekPlan = Record<string, { mealId: string; title: string }>;
@@ -61,6 +62,8 @@ export function suggestWeek(
     banned: string[];
     /** Leave out dishes dearer than this to buy tonight (relaxed if nothing is cheap enough, as in the spin). */
     cost?: { limit: number; of: (m: Meal) => number };
+    /** Favour dishes in season on each night's own date. Off (the default) picks evenly. */
+    seasonal?: Hemisphere | false;
     rng?: () => number;
     now?: number;
   }
@@ -70,6 +73,19 @@ export function suggestWeek(
   const pool = filterEligibleMeals(meals, 'any', 'any', opts.banned, opts.diets, opts.cost).pool;
   const used = new Set(Object.values(next).map((v) => v.mealId));
   const shuffle = <T,>(xs: T[]) => xs.map((x) => [rng(), x] as const).sort((a, b) => a[0] - b[0]).map((p) => p[1]);
+  /** One dish from the list: evenly, or weighted by how well it suits that night's season. */
+  const choose = (list: Meal[], day: string): Meal | undefined => {
+    if (!opts.seasonal) return shuffle(list)[0];
+    const [y, m, d] = day.split('-').map(Number);
+    const when = new Date(y, m - 1, d);
+    const weights = list.map((meal) => seasonWeight(meal, when, opts.seasonal as Hemisphere));
+    let roll = rng() * weights.reduce((a, b) => a + b, 0);
+    for (let i = 0; i < list.length; i++) {
+      roll -= weights[i];
+      if (roll < 0) return list[i];
+    }
+    return list[list.length - 1];
+  };
 
   for (const day of opts.days) {
     if (next[day]) continue;
@@ -79,10 +95,10 @@ export function suggestWeek(
     const candidates = [rested, fresh, pool];
     let pick: Meal | undefined;
     for (const c of candidates) {
-      pick = shuffle(c.filter((m) => themeFits(theme, m)))[0];
+      pick = choose(c.filter((m) => themeFits(theme, m)), day);
       if (pick) break;
     }
-    if (!pick) pick = shuffle(rested.length ? rested : fresh.length ? fresh : pool)[0];
+    if (!pick) pick = choose(rested.length ? rested : fresh.length ? fresh : pool, day);
     if (!pick) continue;
     used.add(pick.id);
     next[day] = { mealId: pick.id, title: pick.title };

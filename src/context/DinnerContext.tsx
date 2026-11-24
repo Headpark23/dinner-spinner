@@ -585,7 +585,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (weekThemes[wd] && THEMES.some((t) => t.id === weekThemes[wd])) themes[d] = weekThemes[wd];
     });
     setWeekPlan((prev) =>
-      suggestWeek(meals, { days, plan: tidyPlan(prev, today, meals), themes, diets: effDiets, banned: effBanned, cost: costRule })
+      suggestWeek(meals, { days, plan: tidyPlan(prev, today, meals), themes, diets: effDiets, banned: effBanned, cost: costRule, seasonal: seasonal ? hemisphere : false })
     );
   };
   const clearWeekPlan = () => setWeekPlan({});
