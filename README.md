@@ -24,13 +24,12 @@ Five tabs, each named for what you'll find there:
 - **Make it yours**: add your own ingredients, steps (with timing) and a note to any recipe. The original is kept, and your additions show up in the cooking timeline.
 - **Not for us**: hide a dish for good, and a similar one from the World Kitchen replaces it automatically. Hidden dishes can be brought back.
 - **Your own recipes**: add them by hand, or scan a recipe page or plate photo.
-- **Tonight**: the household votes on one phone, or each person votes on their own phone by joining a shared room (More, then Vote on your own phones), with vetoes. Three vetoes in a row closes the kitchen and sends you to the takeaway spinner. A majority yes builds a timeline back from when you want to eat.
+- **Tonight**: the household votes on one phone, or each person votes on their own phone once the household is set up (More, then Household and backup), with vetoes. Three vetoes in a row closes the kitchen and sends you to the takeaway spinner. A majority yes builds a timeline back from when you want to eat.
 - **After dinner**: everyone gives the dish stars and a quick comment. The average becomes the dish's rating.
 - **Shared shopping list**: one list for the whole household. Whoever's at the shop ticks items off ("Got it · Mum") and everyone else sees it within seconds. "Put away" moves ticked items into the fridge.
-- **Shopping links and reminders**: pick a supermarket (Tesco, Sainsbury's, Asda, Ocado, Aldi) to search each item, and turn on cooking reminders for a notification when each step is due.
-- **Install it**: in a production build the app can be added to a phone home screen and still opens offline. This needs HTTPS.
-- **Shared fridge**: the fridge lives on the server too, so adding, removing or changing freshness on one phone shows on the others within seconds. The first phone to open a fresh server shares its fridge.
-- **Shared recipe book**: your recipes, hidden dishes, favourites, ratings and cooking history sync between phones too. If two phones edit recipes at the same moment the latest save wins; history is always merged, never lost. A phone joining a household keeps its own extra recipes and history.
+- **Shopping icons**: each shopping item gets a small picture, and ticked items are struck through.
+- **Cooking reminders**: on the Cook step, "Remind me" sends a notification when each step is due.
+- **Shared fridge and history**: once a household exists, the fridge and cooking history sync between phones within seconds. Without one the app stays on-device. The recipe book (your recipes, hidden dishes, favourites, ratings) is not live-shared; use backup and restore to move it.
 - **Stats**: built only from what you've actually logged.
 
 ## Run locally
@@ -43,8 +42,6 @@ npm run dev
 ```
 
 To share the shopping list across the household, open the app from each phone using the computer's local network address (for example `http://192.168.1.20:3000`) or a hosted copy. Everyone using the same server shares one list.
-
-Voting rooms live in server memory and expire after a day or on restart. Phones stay in step only while the app is open.
 
 Optional: set `GEMINI_API_KEY` in `.env` for live fridge, receipt and recipe scanning. Without it, the "Try a sample" buttons and the fallback still work.
 
@@ -66,17 +63,3 @@ python -I scripts/fetch_photos.py --override w_pho="File:Some better photo.jpg"
 ```
 
 See `DESIGN.md` for the design system and `SCAFFOLD_HEALTH.md` for the original audit.
-
-## Put it online
-
-Everything runs as one Node server, so it needs a host that keeps a process running (Render, Fly.io, Railway, Cloud Run). Serverless hosts will not work: voting rooms live in server memory.
-
-```bash
-docker build -t dinner-spinner .
-docker run -p 8080:8080 -v dinner-data:/data dinner-spinner
-```
-
-- Mount a persistent disk at `/data` (or set `DATA_DIR`). The fridge, shopping list and recipe book are saved there; without a disk they reset on restart.
-- Use HTTPS. Installing to the home screen and offline use need it.
-- Set `GEMINI_API_KEY` for live scanning (optional).
-- There are no accounts: anyone with the address shares one household. Keep the address private, or put the host behind a password.
