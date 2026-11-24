@@ -42,7 +42,9 @@ export async function fetchPublicPage(
 ): Promise<{ html: string; url: string }> {
   let url: URL;
   try {
-    url = new URL(rawUrl.trim());
+    // People often paste "example.co.uk/menu" without the https://. Add it when there is no scheme at all.
+    const typed = rawUrl.trim();
+    url = new URL(/^[a-z][a-z0-9+.-]*:/i.test(typed) ? typed : `https://${typed}`);
   } catch {
     throw new HttpError(400, { error: 'That doesn’t look like a web address.' });
   }
@@ -70,6 +72,7 @@ export async function fetchPublicPage(
         headers: {
           'User-Agent': 'Mozilla/5.0 (compatible; DinnerSpinner/1.0; recipe importer)',
           Accept: 'text/html,application/xhtml+xml',
+          'Accept-Language': 'en-GB,en;q=0.9',
         },
       });
     } catch {
@@ -82,7 +85,7 @@ export async function fetchPublicPage(
       continue;
     }
     if (!res.ok) {
-      throw new HttpError(502, { error: `That site said no (${res.status}). Paste the recipe text instead.` });
+      throw new HttpError(502, { error: `That site said no (${res.status}). Paste the recipe text instead.`, upstream: res.status });
     }
     const type = res.headers.get('content-type') || '';
     if (type && !/html|xml|text/i.test(type)) throw new HttpError(400, { error: 'That link isn’t a web page.' });
