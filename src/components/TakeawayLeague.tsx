@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { ChevronDown, MapPin, Phone, Globe, Star, Search, UsersRound, ThumbsUp, ThumbsDown, EyeOff } from 'lucide-react';
+import { ChevronDown, MapPin, Phone, Globe, Star, Search, UsersRound, ThumbsUp, ThumbsDown, EyeOff, Navigation, RefreshCw } from 'lucide-react';
 import { useDinner } from '../context/DinnerContext';
-import { ratingId, type LeagueRow } from '../utils/takeaways';
+import { orderLinks, ratingId, type LeagueRow } from '../utils/takeaways';
 import { Button, Card, Select, TextInput, cx } from './ui';
 
 const Stars: React.FC<{ value: number; className?: string }> = ({ value, className }) => (
@@ -118,9 +118,12 @@ export const RatePanel: React.FC<{ spotId: string; spotName: string; onDone?: ()
   );
 };
 
+const LINK = 'inline-flex h-10 items-center gap-1.5 rounded-lg border border-line px-3 text-[13px] font-semibold text-ink-2';
+
 const LeagueItem: React.FC<{ row: LeagueRow; rank: number | null; open: boolean; onToggle: () => void }> = ({ row, rank, open, onToggle }) => {
   const { shared } = useDinner();
   const { spot } = row;
+  const links = orderLinks(spot, shared.hub.place?.label);
   return (
     <li className="py-1">
       <button
@@ -163,28 +166,40 @@ const LeagueItem: React.FC<{ row: LeagueRow; rank: number | null; open: boolean;
 
       {open && (
         <div className="fade-up space-y-3 px-1 pb-3 pt-1">
-          {(spot.phone || spot.website) && (
-            <div className="flex flex-wrap gap-2">
-              {spot.phone && (
-                <a
-                  href={`tel:${spot.phone.replace(/[^\d+]/g, '')}`}
-                  className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-line px-3 text-[13px] font-semibold text-ink-2"
-                >
-                  <Phone className="h-4 w-4" /> {spot.phone}
-                </a>
-              )}
-              {spot.website && (
-                <a
-                  href={spot.website}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-line px-3 text-[13px] font-semibold text-ink-2"
-                >
-                  <Globe className="h-4 w-4" /> Website
-                </a>
-              )}
-            </div>
+          {spot.gone && (
+            <p className="rounded-lg bg-sunk px-3 py-2 text-[13px] text-ink-2">
+              This place has dropped off the map, so it may have closed. Your scores are kept.
+            </p>
           )}
+          <div className="flex flex-wrap gap-2">
+            {spot.phone && (
+              <a href={`tel:${spot.phone.replace(/[^\d+]/g, '')}`} className={LINK}>
+                <Phone className="h-4 w-4" /> {spot.phone}
+              </a>
+            )}
+            {links.website && (
+              <a href={links.website} target="_blank" rel="noopener noreferrer" className={LINK}>
+                <Globe className="h-4 w-4" /> Website
+              </a>
+            )}
+            <a href={links.directions} target="_blank" rel="noopener noreferrer" className={LINK}>
+              <Navigation className="h-4 w-4" /> Directions
+            </a>
+          </div>
+          <div>
+            <p className="mb-1 text-[12px] text-ink-3">Order online (opens a search for this shop)</p>
+            <div className="flex flex-wrap gap-2">
+              {[
+                ['Just Eat', links.justEat],
+                ['Uber Eats', links.uberEats],
+                ['Deliveroo', links.deliveroo],
+              ].map(([label, href]) => (
+                <a key={label} href={href} target="_blank" rel="noopener noreferrer" className={LINK}>
+                  {label}
+                </a>
+              ))}
+            </div>
+          </div>
 
           {row.scores.length > 0 && (
             <ul className="space-y-2">
@@ -325,7 +340,7 @@ export const LocalTakeaways: React.FC<{ onOpenFamily?: () => void }> = ({ onOpen
         </form>
       )}
 
-      {place && !changing && (
+      {place && !changing && !place.searchedAt && (
         <div className="flex items-center gap-2">
           <Select value={radius} onChange={(e) => setRadius(Number(e.target.value))} aria-label="How far to look" className="w-auto">
             <option value={1500}>Within 1 mile</option>
@@ -334,7 +349,18 @@ export const LocalTakeaways: React.FC<{ onOpenFamily?: () => void }> = ({ onOpen
             <option value={8000}>Within 5 miles</option>
           </Select>
           <Button variant="secondary" onClick={() => run(false)} disabled={shared.busy}>
-            <Search className="h-4 w-4" /> {shared.busy ? 'Searching…' : shared.league.length ? 'Look again' : 'Find takeaways'}
+            <Search className="h-4 w-4" /> {shared.busy ? 'Searching…' : 'Find takeaways'}
+          </Button>
+        </div>
+      )}
+      {place && !changing && place.searchedAt && (
+        <div className="flex items-center justify-between gap-3 rounded-xl bg-sunk px-3 py-2">
+          <p className="min-w-0 text-[13px] text-ink-2">
+            Searched {new Date(place.searchedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+            {place.found ? ` · ${place.found} places` : ''}. New or closed? Refresh the list.
+          </p>
+          <Button variant="secondary" size="sm" onClick={() => run(false)} disabled={shared.busy} className="shrink-0">
+            <RefreshCw className={cx('h-4 w-4', shared.busy && 'animate-spin')} /> {shared.busy ? 'Refreshing…' : 'Refresh'}
           </Button>
         </div>
       )}

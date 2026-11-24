@@ -137,6 +137,12 @@ test('Server: takeaways are family-only, merged across phones, and never leak to
   const { usePlaces, useStore } = await import('../../server');
   useStore(createFileStore(null));
   const calls: string[] = [];
+  const stamp = new Date().toISOString();
+  let shops = [
+    { id: 'osm_n1', name: 'Spice Hut', cuisine: 'Indian', lat: 53.99, lon: -1.54, source: 'osm' as const, updatedAt: stamp },
+    { id: 'osm_n2', name: 'Wok This Way', cuisine: 'Chinese', lat: 53.99, lon: -1.541, source: 'osm' as const, updatedAt: stamp },
+  ];
+  let complete = true;
   usePlaces({
     async geocode(q) {
       calls.push('geocode:' + q);
@@ -145,10 +151,7 @@ test('Server: takeaways are family-only, merged across phones, and never leak to
     },
     async takeawaysNear(lat, lon, r) {
       calls.push(`near:${lat},${lon},${r}`);
-      return [
-        { id: 'osm_n1', name: 'Spice Hut', cuisine: 'Indian', source: 'osm', updatedAt: new Date().toISOString() },
-        { id: 'osm_n2', name: 'Wok This Way', cuisine: 'Chinese', source: 'osm', updatedAt: new Date().toISOString() },
-      ];
+      return { spots: shops, complete };
     },
   });
   await withServer(async (baseUrl) => {
@@ -188,6 +191,27 @@ test('Server: takeaways are family-only, merged across phones, and never leak to
     assert.equal(again.hub.spots.find((s: any) => s.id === 'osm_n2').hidden, true);
     assert.equal(again.hub.ratings.length, 2);
 
+    // The search is a one-off: it is stamped, and a refresh finds new places and notices closed ones.
+    assert.ok(again.hub.place.searchedAt);
+    assert.equal(again.hub.place.found, 2);
+    shops = [shops[0], { id: 'osm_n3', name: 'Pizza Palace', cuisine: 'Pizza', lat: 53.99, lon: -1.542, source: 'osm' as const, updatedAt: stamp }];
+    const refreshed = await (await post(a, '/discover', {})).json();
+    assert.equal(refreshed.added, 1);
+    assert.equal(refreshed.gone, 1, 'Wok This Way is no longer on the map');
+    assert.equal(refreshed.hub.spots.find((s: any) => s.id === 'osm_n2').gone, true);
+    assert.equal(refreshed.hub.ratings.length, 2, 'scores are kept');
+    // A busy-map (incomplete) refresh never claims anything has closed, and a place that returns is un-marked.
+    complete = false;
+    shops = [shops[1]];
+    const partial = await (await post(a, '/discover', {})).json();
+    assert.equal(partial.gone, 0);
+    assert.equal(partial.complete, false);
+    assert.equal(partial.hub.spots.find((s: any) => s.id === 'osm_n1').gone, undefined);
+    complete = true;
+    shops = [{ ...shops[0], id: 'osm_n2', name: 'Wok This Way' }, shops[0]];
+    const back = await (await post(a, '/discover', {})).json();
+    assert.equal(back.hub.spots.find((s: any) => s.id === 'osm_n2').gone, undefined);
+
     // Another family sees nothing of it.
     const other = await (await fetch(`${baseUrl}/api/takeaways`, { headers: authed(b) })).json();
     assert.deepEqual([other.place, other.spots, other.ratings], [null, [], []]);
@@ -220,9 +244,48 @@ test('Takeaways: the map calls identify the app and have the right shape', async
   }) as unknown as typeof fetch;
   const p = createPlaces(fake);
   assert.deepEqual(await p.geocode('Harrogate'), { label: 'Harrogate', lat: 53.99, lon: -1.54 });
-  const spots = await p.takeawaysNear(53.99, -1.54, 3000);
+  const near = await p.takeawaysNear(53.99, -1.54, 3000);
+  assert.equal(near.complete, true);
+  const spots = near.spots;
   assert.equal(spots[0].name, 'Chippy');
   assert.ok(seen.every((s) => /DinnerSpinner/.test(s.ua)), 'identifies itself');
   assert.ok(seen[0].url.includes('q=Harrogate'));
   assert.ok(decodeURIComponent(seen[1].body!).includes('around:3000,53.99000,-1.54000'));
+});
+
+test('Takeaways: when the Overpass servers are busy, it falls back to Nominatim and says the list may be incomplete', async () => {
+  const { createPlaces } = await import('../server/places');
+  const urls: string[] = [];
+  const fake = (async (url: string) => {
+    urls.push(String(url));
+    if (!String(url).includes('nominatim')) return new Response('busy', { status: 502 });
+    return new Response(
+      JSON.stringify([
+        { osm_type: 'node', osm_id: 5, lat: '53.991', lon: '-1.541', category: 'amenity', type: 'fast_food', name: 'Kebab King', address: { road: 'High St', postcode: 'HG1 1AA' }, extratags: { website: 'kebabking.example', cuisine: 'kebab' } },
+        { osm_type: 'node', osm_id: 6, lat: '53.99', lon: '-1.54', category: 'amenity', type: 'restaurant', name: 'Sit Down Bistro', extratags: {} },
+        { osm_type: 'way', osm_id: 7, lat: '53.99', lon: '-1.54', category: 'shop', type: 'hairdresser', name: 'Takeaway Cuts' },
+      ])
+    );
+  }) as unknown as typeof fetch;
+  const near = await createPlaces(fake, async () => {}).takeawaysNear(53.99, -1.54, 3000);
+  assert.equal(near.complete, false);
+  assert.deepEqual(near.spots.map((s) => s.name), ['Kebab King'], 'duplicates across searches collapse; non-takeaways are left out');
+  assert.equal(near.spots[0].cuisine, 'Kebab');
+  assert.equal(near.spots[0].website, 'https://kebabking.example');
+  assert.ok(urls.some((u) => u.includes('bounded=1') && u.includes('viewbox=') && u.includes('extratags=1')));
+
+  const dead = createPlaces((async () => new Response('no', { status: 503 })) as typeof fetch, async () => {});
+  await assert.rejects(dead.takeawaysNear(53.99, -1.54, 3000), /busy/i);
+});
+
+test('Takeaways: each place gets its own website, directions and order-online links', async () => {
+  const T = await import('./takeaways');
+  const links = T.orderLinks({ name: "Joe's Pizza", address: '1 High St', lat: 53.99, lon: -1.54, website: 'https://joes.example' }, 'Harrogate');
+  assert.equal(links.website, 'https://joes.example');
+  assert.ok(links.directions.startsWith('https://www.google.com/maps/search/?api=1&query='));
+  for (const [key, site] of [['justEat', 'just-eat.co.uk'], ['uberEats', 'ubereats.com'], ['deliveroo', 'deliveroo.co.uk']] as const) {
+    const q = decodeURIComponent(links[key]);
+    assert.ok(q.includes("Joe's Pizza Harrogate") && q.includes('site:' + site), key);
+  }
+  assert.equal(T.orderLinks({ name: 'X' }).website, undefined);
 });

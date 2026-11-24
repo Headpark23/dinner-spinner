@@ -7,7 +7,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { applyShoppingOp } from './src/utils/shopping';
 import { applyFridgeOp, type FridgeState } from './src/utils/fridge';
 import { cleanLog, unionLog } from './src/utils/history';
-import { DEFAULT_RADIUS_M, MAX_RADIUS_M, cleanHub, emptyHub, mergeHub } from './src/utils/takeaways';
+import { DEFAULT_RADIUS_M, MAX_RADIUS_M, cleanHub, distanceM, emptyHub, mergeHub, type SharedSpot } from './src/utils/takeaways';
 import { createPlaces, type Places } from './src/server/places';
 import { Household, HttpError, Store, UserLink, createFileStore, createStoreFromEnv, mutate } from './src/server/store';
 
@@ -402,17 +402,41 @@ app.post('/api/takeaways/discover', smallJson, requireHousehold, rateLimit('take
   if (!place) return res.status(400).json({ error: 'Choose your town first.' });
   const radius = Math.min(MAX_RADIUS_M, Math.max(500, Number(req.body?.radiusM) || DEFAULT_RADIUS_M));
   try {
-    const found = await places.takeawaysNear(place.lat, place.lon, radius);
+    const { spots: found, complete } = await places.takeawaysNear(place.lat, place.lon, radius);
+    const foundIds = new Set(found.map((f) => f.id));
     let added = 0;
+    let gone = 0;
     const hub = await mutate(store, id, (h) => {
+      added = 0; // the callback may run again if two phones write at once
+      gone = 0;
       const current = hubOf(h);
-      const have = new Set(current.spots.map((s) => s.id));
-      // Keep what the family already did to a spot (hidden, renamed); only add the new ones.
-      const fresh = found.filter((s) => !have.has(s.id));
-      added = fresh.length;
-      return saveHub(h, mergeHub(current, { spots: fresh }));
+      const now = new Date().toISOString();
+      const byId = new Map(current.spots.map((s) => [s.id, s]));
+      const changes: SharedSpot[] = [];
+      for (const f of found) {
+        const have = byId.get(f.id);
+        if (!have) {
+          changes.push(f);
+          added++;
+        } else if (have.gone || (!have.website && f.website) || (!have.phone && f.phone) || (!have.address && f.address)) {
+          // Keep what the family did (hidden, renamed); only fill gaps and clear a closed marker.
+          changes.push({ ...have, website: have.website || f.website, phone: have.phone || f.phone, address: have.address || f.address, gone: undefined, updatedAt: now });
+        }
+      }
+      // Only a complete search may say a place has gone, and only for places well inside the area searched.
+      if (complete) {
+        for (const s of current.spots) {
+          if (s.source !== 'osm' || s.gone || foundIds.has(s.id) || s.lat === undefined || s.lon === undefined) continue;
+          if (distanceM(place, { lat: s.lat, lon: s.lon }) > radius * 0.9) continue;
+          changes.push({ ...s, gone: true, updatedAt: now });
+          gone++;
+        }
+      }
+      const next = mergeHub(current, { spots: changes });
+      next.place = { ...place, searchedAt: now, found: found.length, updatedAt: now };
+      return saveHub(h, next);
     });
-    res.json({ found: found.length, added, hub });
+    res.json({ found: found.length, added, gone, complete, hub });
   } catch (err) {
     fail(res, err);
   }
