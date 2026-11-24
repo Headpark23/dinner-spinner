@@ -88,3 +88,53 @@ export function sanitizeFreezer(raw: unknown): FreezerItem[] {
     ];
   });
 }
+
+// ---------------------------------------------------------------------------
+// Shared freezer. Same idea as the fridge: small operations applied identically on
+// the server and on each phone, so two people ticking portions never overwrite each other.
+// ---------------------------------------------------------------------------
+export type FreezerOp =
+  | { type: 'seed'; items: FreezerItem[] } // first phone to arrive fills an empty server; ignored afterwards
+  | { type: 'replaceAll'; items: FreezerItem[] } // restore a backup or reset
+  | { type: 'add'; item: FreezerItem }
+  | { type: 'tick'; id: string; at: string } // one portion eaten
+  | { type: 'putBack'; id: string } // undo one portion
+  | { type: 'remove'; id: string }
+  | { type: 'clearUsed' };
+
+export interface FreezerState {
+  version: number;
+  seeded: boolean;
+  items: FreezerItem[];
+}
+
+const MAX_ITEMS = 300;
+
+/** Pure: returns the new state without touching the old one. */
+export function applyFreezerOp(state: FreezerState, op: FreezerOp | any): FreezerState {
+  if (!op || typeof op !== 'object') return state;
+  switch (op.type) {
+    case 'seed':
+      return state.seeded ? state : { ...state, seeded: true, items: sanitizeFreezer(op.items).slice(0, MAX_ITEMS) };
+    case 'replaceAll':
+      return { ...state, seeded: true, items: sanitizeFreezer(op.items).slice(0, MAX_ITEMS) };
+    case 'add': {
+      const [item] = sanitizeFreezer([op.item]);
+      if (!item || state.items.some((i) => i.id === item.id)) return state;
+      return { ...state, seeded: true, items: [item, ...state.items].slice(0, MAX_ITEMS) };
+    }
+    case 'tick': {
+      const at = new Date(op.at);
+      const when = Number.isNaN(at.getTime()) ? new Date() : at;
+      return { ...state, items: state.items.map((i) => (i.id === op.id ? tickOffPortion(i, when) : i)) };
+    }
+    case 'putBack':
+      return { ...state, items: state.items.map((i) => (i.id === op.id ? putBackFreezerPortion(i) : i)) };
+    case 'remove':
+      return { ...state, items: state.items.filter((i) => i.id !== op.id) };
+    case 'clearUsed':
+      return { ...state, items: inFreezer(state.items) };
+    default:
+      return state;
+  }
+}

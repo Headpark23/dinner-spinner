@@ -263,6 +263,38 @@ test('Server: shared shopping list round trip, isolated per household', async ()
   });
 });
 
+test('Server: shared freezer, ticks from two phones add up and households stay apart', async () => {
+  await withServer(async (baseUrl) => {
+    for (const [method, path] of [['GET', '/api/freezer'], ['POST', '/api/freezer/ops']]) {
+      const res = await fetch(`${baseUrl}${path}`, { method, headers: json, body: method === 'POST' ? JSON.stringify({ ops: [{ type: 'clearUsed' }] }) : undefined });
+      assert.equal(res.status, 401, `${method} ${path} should be 401`);
+    }
+    const a = await newHousehold(baseUrl);
+    const b = await newHousehold(baseUrl);
+    const batch = (id: string, name: string, portions: number) => ({ id, name, portions, totalPortions: portions, frozenDate: '2026-01-01T12:00:00Z' });
+    const send = (h: any, ops: any[]) => fetch(`${baseUrl}/api/freezer/ops`, { method: 'POST', headers: authed(h), body: JSON.stringify({ ops }) }).then((r) => r.json());
+
+    assert.equal((await (await fetch(`${baseUrl}/api/freezer`, { headers: authed(a) })).json()).seeded, false);
+    const first = await send(a, [{ type: 'seed', items: [batch('z1', 'Chilli', 3)] }]);
+    assert.equal(first.items.length, 1);
+    assert.equal((await send(a, [{ type: 'seed', items: [batch('z9', 'Other', 1)] }])).items.length, 1, 'a second seed is ignored');
+
+    // Two phones each eat a portion: both ticks count.
+    await send(a, [{ type: 'tick', id: 'z1', at: '2026-02-01T18:00:00Z' }]);
+    const after = await send(a, [{ type: 'tick', id: 'z1', at: '2026-02-02T18:00:00Z' }]);
+    assert.equal(after.items[0].portions, 1);
+    const done = await send(a, [{ type: 'tick', id: 'z1', at: '2026-02-03T18:00:00Z' }, { type: 'tick', id: 'z1', at: '2026-02-03T19:00:00Z' }]);
+    assert.equal(done.items[0].portions, 0, 'cannot go below zero');
+    assert.ok(done.items[0].usedDate);
+    const revived = await send(a, [{ type: 'putBack', id: 'z1' }, { type: 'add', item: batch('z2', 'Dal', 2) }]);
+    assert.equal(revived.items.find((i: any) => i.id === 'z1').portions, 1);
+    const cleared = await send(a, [{ type: 'tick', id: 'z1', at: '2026-02-04T18:00:00Z' }, { type: 'clearUsed' }]);
+    assert.deepEqual(cleared.items.map((i: any) => i.id), ['z2']);
+    assert.equal((await send(a, [{ type: 'add', item: { name: '' } }, { type: 'nonsense' }])).items.length, 1, 'junk ops are ignored');
+    assert.equal((await (await fetch(`${baseUrl}/api/freezer`, { headers: authed(b) })).json()).items.length, 0, 'other households see nothing');
+  });
+});
+
 test('Server: shared fridge and cooking history, isolated per household', async () => {
   await withServer(async (baseUrl) => {
     for (const [method, path] of [['GET', '/api/fridge'], ['POST', '/api/fridge/ops'], ['GET', '/api/history'], ['POST', '/api/history']]) {
@@ -1006,3 +1038,4 @@ test('Freezer: totals, ordering, age and sanitising', async () => {
   assert.equal(clean[0].totalPortions, 2);
   assert.deepEqual(f.sanitizeFreezer('garbage'), []);
 });
+

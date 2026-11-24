@@ -22,7 +22,7 @@ import {
   LiveVote,
   FreezerItem,
 } from '../types';
-import { createFreezerItem, tickOffPortion, putBackFreezerPortion, sanitizeFreezer } from '../utils/freezer';
+import { createFreezerItem, applyFreezerOp, sanitizeFreezer, FreezerOp } from '../utils/freezer';
 import { WORLD_RECIPES } from '../data/worldRecipes';
 import { adaptRecipes, describeTasteChange, lovedCount, TasteResult } from '../utils/taste';
 import { applyShoppingOp, newShoppingId, ShoppingOp } from '../utils/shopping';
@@ -339,8 +339,13 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const pendingFridgeOps = useRef<FridgeOp[]>(loadStored('fridge_queue', []));
   const fridgeBusy = useRef(false);
   const fridgeDirty = useRef(false);
+  const pendingFreezerOps = useRef<FreezerOp[]>(loadStored('freezer_queue', []));
+  const freezerBusy = useRef(false);
+  const freezerDirty = useRef(false);
   const pantryRef = useRef<PantryItem[]>([]);
   pantryRef.current = pantry;
+  const freezerRef = useRef<FreezerItem[]>([]);
+  freezerRef.current = freezer;
   const pendingShoppingOps = useRef<ShoppingOp[]>(loadStored('shopping_queue', []));
   const [meId, setMeIdState] = useState<string>(() => loadStored('me', ''));
   const [household, setHousehold] = useState<{ id: string; key: string } | null>(() =>
@@ -726,6 +731,75 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     pendingFridgeOps.current = [...pendingFridgeOps.current, ...ops];
     saveFridgeQueue();
     syncFridge();
+  };
+
+  // ---------- Shared freezer (once the household is set up) ----------
+  // Same pattern as the fridge: edits apply here at once, queue, and go to the server.
+  const saveFreezerQueue = () => {
+    try {
+      localStorage.setItem(`${STORAGE_KEY}_freezer_queue`, JSON.stringify(pendingFreezerOps.current));
+    } catch {
+      // storage full or blocked; the queue still lives in memory
+    }
+  };
+
+  const postFreezerOps = (ops: FreezerOp[]) =>
+    fetch('/api/freezer/ops', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ ops }),
+    });
+
+  const syncFreezer = useCallback(async () => {
+    if (!householdRef.current) return; // without a household the freezer stays on this phone
+    if (freezerBusy.current) {
+      freezerDirty.current = true;
+      return;
+    }
+    freezerBusy.current = true;
+    try {
+      do {
+        freezerDirty.current = false;
+        const queued = pendingFreezerOps.current;
+        let res = queued.length ? await postFreezerOps(queued) : await fetch('/api/freezer', { headers: authHeaders() });
+        if (!res.ok) throw new Error('freezer sync failed');
+        let json = await res.json();
+        if (queued.length) {
+          pendingFreezerOps.current = pendingFreezerOps.current.slice(queued.length);
+          saveFreezerQueue();
+        }
+        if (!json.seeded) {
+          // First phone in the household shares what it has; the server ignores this if someone beat us to it.
+          res = await postFreezerOps([{ type: 'seed', items: freezerRef.current }]);
+          if (!res.ok) throw new Error('freezer seed failed');
+          json = await res.json();
+        }
+        // Re-apply anything queued meanwhile so local edits never flicker away.
+        const merged = pendingFreezerOps.current.reduce(applyFreezerOp, { version: json.version, seeded: true, items: sanitizeFreezer(json.items) });
+        setFreezer(merged.items);
+      } while (freezerDirty.current);
+    } catch {
+      // offline: changes stay queued and go out next time
+    } finally {
+      freezerBusy.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    syncFreezer();
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') syncFreezer();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [syncFreezer, household]);
+
+  const queueFreezer = (ops: FreezerOp[]) => {
+    if (ops.length === 0) return;
+    setFreezer((prev) => ops.reduce(applyFreezerOp, { version: 0, seeded: true, items: prev }).items);
+    if (!householdRef.current) return;
+    pendingFreezerOps.current = [...pendingFreezerOps.current, ...ops];
+    saveFreezerQueue();
+    syncFreezer();
   };
 
   // ---------- Shared cooking history ----------
@@ -1419,16 +1493,15 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const item = createFreezerItem(input);
     if (!item) return;
     sound.playHold();
-    setFreezer((prev) => [item, ...prev]);
+    queueFreezer([{ type: 'add', item }]);
   };
   const useFreezerPortionById = (id: string) => {
     sound.playHold();
-    setFreezer((prev) => prev.map((i) => (i.id === id ? tickOffPortion(i) : i)));
+    queueFreezer([{ type: 'tick', id, at: new Date().toISOString() }]);
   };
-  const putBackFreezerPortionById = (id: string) =>
-    setFreezer((prev) => prev.map((i) => (i.id === id ? putBackFreezerPortion(i) : i)));
-  const removeFreezerItem = (id: string) => setFreezer((prev) => prev.filter((i) => i.id !== id));
-  const clearUsedFreezer = () => setFreezer((prev) => prev.filter((i) => !i.usedDate && i.portions > 0));
+  const putBackFreezerPortionById = (id: string) => queueFreezer([{ type: 'putBack', id }]);
+  const removeFreezerItem = (id: string) => queueFreezer([{ type: 'remove', id }]);
+  const clearUsedFreezer = () => queueFreezer([{ type: 'clearUsed' }]);
 
   // ---------- After-dinner reviews ----------
   const saveDinnerReviews = (cookLogId: string, reviews: MealReview[]) => {
@@ -1799,7 +1872,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
     if (Array.isArray(payload.takeawayLog)) setTakeawayLog(payload.takeawayLog);
     if (Array.isArray(payload.rejectedMealIds)) setRejectedMealIds(payload.rejectedMealIds);
-    if (Array.isArray(payload.freezer)) setFreezer(sanitizeFreezer(payload.freezer));
+    if (Array.isArray(payload.freezer)) queueFreezer([{ type: 'replaceAll', items: sanitizeFreezer(payload.freezer) }]);
     // Keep this device's own identity; only the display name and last-saved time carry over.
     setUserProfile((prev) => ({
       ...prev,
@@ -2113,7 +2186,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setCookLog([]);
     setTakeawayLog([]);
     setRejectedMealIds([]);
-    setFreezer([]);
+    queueFreezer([{ type: 'replaceAll', items: [] }]);
     setReverseTimers([]);
     setAgreedMeal(null);
     setConsecutiveRejections(0);
