@@ -118,3 +118,10 @@ export function costPerHeadText(perHead: number): string {
   if (perHead < 1) return `about ${Math.round(perHead * 100)}p a head`;
   return `about £${perHead.toFixed(2)} a head`;
 }
+
+/** What a dish would cost to buy when that is over the limit, otherwise null. No limit means never over. */
+export function overCostLimit(meal: Meal, rule: { limit: number; of: (m: Meal) => number }): number | null {
+  if (!Number.isFinite(rule.limit)) return null;
+  const cost = rule.of(meal);
+  return cost > rule.limit ? cost : null;
+}

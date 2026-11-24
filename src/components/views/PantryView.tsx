@@ -176,6 +176,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
   // Fridge
   const [newItemName, setNewItemName] = useState('');
   const [newItemFreshness, setNewItemFreshness] = useState<FreshnessLevel>('green');
+  const [newItemUseBy, setNewItemUseBy] = useState('');
   const [newStapleName, setNewStapleName] = useState('');
   const [newBannedName, setNewBannedName] = useState('');
   const [newLovedName, setNewLovedName] = useState('');
@@ -642,8 +643,9 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!newItemName.trim()) return;
-                addPantryItem({ name: newItemName.trim(), category: 'Fridge', freshness: newItemFreshness, quantity: '' });
+                addPantryItem({ name: newItemName.trim(), category: 'Fridge', freshness: newItemFreshness, quantity: '', ...(newItemUseBy ? { useBy: newItemUseBy } : {}) });
                 setNewItemName('');
+                setNewItemUseBy('');
               }}
             >
               <TextInput
@@ -666,6 +668,16 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
                 <Plus className="h-5 w-5" />
               </Button>
             </form>
+            <label className="flex items-center gap-2 px-1 text-[13px] text-ink-2">
+              Use by (optional)
+              <input
+                type="date"
+                value={newItemUseBy}
+                onChange={(e) => setNewItemUseBy(e.target.value)}
+                className="h-9 rounded-lg border border-line bg-card px-2 text-[13px] text-ink"
+              />
+              <span className="text-ink-3">Two days out, it counts as use next.</span>
+            </label>
             {pantry.length === 0 ? (
               <Card className="p-6 text-center">
                 <p className="font-display text-[19px] font-semibold">The fridge is empty</p>

@@ -164,3 +164,17 @@ export function milestones(stats: MilestoneStats): MilestoneResult {
   }
   return { earned, next };
 }
+
+/** A stable id for an earned step, e.g. "streak:7". */
+export const milestoneId = (m: { key: string; step: number }) => `${m.key}:${m.step}`;
+
+/**
+ * Steps earned that have not been celebrated yet. With nothing recorded (a first run, or an existing household
+ * opening the update) every step already earned counts as seen, so old achievements do not all pop up at once.
+ */
+export function unseenMilestones<T extends { key: string; step: number }>(earned: T[], seen: string[] | null): { fresh: T[]; seenNow: string[] } {
+  const all = earned.map(milestoneId);
+  if (seen === null) return { fresh: [], seenNow: all };
+  const known = new Set(seen);
+  return { fresh: earned.filter((m) => !known.has(milestoneId(m))), seenNow: [...new Set([...seen, ...all])] };
+}

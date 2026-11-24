@@ -19,7 +19,7 @@ export const MoreView: React.FC<{ onOpenProfile: () => void; onOpenRules: () => 
   onOpenRules,
   onOpenFamily,
 }) => {
-  const { setActiveView, takeawayOverrideActive, soundMuted, toggleSound, seasonal, setSeasonal, householdMembers, cookLog, householdCode, familyNames } = useDinner();
+  const { setActiveView, takeawayOverrideActive, soundMuted, toggleSound, seasonal, setSeasonal, hemisphere, setHemisphere, householdMembers, cookLog, householdCode, familyNames } = useDinner();
 
   const rows: Row[] = [
     {
@@ -120,6 +120,21 @@ export const MoreView: React.FC<{ onOpenProfile: () => void; onOpenRules: () => 
             <span className={cx('absolute top-0.5 left-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform', seasonal && 'translate-x-5')} />
           </span>
         </button>
+        {seasonal && (
+          <div className="mt-3 flex items-center gap-2 pl-[58px]" role="group" aria-label="Which hemisphere">
+            {(['north', 'south'] as const).map((h) => (
+              <button
+                key={h}
+                type="button"
+                aria-pressed={hemisphere === h}
+                onClick={() => setHemisphere(h)}
+                className={cx('min-h-9 rounded-lg border px-3 text-[13px] font-semibold', hemisphere === h ? 'border-ink bg-ink text-paper' : 'border-line bg-card text-ink')}
+              >
+                {h === 'north' ? 'Northern seasons' : 'Southern seasons'}
+              </button>
+            ))}
+          </div>
+        )}
       </Card>
 
     </div>

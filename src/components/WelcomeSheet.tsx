@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useDinner } from '../context/DinnerContext';
 import { Button, Sheet, TextInput } from './ui';
 import { DietPicker } from './DietPicker';
-import { DietId } from '../utils/diets';
+import { DIETS, DietId } from '../utils/diets';
 import { FamilyStart } from './FamilyStart';
 
 /**
@@ -17,13 +17,22 @@ export const WelcomeSheet: React.FC = () => {
   const [avoid, setAvoid] = useState('');
   const [loves, setLoves] = useState('');
   const [diets, setDiets] = useState<DietId[]>([]);
+  const [own, setOwn] = useState<DietId[][]>([]);
+  const toggleOwn = (i: number, id: DietId) =>
+    setOwn((prev) => {
+      const next = [...prev];
+      const cur = next[i] ?? [];
+      next[i] = cur.includes(id) ? cur.filter((d) => d !== id) : [...cur, id];
+      return next;
+    });
 
   const finish = () =>
     completeOnboarding(
       names,
       avoid.split(',').map((a) => a.trim()),
       diets,
-      loves.split(',').map((a) => a.trim())
+      loves.split(',').map((a) => a.trim()),
+      own
     );
 
   // Someone arriving from an invite link is already in a group; skip straight to the questions.
@@ -66,14 +75,33 @@ export const WelcomeSheet: React.FC = () => {
             <legend className="text-[15px] font-semibold">Who’s eating?</legend>
             <p className="text-[13px] text-ink-2">They’ll vote on dinner and take turns answering the door. You can change this later.</p>
             {names.map((n, i) => (
+              <div key={i} className="space-y-1.5">
               <TextInput
-                key={i}
                 aria-label={`Person ${i + 1}`}
                 value={i === 0 && !n && firstName ? firstName : n}
                 maxLength={30}
                 placeholder={i === 0 ? 'Your name' : 'Another person'}
                 onChange={(e) => setNames((prev) => prev.map((p, j) => (j === i ? e.target.value : p)))}
               />
+              {(n || (i === 0 && firstName)) && (
+                <details className="text-[13px]">
+                  <summary className="cursor-pointer py-1 text-ink-2">Their own diet?{(own[i]?.length ?? 0) > 0 ? ` (${own[i]!.length})` : ''}</summary>
+                  <div className="flex flex-wrap gap-1.5 pt-1" role="group" aria-label={`Diets for person ${i + 1}`}>
+                    {DIETS.map((d) => (
+                      <button
+                        key={d.id}
+                        type="button"
+                        aria-pressed={own[i]?.includes(d.id) ?? false}
+                        onClick={() => toggleOwn(i, d.id)}
+                        className={`min-h-9 rounded-lg border px-2.5 font-semibold ${own[i]?.includes(d.id) ? 'border-ink bg-ink text-paper' : 'border-line bg-card text-ink'}`}
+                      >
+                        {d.label}
+                      </button>
+                    ))}
+                  </div>
+                </details>
+              )}
+              </div>
             ))}
             {names.length < 6 && (
               <Button variant="quiet" size="sm" onClick={() => setNames((prev) => [...prev, ''])}>

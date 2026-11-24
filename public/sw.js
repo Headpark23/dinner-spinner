@@ -2,7 +2,7 @@
  * - The app shell and built assets are cached so the app opens offline.
  * - Dish photos and fonts are cached as they are seen.
  * - /api is never cached: household data must always come from the server.
- * Bump VERSION to force every device to refresh its cache. */
+ * The build replaces VERSION with a hash of the built page, so it changes when the shell does. */
 const VERSION = 'v3';
 const SHELL = `ds-shell-${VERSION}`;
 const ASSETS = `ds-assets-${VERSION}`;

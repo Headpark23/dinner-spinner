@@ -4,12 +4,13 @@
  * is a little likelier to come up, out of season a little less likely. The nudge is deliberately mild, well below
  * the "use next" boost, so it never beats what needs eating.
  *
- * Months are for the northern hemisphere (the app is UK-first): winter is November to March, summer June to
+ * Months default to the northern hemisphere (the app is UK-first): winter is November to March, summer June to
  * August. April, May, September and October are in between and change nothing.
  */
 import type { Meal } from '../types';
 
 export type Season = 'winter' | 'summer';
+export type Hemisphere = 'north' | 'south';
 
 export const IN_SEASON_WEIGHT = 1.25;
 export const OUT_OF_SEASON_WEIGHT = 0.85;
@@ -26,16 +27,17 @@ export function seasonOf(meal: Pick<Meal, 'title' | 'tags'>): Season | null {
   return winter ? 'winter' : 'summer';
 }
 
-/** The season a date is in, or null in the in-between months. */
-export function seasonForMonth(month: number): Season | null {
-  if (month >= 5 && month <= 7) return 'summer'; // June to August (0-based months)
-  if (month >= 10 || month <= 2) return 'winter'; // November to March
+/** The season a date is in, or null in the in-between months. In the southern hemisphere the months are six apart. */
+export function seasonForMonth(month: number, hemisphere: Hemisphere = 'north'): Season | null {
+  const m = hemisphere === 'south' ? (month + 6) % 12 : month;
+  if (m >= 5 && m <= 7) return 'summer'; // June to August (0-based months)
+  if (m >= 10 || m <= 2) return 'winter'; // November to March
   return null;
 }
 
 /** The multiplier for a dish on a given date: 1 when it has no season or it is a between-season month. */
-export function seasonWeight(meal: Pick<Meal, 'title' | 'tags'>, when: Date): number {
-  const now = seasonForMonth(when.getMonth());
+export function seasonWeight(meal: Pick<Meal, 'title' | 'tags'>, when: Date, hemisphere: Hemisphere = 'north'): number {
+  const now = seasonForMonth(when.getMonth(), hemisphere);
   const dish = seasonOf(meal);
   if (!now || !dish) return 1;
   return dish === now ? IN_SEASON_WEIGHT : OUT_OF_SEASON_WEIGHT;
