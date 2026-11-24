@@ -222,6 +222,7 @@ interface DinnerContextType {
   rejectedMealIds: string[];
   restoreRejected: (id: string) => void;
   updateMealTweaks: (id: string, tweaks: MealTweaks) => void;
+  setMealPhoto: (id: string, imageUrl: string, credit: Meal['photoCredit']) => void;
 
   // After-dinner reviews
   saveDinnerReviews: (cookLogId: string, reviews: MealReview[]) => void;
@@ -365,6 +366,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [heldReels, setHeldReels] = useState<boolean[]>([false, false, false, false]);
   const [isSpinning, setIsSpinning] = useState<boolean>(false);
   const [activeMealResult, setActiveMealResult] = useState<Meal | null>(null);
+  const [photoTick, setPhotoTick] = useState(0);
   const [customReelResult, setCustomReelResult] = useState<string[]>([
     'Rigatoni Pasta',
     'Free-Range Chicken',
@@ -1321,6 +1323,43 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (dish) setMeals((prev) => (prev.some((m) => m.id === id) ? prev : [...prev, dish]));
   };
 
+  const setMealPhoto = (id: string, imageUrl: string, credit: Meal['photoCredit']) => {
+    const apply = (m: Meal) => (m.id === id ? { ...m, imageUrl, photoCredit: credit } : m);
+    setMeals((prev) => prev.map(apply));
+    setActiveMealResult((prev) => (prev ? apply(prev) : prev));
+  };
+
+  // Recipes the family added get a stock photo from Wikimedia Commons, one at a time, and each is only tried once.
+  useEffect(() => {
+    const TRIED_KEY = `${STORAGE_KEY}_photo_tried`;
+    let tried: string[] = [];
+    try {
+      tried = JSON.parse(localStorage.getItem(TRIED_KEY) || '[]');
+    } catch {
+      tried = [];
+    }
+    const next = meals.find((m) => (m.source === 'own' || m.source === 'scanned' || m.source === 'idea') && !m.imageUrl && !tried.includes(m.id));
+    if (!next) return;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/photos/find?title=${encodeURIComponent(next.title)}`);
+        const json = res.ok ? await res.json() : null;
+        if (cancelled) return;
+        localStorage.setItem(TRIED_KEY, JSON.stringify([...tried, next.id].slice(-300)));
+        if (json?.photo?.url) setMealPhoto(next.id, json.photo.url, json.photo.credit);
+        else setPhotoTick((t) => t + 1);
+      } catch {
+        // offline: try again next time the app opens
+      }
+    }, 1200);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meals, photoTick]);
+
   const updateMealTweaks = (id: string, tweaks: MealTweaks) => {
     const apply = (m: Meal) => (m.id === id ? { ...m, tweaks } : m);
     setMeals((prev) => prev.map(apply));
@@ -2162,6 +2201,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         rejectedMealIds,
         restoreRejected,
         updateMealTweaks,
+        setMealPhoto,
         saveDinnerReviews,
         shoppingList,
         shoppingOnline,

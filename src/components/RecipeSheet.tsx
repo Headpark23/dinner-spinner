@@ -73,7 +73,7 @@ export const RecipeSheet: React.FC<{
   const saveTweaks = (next: MealTweaks) => updateMealTweaks(current.id, next);
 
   const photo = current.imageUrl || photoFor(current.id);
-  const credit = PHOTO_CREDITS[current.id];
+  const credit = PHOTO_CREDITS[current.id] || (current.imageUrl ? current.photoCredit : undefined);
   const reviews = cookLog
     .filter((c) => c.mealId === current.id)
     .flatMap((c) => (c.reviews || []).map((r) => ({ ...r, date: c.date })))
