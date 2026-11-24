@@ -84,33 +84,40 @@ export const TakeawayView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFa
       )}
 
       <div>
-        <h1 className="font-display text-[28px] leading-tight font-semibold">Takeaway</h1>
+        <p className="eyebrow">Night off the stove</p>
+        <h1 className="mt-0.5 font-display text-[30px] leading-[1.08] font-semibold">Takeaway</h1>
         <p className="mt-1 text-[14px] text-ink-2">Spin for where to order from, and who answers the door.</p>
       </div>
 
-      <div className="rounded-[22px] bg-enamel p-3 text-on-enamel ring-1 ring-line">
-        <div className="grid grid-cols-[2fr_1fr] gap-2">
-          <div className="reel-window relative flex h-[120px] flex-col items-center justify-center overflow-hidden rounded-2xl px-3 text-center">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-on-enamel-2">Order from</span>
+      <div className="cabinet-housing rounded-[26px] p-3.5 text-on-enamel ring-1 ring-brass/45">
+        <div className="mb-2 flex items-center justify-between px-1 text-[11px] uppercase tracking-[0.09em] text-on-enamel-2">
+          <span>Evening draw</span>
+          <span className="text-brass">{takeaways.length} spots on the drum</span>
+        </div>
+        <div className="grid grid-cols-[2fr_1fr] gap-2.5">
+          <div className="reel-window relative flex h-[132px] flex-col items-center justify-center overflow-hidden rounded-[18px] px-3 text-center ring-1 ring-brass/25">
+            <div className="reel-glass-sheen pointer-events-none absolute inset-0" aria-hidden="true" />
+            <span className="text-[10px] font-semibold uppercase tracking-[0.09em] text-brass/90">Order from</span>
             <span
               key={isTakeawaySpinning ? undefined : shownSpot?.id}
               className={cx(
-                'mt-1.5 font-display text-[20px] leading-tight font-semibold line-clamp-2',
-                isTakeawaySpinning ? 'text-on-enamel/70 blur-[0.6px]' : 'reel-settle'
+                'mt-1.5 font-display text-[21px] leading-tight font-semibold line-clamp-2',
+                isTakeawaySpinning ? 'text-on-enamel/70 blur-[0.8px]' : 'reel-settle'
               )}
             >
               {shownSpot?.name ?? 'Ready'}
             </span>
             {!isTakeawaySpinning && shownSpot && (
-              <span className="mt-1 text-[12px] text-on-enamel-2">{shownSpot.category}</span>
+              <span className="mt-1 rounded-full bg-white/10 px-2.5 py-0.5 text-[11.5px] text-on-enamel-2">{shownSpot.category}</span>
             )}
           </div>
-          <div className="reel-window relative flex h-[120px] flex-col items-center justify-center overflow-hidden rounded-2xl px-2 text-center">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-on-enamel-2">Door duty</span>
+          <div className="reel-window relative flex h-[132px] flex-col items-center justify-center overflow-hidden rounded-[18px] px-2 text-center ring-1 ring-brass/25">
+            <div className="reel-glass-sheen pointer-events-none absolute inset-0" aria-hidden="true" />
+            <span className="text-[10px] font-semibold uppercase tracking-[0.09em] text-on-enamel-2">Door duty</span>
             <span
               className={cx(
                 'mt-1.5 font-display text-[20px] font-semibold',
-                isTakeawaySpinning ? 'text-on-enamel/70 blur-[0.6px]' : 'reel-settle text-brass'
+                isTakeawaySpinning ? 'text-on-enamel/70 blur-[0.8px]' : 'reel-settle text-brass'
               )}
             >
               {shownPerson?.name ?? '—'}

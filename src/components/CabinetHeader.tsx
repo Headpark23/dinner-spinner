@@ -2,52 +2,71 @@ import React from 'react';
 import { useDinner } from '../context/DinnerContext';
 import { Volume2, VolumeX, CircleHelp, ArrowRight, Moon, Sun } from 'lucide-react';
 import { useTheme } from '../utils/theme';
-import { IconButton } from './ui';
 
 interface CabinetHeaderProps {
   onOpenRules: () => void;
 }
 
-/** The brand mark: a reel window with a payline, drawn rather than an emoji. */
+/** Crafted brass-and-enamel brand emblem: three cream reels crossed by a terracotta & brass payline. */
 const Mark: React.FC = () => (
-  <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true" className="shrink-0">
-    <rect x="1" y="1" width="26" height="26" rx="8" fill="var(--enamel)" />
-    <rect x="6" y="6" width="4.5" height="16" rx="1.5" fill="var(--on-enamel)" opacity="0.9" />
-    <rect x="11.75" y="6" width="4.5" height="16" rx="1.5" fill="var(--on-enamel)" opacity="0.9" />
-    <rect x="17.5" y="6" width="4.5" height="16" rx="1.5" fill="var(--on-enamel)" opacity="0.9" />
-    <rect x="4" y="13.25" width="20" height="1.5" rx="0.75" fill="var(--tomato)" />
+  <svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true" className="shrink-0 drop-shadow-[0_2px_4px_rgba(28,22,17,0.18)]">
+    <rect x="1" y="1" width="30" height="30" rx="9.5" fill="var(--enamel)" stroke="var(--brass)" strokeOpacity="0.55" strokeWidth="1.2" />
+    <rect x="6.5" y="7" width="5" height="18" rx="1.75" fill="var(--on-enamel)" opacity="0.92" />
+    <rect x="13.5" y="7" width="5" height="18" rx="1.75" fill="var(--on-enamel)" opacity="0.96" />
+    <rect x="20.5" y="7" width="5" height="18" rx="1.75" fill="var(--on-enamel)" opacity="0.92" />
+    <rect x="4" y="15.1" width="24" height="1.8" rx="0.9" fill="var(--tomato)" />
+    <circle cx="4.5" cy="16" r="1.4" fill="var(--brass)" />
+    <circle cx="27.5" cy="16" r="1.4" fill="var(--brass)" />
   </svg>
 );
 
-/** Slim top bar: brand on the left, the two things you reach for mid-dinner on the right. */
+/** Slim editorial top bar: brand mark + serif wordmark on the left, compact pill controls on the right. */
 export const CabinetHeader: React.FC<CabinetHeaderProps> = ({ onOpenRules }) => {
   const { theme, toggleTheme } = useTheme();
   const { takeawayOverrideActive, soundMuted, toggleSound, setActiveView, activeView } = useDinner();
 
   return (
-    <header className="sticky top-0 z-30 border-b border-line bg-paper/95 backdrop-blur-sm">
-      <div className="flex h-14 items-center justify-between px-4">
+    <header className="sticky top-0 z-30 border-b border-line/80 bg-paper/88 backdrop-blur-md">
+      <div className="flex h-15 items-center justify-between px-4">
         <button
           onClick={() => setActiveView(0)}
-          className="flex min-h-11 items-center gap-2.5 rounded-lg px-1"
+          className="group flex min-h-11 items-center gap-2.5 rounded-xl px-1 text-left"
           aria-label="Dinner Spinner, go to the spinner"
         >
           <Mark />
-          <span className="font-display text-[20px] font-semibold leading-none tracking-tight">
-            Dinner <em className="font-medium">Spinner</em>
+          <span className="font-display text-[21px] font-semibold leading-none tracking-tight text-ink">
+            Dinner <em className="font-normal text-tomato">Spinner</em>
           </span>
         </button>
 
-        <div className="-mr-2 flex items-center">
-          <IconButton label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} onClick={toggleTheme}>
-            {theme === 'dark' ? <Sun className="h-5 w-5" strokeWidth={1.75} /> : <Moon className="h-5 w-5" strokeWidth={1.75} />}
-          </IconButton>
-          <IconButton label={soundMuted ? 'Turn sound on' : 'Turn sound off'} onClick={toggleSound}>
-            {soundMuted ? <VolumeX className="h-5 w-5" strokeWidth={1.75} /> : <Volume2 className="h-5 w-5" strokeWidth={1.75} />}
-          </IconButton>
-          <IconButton label="How it works" onClick={onOpenRules}>
-            <CircleHelp className="h-5 w-5" strokeWidth={1.75} />
-          </IconButton>
+        <div className="flex items-center gap-0.5 rounded-full border border-line/90 bg-card/85 p-1 shadow-[0_1px_2px_rgba(28,22,17,0.05)]">
+          <button
+            type="button"
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            onClick={toggleTheme}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-ink-2 transition-colors hover:bg-sunk hover:text-ink"
+          >
+            {theme === 'dark' ? <Sun className="h-[18px] w-[18px]" strokeWidth={1.8} /> : <Moon className="h-[18px] w-[18px]" strokeWidth={1.8} />}
+          </button>
+          <button
+            type="button"
+            aria-label={soundMuted ? 'Turn sound on' : 'Turn sound off'}
+            title={soundMuted ? 'Turn sound on' : 'Turn sound off'}
+            onClick={toggleSound}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-ink-2 transition-colors hover:bg-sunk hover:text-ink"
+          >
+            {soundMuted ? <VolumeX className="h-[18px] w-[18px]" strokeWidth={1.8} /> : <Volume2 className="h-[18px] w-[18px]" strokeWidth={1.8} />}
+          </button>
+          <button
+            type="button"
+            aria-label="How it works"
+            title="How it works"
+            onClick={onOpenRules}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-ink-2 transition-colors hover:bg-sunk hover:text-ink"
+          >
+            <CircleHelp className="h-[18px] w-[18px]" strokeWidth={1.8} />
+          </button>
         </div>
       </div>
 

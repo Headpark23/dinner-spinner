@@ -127,7 +127,8 @@ export const ScorecardView: React.FC = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display text-[28px] leading-tight font-semibold">History</h1>
+        <p className="eyebrow">Kitchen journal</p>
+        <h1 className="mt-0.5 font-display text-[30px] leading-[1.08] font-semibold">History</h1>
         <p className="mt-1 text-[14px] text-ink-2">
           {cookLog.length === 0
             ? 'Log a dinner from the Dinner tab and this page fills in with your real week.'
@@ -138,49 +139,48 @@ export const ScorecardView: React.FC = () => {
       {/* This week */}
       <Card className="p-4">
         <div className="flex items-baseline justify-between">
-          <h2 className="text-[15px] font-semibold">The last seven days</h2>
-          <span className="text-[13px] text-ink-2">
+          <h2 className="font-display text-[18px] font-semibold">The last seven days</h2>
+          <span className="text-[13px] font-medium text-sage">
             {homeThisWeek} home-cooked{streak > 1 ? ` · ${streak}-night streak` : ''}
           </span>
         </div>
-        <ol className="mt-4 grid grid-cols-7 gap-1 text-center">
+        <ol className="mt-4 grid grid-cols-7 gap-1.5 text-center">
           {week.map((d) => (
             <li key={d.key} className="flex flex-col items-center gap-1.5">
               <span
                 className={cx(
-                  'flex h-9 w-9 items-center justify-center rounded-full text-[11px] font-semibold',
-                  d.cooked && 'bg-sage text-white',
-                  !d.cooked && d.takeaway && 'border-2 border-saffron text-saffron',
-                  !d.cooked && !d.takeaway && 'border border-dashed border-line-strong'
+                  'flex h-10 w-10 items-center justify-center rounded-2xl text-[12px] font-bold transition-colors',
+                  d.cooked && 'bg-sage text-white shadow-[0_3px_10px_-2px_rgba(51,98,68,0.45)]',
+                  !d.cooked && d.takeaway && 'border-2 border-saffron bg-saffron-soft/60 text-saffron',
+                  !d.cooked && !d.takeaway && 'border border-dashed border-line-strong bg-sunk/50 text-ink-3'
                 )}
                 aria-label={`${d.label}: ${d.cooked ? 'cooked at home' : d.takeaway ? 'takeaway' : 'nothing logged'}`}
               >
-                {d.cooked ? '✓' : d.takeaway ? 'T' : ''}
+                {d.cooked ? '✓' : d.takeaway ? 'T' : '·'}
               </span>
-              <span className={cx('text-[12px]', d.isToday ? 'font-semibold text-ink' : 'text-ink-3')}>
+              <span className={cx('text-[11.5px]', d.isToday ? 'font-bold text-tomato' : 'text-ink-3')}>
                 {d.isToday ? 'Today' : d.label}
               </span>
             </li>
           ))}
         </ol>
-        <dl className="mt-5 grid grid-cols-3 gap-3 border-t border-line pt-4">
-          <div>
-            <dt className="text-[12px] text-ink-2">Home dinners</dt>
-            <dd className="font-display text-[24px] font-semibold tabular-nums">{cookLog.length}</dd>
+        <dl className="mt-5 grid grid-cols-3 gap-2.5 border-t border-line pt-4">
+          <div className="rounded-2xl bg-sunk/70 p-3">
+            <dt className="text-[11.5px] font-medium text-ink-2">Home dinners</dt>
+            <dd className="mt-0.5 font-display text-[25px] leading-tight font-semibold tabular-nums">{cookLog.length}</dd>
           </div>
-          <div>
-            <dt className="text-[12px] text-ink-2">Takeaways</dt>
-            <dd className="font-display text-[24px] font-semibold tabular-nums">{takeawayLog.length}</dd>
+          <div className="rounded-2xl bg-sunk/70 p-3">
+            <dt className="text-[11.5px] font-medium text-ink-2">Takeaways</dt>
+            <dd className="mt-0.5 font-display text-[25px] leading-tight font-semibold tabular-nums">{takeawayLog.length}</dd>
           </div>
-          <div>
-            <dt className="text-[12px] text-ink-2">Items used up</dt>
-            <dd className="font-display text-[24px] font-semibold tabular-nums">{rescuedItemsCount}</dd>
+          <div className="rounded-2xl bg-sunk/70 p-3">
+            <dt className="text-[11.5px] font-medium text-ink-2">Rescued</dt>
+            <dd className="mt-0.5 font-display text-[25px] leading-tight font-semibold text-sage tabular-nums">{rescuedItemsCount}</dd>
           </div>
         </dl>
         {cookLog.length > 0 && (
-          <p className="mt-2 text-[12px] text-ink-3">
-            Roughly £{(cookLog.length * TAKEAWAY_COST_GBP).toLocaleString('en-GB')} kept in your pocket, if each
-            home dinner replaced a £{TAKEAWAY_COST_GBP} takeaway.
+          <p className="mt-3 rounded-xl bg-sage-soft/75 px-3 py-2 text-[12.5px] font-medium text-sage">
+            Roughly £{(cookLog.length * TAKEAWAY_COST_GBP).toLocaleString('en-GB')} kept in your pocket vs ordering a £{TAKEAWAY_COST_GBP} takeaway.
           </p>
         )}
       </Card>

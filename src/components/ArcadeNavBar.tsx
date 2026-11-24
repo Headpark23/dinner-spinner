@@ -51,47 +51,53 @@ export const ArcadeNavBar: React.FC = () => {
   ];
 
   return (
-    <nav
-      aria-label="Main"
-      className="pb-safe sticky bottom-0 z-30 border-t border-line bg-card/95 px-1.5 pt-1.5 backdrop-blur-sm"
-    >
-      <ul className="grid grid-cols-5 gap-0.5">
-        {items.map((item) => {
-          const isActive = activeTab === item.key;
-          const Icon = item.icon;
-          return (
-            <li key={item.key}>
-              <button
-                onClick={item.go}
-                aria-current={isActive ? 'page' : undefined}
-                className={cx(
-                  'relative flex min-h-[56px] w-full flex-col items-center justify-center gap-1 rounded-2xl transition-colors',
-                  isActive ? 'bg-tomato-soft text-tomato' : 'text-ink-2 hover:text-ink'
-                )}
-              >
-                <span className="relative">
-                  <Icon className="h-[24px] w-[24px]" strokeWidth={isActive ? 2.1 : 1.75} />
-                  {'count' in item && item.count !== undefined && (
-                    <span className="absolute -top-1.5 -right-3 min-w-[18px] rounded-full bg-tomato px-1 text-center text-[11px] font-semibold leading-[18px] text-white tabular-nums">
-                      {item.count}
-                    </span>
+    <div className="pb-safe pointer-events-none sticky bottom-0 z-30 px-3 pt-2">
+      <nav
+        aria-label="Main"
+        className="pointer-events-auto rounded-[24px] border border-line/90 bg-card/92 p-1.5 shadow-[0_12px_32px_-8px_rgba(28,22,17,0.22),inset_0_1px_0_var(--card-edge)] backdrop-blur-md"
+      >
+        <ul className="grid grid-cols-5 gap-1">
+          {items.map((item) => {
+            const isActive = activeTab === item.key;
+            const Icon = item.icon;
+            return (
+              <li key={item.key}>
+                <button
+                  onClick={item.go}
+                  aria-current={isActive ? 'page' : undefined}
+                  className={cx(
+                    'relative flex min-h-[54px] w-full flex-col items-center justify-center gap-1 rounded-[18px] transition-[background-color,color,transform] duration-150 active:scale-[0.98]',
+                    isActive
+                      ? 'bg-tomato-soft text-tomato ring-1 ring-tomato/15'
+                      : 'text-ink-2 hover:bg-sunk/60 hover:text-ink'
                   )}
-                  {'dot' in item && item.dot && (
-                    <span
-                      className={cx(
-                        'absolute -top-0.5 -right-1.5 h-2.5 w-2.5 rounded-full ring-2 ring-card',
-                        item.dot === 'sage' ? 'bg-sage' : item.dot === 'tomato' ? 'bg-tomato' : 'bg-saffron'
-                      )}
-                    />
-                  )}
-                </span>
-                <span className={cx('text-[12px] leading-none', isActive ? 'font-bold' : 'font-medium')}>{item.label}</span>
-                {item.hint && <span className="sr-only">, {item.hint}</span>}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
+                >
+                  <span className="relative">
+                    <Icon className="h-[22px] w-[22px]" strokeWidth={isActive ? 2.15 : 1.75} />
+                    {'count' in item && item.count !== undefined && (
+                      <span className="absolute -top-1.5 -right-3 min-w-[18px] rounded-full bg-tomato px-1 text-center text-[10.5px] font-bold leading-[18px] text-white shadow-sm tabular-nums">
+                        {item.count}
+                      </span>
+                    )}
+                    {'dot' in item && item.dot && (
+                      <span
+                        className={cx(
+                          'absolute -top-0.5 -right-1.5 h-2.5 w-2.5 rounded-full ring-2 ring-card',
+                          item.dot === 'sage' ? 'bg-sage' : item.dot === 'tomato' ? 'bg-tomato' : 'bg-saffron'
+                        )}
+                      />
+                    )}
+                  </span>
+                  <span className={cx('text-[11.5px] leading-none tracking-[-0.01em]', isActive ? 'font-bold' : 'font-medium')}>
+                    {item.label}
+                  </span>
+                  {item.hint && <span className="sr-only">, {item.hint}</span>}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+    </div>
   );
 };

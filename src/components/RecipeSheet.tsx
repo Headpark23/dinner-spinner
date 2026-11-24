@@ -4,7 +4,7 @@ import { Meal, MealTweaks } from '../types';
 import { withTweaks } from '../utils/dinnerEngine';
 import { quantityFor, hasQuantities } from '../utils/quantities';
 import { photoFor, PHOTO_CREDITS } from '../data/photos';
-import { Check, Plus, X, Send, Dices, Star, ThumbsDown, Heart, ShoppingBasket, ImageDown } from 'lucide-react';
+import { Check, Plus, X, Send, Dices, Star, ThumbsDown, Heart, ShoppingBasket, ImageDown, Clock } from 'lucide-react';
 import { shareRecipeCard } from '../utils/shareRecipeCard';
 import { costPerHeadText } from '../utils/cost';
 import { Button, Chip, IconButton, Segmented, Sheet, TextInput, cx, timeLabel, effortLabel } from './ui';
@@ -36,7 +36,6 @@ export const RecipeSheet: React.FC<{
     costEach,
   } = useDinner();
 
-  // Always show the freshest copy of the dish (tweaks/favourites update live).
   const current = meal ? meals.find((m) => m.id === meal.id) || meal : null;
   const inRotation = !!current && meals.some((m) => m.id === current.id);
 
@@ -58,11 +57,11 @@ export const RecipeSheet: React.FC<{
   const has = (name: string) =>
     name in haveOverrides ? haveOverrides[name] : !match.missingItems.includes(name) && !onList(name);
   const missing = effective.ingredients.filter((i) => !has(i));
+  const haveCount = effective.ingredients.length - missing.length;
 
   const toggleHave = (name: string) => {
     const nowHave = !has(name);
     setHaveOverrides((prev) => ({ ...prev, [name]: nowHave }));
-    // The first tick starts the list: everything not ticked goes on it automatically.
     if (!listStarted) {
       setListStarted(true);
       const toAdd = effective.ingredients.filter((i) => (i === name ? !nowHave : !has(i)));
@@ -86,10 +85,34 @@ export const RecipeSheet: React.FC<{
   const ownSteps = new Set(tweaks.extraSteps.map((s) => s.text));
 
   return (
-    <Sheet isOpen onClose={onClose} title={current.title} labelledBy="recipe-title">
+    <Sheet isOpen onClose={onClose} title={current.title} labelledBy="recipe-title" tall>
       {photo && (
-        <figure className="-mx-5 -mt-1 mb-4">
-          <img src={photo} alt={current.title} className="aspect-[4/3] w-full object-cover" />
+        <figure className="-mx-5 -mt-1 mb-4 overflow-hidden">
+          <div className="relative aspect-[16/10] w-full overflow-hidden">
+            <img src={photo} alt={current.title} className="h-full w-full object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-black/15" />
+            <div className="absolute bottom-3 left-4 flex flex-wrap gap-1.5">
+              <span className="inline-flex items-center gap-1 rounded-full bg-black/55 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-xs">
+                <Clock className="h-3 w-3" /> {timeLabel(current.timeStake)}
+              </span>
+              <span className="inline-flex items-center rounded-full bg-black/55 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-xs">
+                {effortLabel(current.effort)}
+              </span>
+              <span className="inline-flex items-center rounded-full bg-black/55 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-xs">
+                {costPerHeadText(costEach(current))}
+              </span>
+            </div>
+            {inRotation && (
+              <IconButton
+                label={current.isFavorite ? 'Remove from favourites' : 'Add to favourites'}
+                active={current.isFavorite}
+                onClick={() => toggleFavoriteMeal(current.id)}
+                className="absolute right-3 bottom-3 h-10 w-10 rounded-full bg-card/92 shadow-md backdrop-blur-xs"
+              >
+                <Heart className={cx('h-5 w-5', current.isFavorite && 'fill-current')} />
+              </IconButton>
+            )}
+          </div>
           {credit && (
             <figcaption className="px-5 pt-1.5 text-[11px] text-ink-3">
               Photo:{' '}
@@ -102,12 +125,17 @@ export const RecipeSheet: React.FC<{
         </figure>
       )}
 
-      <p className="text-[13px] text-ink-2">
-        {[current.origin, current.cuisine].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(' · ')} ·{' '}
-        {timeLabel(current.timeStake)} · {effortLabel(current.effort)} · {costPerHeadText(costEach(current))}
-      </p>
+      <div className="flex flex-wrap items-center gap-2 text-[13px] font-medium text-ink-2">
+        <span>{[current.origin, current.cuisine].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(' · ')}</span>
+        {!photo && (
+          <span>
+            · {timeLabel(current.timeStake)} · {effortLabel(current.effort)} · {costPerHeadText(costEach(current))}
+          </span>
+        )}
+      </div>
+
       {current.rating > 0 && (
-        <p className="mt-1 flex items-center gap-1 text-[13px] text-saffron">
+        <p className="mt-1.5 flex items-center gap-1 text-[13px] text-saffron">
           {[1, 2, 3, 4, 5].map((s) => (
             <Star key={s} className={cx('h-3.5 w-3.5', s <= current.rating ? 'fill-current' : 'opacity-30')} />
           ))}
@@ -116,30 +144,33 @@ export const RecipeSheet: React.FC<{
           </span>
         </p>
       )}
-      <p className="mt-2 text-[14px] leading-relaxed text-ink-2">{current.description}</p>
+      <p className="mt-2 text-[14.5px] leading-relaxed text-ink-2">{current.description}</p>
 
-      {/* Ingredients you have / need */}
-      <section className="mt-5" aria-labelledby="have-h">
+      {/* Ingredients checklist */}
+      <section className="mt-6" aria-labelledby="have-h">
         <div className="flex items-baseline justify-between">
-          <h3 id="have-h" className="text-[15px] font-semibold">
-            What do you have?
+          <h3 id="have-h" className="font-display text-[19px] font-semibold">
+            Ingredients
           </h3>
-          <span className="text-[12px] text-ink-2">{missing.length} to buy</span>
+          <span className="text-[12.5px] font-semibold text-ink-2 tabular-nums">
+            {missing.length === 0 ? 'All in stock' : `${haveCount}/${effective.ingredients.length} here · ${missing.length} to buy`}
+          </span>
         </div>
-        <p className="text-[12px] text-ink-3">Tick what’s in the kitchen. Everything else goes on the shared shopping list.</p>
+        <p className="mt-0.5 text-[12.5px] text-ink-3">Tick what’s in the kitchen. Everything else goes on the shared shopping list.</p>
         {hasQuantities(current.id) && (
-          <div className="mt-2 flex items-center gap-3">
-            <span className="text-[13px] font-semibold">Serves</span>
+          <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-sunk/70 px-3 py-2">
+            <span className="text-[13px] font-semibold">Servings</span>
             <Segmented<'2' | '4' | '6' | '8'>
               label="Servings"
               size="sm"
               value={String(servings) as '2' | '4' | '6' | '8'}
               onChange={(n) => setServings(Number(n))}
               options={['2', '4', '6', '8'].map((n) => ({ value: n as '2' | '4' | '6' | '8', label: n }))}
+              className="w-48"
             />
           </div>
         )}
-        <ul className="mt-2 divide-y divide-line rounded-xl border border-line bg-card">
+        <ul className="editorial-card mt-2.5 divide-y divide-line overflow-hidden rounded-[18px] border border-line/90 bg-card">
           {effective.ingredients.map((ing) => {
             const have = has(ing);
             const mine = tweaks.extraIngredients.includes(ing);
@@ -149,12 +180,12 @@ export const RecipeSheet: React.FC<{
                   role="checkbox"
                   aria-checked={have}
                   onClick={() => toggleHave(ing)}
-                  className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-[14px] hover:bg-sunk"
+                  className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left text-[14.5px] transition-colors hover:bg-sunk/60"
                 >
                   <span
                     className={cx(
-                      'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border',
-                      have ? 'border-sage bg-sage text-white' : 'border-line-strong'
+                      'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors',
+                      have ? 'border-sage bg-sage text-white' : 'border-line-strong bg-paper'
                     )}
                   >
                     {have && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
@@ -162,14 +193,14 @@ export const RecipeSheet: React.FC<{
                   <span className={cx('flex-1', have && 'text-ink-2')}>
                     {(() => {
                       const qty = quantityFor(current.id, ing, servings);
-                      return qty ? <span className="mr-1.5 font-semibold tabular-nums">{qty}</span> : null;
+                      return qty ? <span className="mr-1.5 font-semibold text-ink tabular-nums">{qty}</span> : null;
                     })()}
                     {ing}
                   </span>
                   {mine && <Chip tone="neutral">yours</Chip>}
                   {!have && onList(ing) && (
-                    <span className="flex items-center gap-1 text-[12px] font-semibold text-tomato">
-                      <ShoppingBasket className="h-3.5 w-3.5" /> on list
+                    <span className="flex items-center gap-1 rounded-full bg-tomato-soft px-2 py-0.5 text-[11.5px] font-semibold text-tomato">
+                      <ShoppingBasket className="h-3 w-3" /> on list
                     </span>
                   )}
                 </button>
@@ -181,50 +212,55 @@ export const RecipeSheet: React.FC<{
           <Button
             variant="secondary"
             size="sm"
-            className="mt-2"
+            className="mt-2.5"
             onClick={() => {
               setListStarted(true);
               addShoppingItems(missing, current.title);
             }}
           >
-            <ShoppingBasket className="h-4 w-4" /> Add {missing.length} to the shopping list
+            <ShoppingBasket className="h-4 w-4 text-tomato" /> Add {missing.length} missing to shopping list
           </Button>
         )}
       </section>
 
       {/* Method */}
-      <section className="mt-5" aria-labelledby="method-h">
-        <h3 id="method-h" className="text-[15px] font-semibold">
-          Method
-        </h3>
-        <ol className="mt-2 space-y-2">
-          {steps.map((step, i) => (
-            <li key={i} className="flex gap-3 text-[14px]">
-              <span className="w-14 shrink-0 text-[12px] font-semibold text-ink-3 tabular-nums">
-                {stepMinutes(step) === 0 ? 'serve' : `${stepMinutes(step)} min`}
-              </span>
-              <span className="flex-1">
-                {stripTiming(step)}
-                {ownSteps.has(stripTiming(step)) && <span className="ml-1.5 text-[12px] text-ink-3">(your step)</span>}
-              </span>
-            </li>
-          ))}
+      <section className="mt-6" aria-labelledby="method-h">
+        <div className="flex items-baseline justify-between">
+          <h3 id="method-h" className="font-display text-[19px] font-semibold">
+            Method
+          </h3>
+          <span className="text-[12px] text-ink-3">Minutes before eating</span>
+        </div>
+        <ol className="mt-2.5 space-y-2">
+          {steps.map((step, i) => {
+            const mins = stepMinutes(step);
+            return (
+              <li key={i} className="editorial-card flex items-start gap-3 rounded-2xl border border-line/80 bg-card px-3.5 py-3 text-[14.5px]">
+                <span className="mt-0.5 inline-flex min-w-[3.4rem] shrink-0 items-center justify-center rounded-lg bg-sunk px-2 py-1 text-[11.5px] font-bold text-ink-2 tabular-nums">
+                  {mins === 0 ? 'Serve' : `-${mins}m`}
+                </span>
+                <span className="flex-1 leading-relaxed text-ink">
+                  {stripTiming(step)}
+                  {ownSteps.has(stripTiming(step)) && <span className="ml-1.5 text-[12px] font-medium text-tomato">(your step)</span>}
+                </span>
+              </li>
+            );
+          })}
         </ol>
-        <p className="mt-1 text-[12px] text-ink-3">Times are minutes before you eat.</p>
       </section>
 
       {/* Tweaks */}
       {inRotation && (
-        <section className="mt-5 rounded-xl bg-sunk p-3" aria-labelledby="tweak-h">
-          <h3 id="tweak-h" className="text-[15px] font-semibold">
-            Make it yours
+        <section className="mt-6 rounded-2xl border border-line/80 bg-sunk/75 p-4" aria-labelledby="tweak-h">
+          <h3 id="tweak-h" className="font-display text-[17px] font-semibold">
+            House notes &amp; tweaks
           </h3>
-          <p className="text-[12px] text-ink-2">Your additions sit on top of the recipe and show up in the timeline.</p>
+          <p className="mt-0.5 text-[12.5px] text-ink-2">Your additions sit on top of the recipe and slot into the cooking timeline.</p>
 
           {(tweaks.extraIngredients.length > 0 || tweaks.extraSteps.length > 0) && (
-            <ul className="mt-2 flex flex-wrap gap-1.5">
+            <ul className="mt-2.5 flex flex-wrap gap-1.5">
               {tweaks.extraIngredients.map((ing) => (
-                <li key={`i-${ing}`} className="inline-flex items-center gap-1 rounded-full bg-card py-1 pr-1 pl-3 text-[13px]">
+                <li key={`i-${ing}`} className="inline-flex items-center gap-1 rounded-full border border-line bg-card py-1 pr-1 pl-3 text-[13px]">
                   + {ing}
                   <button
                     aria-label={`Remove ${ing}`}
@@ -236,7 +272,7 @@ export const RecipeSheet: React.FC<{
                 </li>
               ))}
               {tweaks.extraSteps.map((st, idx) => (
-                <li key={`s-${idx}`} className="inline-flex items-center gap-1 rounded-full bg-card py-1 pr-1 pl-3 text-[13px]">
+                <li key={`s-${idx}`} className="inline-flex items-center gap-1 rounded-full border border-line bg-card py-1 pr-1 pl-3 text-[13px]">
                   {st.text} · {st.minutesBefore} min
                   <button
                     aria-label={`Remove step ${st.text}`}
@@ -302,25 +338,25 @@ export const RecipeSheet: React.FC<{
             rows={2}
             placeholder="A note for next time, e.g. double the garlic"
             aria-label="Note for next time"
-            className="mt-2 w-full rounded-xl border border-line bg-card px-3 py-2 text-[14px] placeholder:text-ink-3 focus:border-ink-2 focus:outline-none"
+            className="mt-2 w-full rounded-xl border border-line bg-card px-3 py-2 text-[14px] placeholder:text-ink-3 focus:border-tomato/60 focus:outline-none"
           />
         </section>
       )}
 
       {/* Household verdicts */}
       {reviews.length > 0 && (
-        <section className="mt-5" aria-labelledby="verdicts-h">
-          <h3 id="verdicts-h" className="text-[15px] font-semibold">
+        <section className="mt-6" aria-labelledby="verdicts-h">
+          <h3 id="verdicts-h" className="font-display text-[17px] font-semibold">
             What the household said
           </h3>
           <ul className="mt-2 space-y-2">
             {reviews.map((r, i) => (
-              <li key={i} className="text-[14px]">
+              <li key={i} className="rounded-xl border border-line/70 bg-card px-3 py-2 text-[14px]">
                 <span className="font-semibold">{r.memberName}</span>{' '}
                 <span className="text-saffron" aria-label={`${r.stars} stars`}>
                   {'★'.repeat(r.stars)}
                 </span>
-                {r.comment && <span className="block text-ink-2">“{r.comment}”</span>}
+                {r.comment && <span className="mt-0.5 block text-ink-2">“{r.comment}”</span>}
               </li>
             ))}
           </ul>
@@ -328,7 +364,37 @@ export const RecipeSheet: React.FC<{
       )}
 
       {/* Actions */}
-      <div className="mt-6 space-y-2 border-t border-line pt-4">
+      <div className="mt-6 space-y-2.5 border-t border-line pt-4">
+        {inRotation ? (
+          <Button
+            variant="primary"
+            size="lg"
+            block
+            onClick={() => {
+              sendToVote(current);
+              onClose();
+            }}
+          >
+            <Send className="h-4 w-4" /> Propose for tonight
+          </Button>
+        ) : current.source === 'world' ? (
+          <Button variant="primary" size="lg" block onClick={() => addFromLibrary(current.id)}>
+            <Plus className="h-4 w-4" /> Add to our recipes
+          </Button>
+        ) : (
+          <Button
+            variant="primary"
+            size="lg"
+            block
+            onClick={() => {
+              sendToVote(current);
+              onClose();
+            }}
+          >
+            <Send className="h-4 w-4" /> Propose for tonight
+          </Button>
+        )}
+
         <Button
           variant="secondary"
           block
@@ -342,26 +408,17 @@ export const RecipeSheet: React.FC<{
             }
           }}
         >
-          <ImageDown className="h-4 w-4" /> Share as a picture
+          <ImageDown className="h-4 w-4" /> Share recipe card
         </Button>
         {cardNote && (
           <p role="status" className="text-center text-[13px] text-ink-2">
             {cardNote}
           </p>
         )}
-        {inRotation ? (
+
+        {inRotation && (
           <>
-            <Button
-              variant="primary"
-              block
-              onClick={() => {
-                sendToVote(current);
-                onClose();
-              }}
-            >
-              <Send className="h-4 w-4" /> Propose for tonight
-            </Button>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 pt-1">
               <Button
                 variant="quiet"
                 size="sm"
@@ -373,27 +430,29 @@ export const RecipeSheet: React.FC<{
               >
                 <Dices className="h-4 w-4" /> Put on the reel
               </Button>
-              <IconButton
-                label={current.isFavorite ? 'Remove from favourites' : 'Add to favourites'}
-                active={current.isFavorite}
-                onClick={() => toggleFavoriteMeal(current.id)}
-              >
-                <Heart className={cx('h-4 w-4', current.isFavorite && 'fill-current')} />
-              </IconButton>
+              {!photo && (
+                <IconButton
+                  label={current.isFavorite ? 'Remove from favourites' : 'Add to favourites'}
+                  active={current.isFavorite}
+                  onClick={() => toggleFavoriteMeal(current.id)}
+                >
+                  <Heart className={cx('h-4 w-4', current.isFavorite && 'fill-current')} />
+                </IconButton>
+              )}
               {!confirmReject ? (
-                <Button variant="quiet" size="sm" className="ml-auto" onClick={() => setConfirmReject(true)}>
+                <Button variant="quiet" size="sm" className="ml-auto text-ink-3 hover:text-tomato" onClick={() => setConfirmReject(true)}>
                   <ThumbsDown className="h-4 w-4" /> Not for us
                 </Button>
               ) : null}
             </div>
             {confirmReject && (
-              <div className="fade-up rounded-xl bg-tomato-soft p-3 text-[14px] text-tomato">
+              <div className="fade-up rounded-2xl border border-tomato/25 bg-tomato-soft p-3.5 text-[14px] text-tomato">
                 <p>
                   {current.source === 'own'
                     ? 'Remove your recipe? We’ll swap in a similar dish from the World Kitchen.'
                     : 'Never suggest this again? We’ll swap in a similar dish from the World Kitchen.'}
                 </p>
-                <div className="mt-2 flex gap-2">
+                <div className="mt-2.5 flex gap-2">
                   <Button variant="secondary" size="sm" onClick={() => setConfirmReject(false)}>
                     Keep it
                   </Button>
@@ -412,21 +471,6 @@ export const RecipeSheet: React.FC<{
               </div>
             )}
           </>
-        ) : current.source === 'world' ? (
-          <Button variant="primary" block onClick={() => addFromLibrary(current.id)}>
-            <Plus className="h-4 w-4" /> Add to our recipes
-          </Button>
-        ) : (
-          <Button
-            variant="primary"
-            block
-            onClick={() => {
-              sendToVote(current);
-              onClose();
-            }}
-          >
-            <Send className="h-4 w-4" /> Propose for tonight
-          </Button>
         )}
       </div>
     </Sheet>

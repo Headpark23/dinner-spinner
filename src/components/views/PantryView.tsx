@@ -480,11 +480,17 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
           <FreshDot level={level} /> {title}
           <span className="font-normal text-ink-3 tabular-nums">{items.length}</span>
         </h3>
-        <ul className="divide-y divide-line rounded-2xl border border-line bg-card">
+        <ul className="editorial-card divide-y divide-line overflow-hidden rounded-[20px] border border-line/90 bg-card">
           {items.map((item) => (
-            <li key={item.id} className="flex items-center gap-2 py-1 pr-1 pl-3">
-              <div className="min-w-0 flex-1 py-1.5">
-                <p className="truncate text-[15px]">{item.name}</p>
+            <li key={item.id} className="flex items-center gap-2.5 py-1.5 pr-1.5 pl-3">
+              <span
+                aria-hidden="true"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sunk text-[18px] leading-none"
+              >
+                {itemIcon(item.name)}
+              </span>
+              <div className="min-w-0 flex-1 py-1">
+                <p className="truncate text-[15px] font-medium">{item.name}</p>
                 <p className="truncate text-[12px] text-ink-3">
                   {item.category}
                   {item.quantity ? ` · ${item.quantity}` : ''}
@@ -507,10 +513,10 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
                 aria-label={`${item.name}: ${freshnessLabel(item.freshness)}. Tap to change`}
                 title="Tap to change: Fresh → Eat soon → Use next"
                 className={cx(
-                  'h-10 shrink-0 rounded-lg px-2.5 text-[12px] font-semibold',
-                  item.freshness === 'red' && 'bg-tomato-soft text-tomato',
-                  item.freshness === 'amber' && 'bg-saffron-soft text-saffron',
-                  item.freshness === 'green' && 'bg-sage-soft text-sage'
+                  'h-9 shrink-0 rounded-full px-3 text-[12px] font-semibold transition-colors',
+                  item.freshness === 'red' && 'bg-tomato-soft text-tomato ring-1 ring-tomato/20',
+                  item.freshness === 'amber' && 'bg-saffron-soft text-saffron ring-1 ring-saffron/20',
+                  item.freshness === 'green' && 'bg-sage-soft text-sage ring-1 ring-sage/15'
                 )}
               >
                 {freshnessLabel(item.freshness)}
@@ -617,31 +623,61 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
       )}
 
       {tabs.length > 0 && (
-        <div role="tablist" aria-label="Fridge sections" className="flex flex-wrap gap-1.5">
-          {tabs.map((tab) => {
-            const selected = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                role="tab"
-                id={`tab-${tab.id}`}
-                aria-selected={selected}
-                aria-controls={`panel-${tab.id}`}
-                onClick={() => setActiveTab(tab.id)}
-                className={cx(
-                  'h-10 shrink-0 rounded-full px-4 text-[14px] font-semibold transition-colors',
-                  selected ? 'bg-ink text-paper' : 'bg-sunk text-ink-2 hover:text-ink'
-                )}
-              >
-                {tab.label}
-                {tab.count !== undefined && (
-                  <span className={cx('ml-1.5 font-normal tabular-nums', selected ? 'opacity-70' : 'text-ink-3')}>
-                    {tab.count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+        <div className="space-y-2" role="tablist" aria-label="Fridge sections">
+          {/* Primary 3-way Kitchen Storage Switcher */}
+          <div className="grid grid-cols-3 gap-1 rounded-2xl border border-line/80 bg-sunk/85 p-1 shadow-[inset_0_1px_2px_rgba(28,22,17,0.06)]">
+            {tabs.slice(0, 3).map((tab) => {
+              const selected = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  role="tab"
+                  id={`tab-${tab.id}`}
+                  aria-selected={selected}
+                  aria-controls={`panel-${tab.id}`}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={cx(
+                    'min-h-11 rounded-xl px-2 text-[13px] font-semibold transition-[background-color,color,box-shadow]',
+                    selected ? 'bg-card text-ink ring-1 ring-line/70 shadow-[0_2px_6px_rgba(28,22,17,0.09)]' : 'text-ink-2 hover:text-ink'
+                  )}
+                >
+                  {tab.id === 'fridge' ? 'Fridge' : tab.label}
+                  {tab.count !== undefined && (
+                    <span className={cx('ml-1 text-[12px] font-normal tabular-nums', selected ? 'text-tomato font-semibold' : 'text-ink-3')}>
+                      {tab.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          {/* Compact secondary kitchen tools strip */}
+          <div className="flex flex-wrap gap-1.5">
+            {tabs.slice(3).map((tab) => {
+              const selected = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  role="tab"
+                  id={`tab-${tab.id}`}
+                  aria-selected={selected}
+                  aria-controls={`panel-${tab.id}`}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={cx(
+                    'h-9 shrink-0 rounded-full border px-3.5 text-[12.5px] font-semibold transition-colors',
+                    selected ? 'border-ink bg-ink text-paper' : 'border-line bg-card/85 text-ink-2 hover:border-line-strong hover:text-ink'
+                  )}
+                >
+                  {tab.label}
+                  {tab.count !== undefined && (
+                    <span className={cx('ml-1.5 font-normal tabular-nums', selected ? 'opacity-80' : 'text-ink-3')}>
+                      {tab.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -1013,56 +1049,107 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
             {(recipeScope === 'ours' ? filteredVaultMeals : browsingPicks ? worldPicks : filteredWorld).length === 0 ? (
               <p className="py-8 text-center text-[14px] text-ink-2">Nothing matches. Try another search.</p>
             ) : (
-              <ul className="space-y-2">
+              <ul className="grid grid-cols-2 gap-3">
                 {(recipeScope === 'ours' ? filteredVaultMeals : browsingPicks ? worldPicks : filteredWorld).map((meal) => {
                   const match = getMealPantryMatch(meal);
                   const added = recipeScope === 'world' && meals.some((m) => m.id === meal.id);
+                  const photo = meal.imageUrl || photoFor(meal.id);
                   return (
-                    <li key={meal.id}>
-                      <div className="flex items-stretch gap-2">
-                      <button
-                        onClick={() => setSheetMeal(meal)}
-                        className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl border border-line bg-card p-2.5 text-left transition-colors hover:border-line-strong"
-                      >
-                        <DishTile cuisine={meal.cuisine} imageUrl={meal.imageUrl || photoFor(meal.id)} size={56} />
-                        <span className="min-w-0 flex-1">
-                          <span className="block font-display text-[16px] leading-snug font-semibold">{meal.title}</span>
-                          <span className="mt-0.5 block text-[12px] text-ink-2">
-                            {recipeScope === 'world' ? `${meal.origin} · ` : ''}
-                            {timeLabel(meal.timeStake)} · have {match.matchedCount}/{match.totalCount}
-                            {meal.rating === 5 && ' · ★ five-star'}
-                            {meal.tweaks && (meal.tweaks.extraIngredients.length + meal.tweaks.extraSteps.length > 0) && ' · tweaked'}
-                          </span>
-                          {recipeScope === 'ours' && match.redMatchedItems.length > 0 && (
-                            <Chip tone="tomato" className="mt-1">
-                              Uses up {match.redMatchedItems.join(', ')}
-                            </Chip>
-                          )}
-                        </span>
-                        {added && <Chip tone="sage">Added</Chip>}
-                        {recipeScope === 'ours' && meal.isFavorite && <Heart className="h-4 w-4 shrink-0 fill-tomato text-tomato" aria-label="Favourite" />}
-                      </button>
-                      {!added && (
+                    <li key={meal.id} className="flex flex-col">
+                      <div className="editorial-card group relative flex flex-1 flex-col overflow-hidden rounded-[20px] border border-line/90 bg-card transition-all hover:border-line-strong">
                         <button
-                          aria-label={`Remove ${meal.title}`}
-                          aria-expanded={confirmRemove === meal.id}
-                          onClick={() => setConfirmRemove(confirmRemove === meal.id ? null : meal.id)}
-                          className="flex w-11 shrink-0 items-center justify-center rounded-2xl border border-line bg-card text-ink-3 transition-colors hover:border-line-strong hover:text-tomato"
+                          onClick={() => setSheetMeal(meal)}
+                          className="flex flex-1 flex-col text-left"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <div className="relative aspect-[4/3] w-full overflow-hidden bg-sunk">
+                            {photo ? (
+                              <img
+                                src={photo}
+                                alt=""
+                                loading="lazy"
+                                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center">
+                                <DishTile cuisine={meal.cuisine} size={60} className="rounded-2xl shadow-sm" />
+                              </div>
+                            )}
+                            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/52 via-transparent to-black/15" />
+                            <span className="absolute bottom-2 left-2 rounded-full bg-black/58 px-2 py-0.5 text-[11px] font-semibold text-white backdrop-blur-xs">
+                              {timeLabel(meal.timeStake)}
+                            </span>
+                            {meal.rating === 5 && (
+                              <span className="absolute top-2 left-2 inline-flex items-center gap-0.5 rounded-full bg-brass px-2 py-0.5 text-[10.5px] font-bold text-enamel shadow-xs">
+                                <Star className="h-2.5 w-2.5 fill-current" /> 5★
+                              </span>
+                            )}
+                            {added && (
+                              <span className="absolute bottom-2 right-2 rounded-full bg-sage px-2 py-0.5 text-[10.5px] font-bold text-white">
+                                Added
+                              </span>
+                            )}
+                            {recipeScope === 'ours' && meal.isFavorite && (
+                              <span className="absolute bottom-2 right-2 flex h-6 w-6 items-center justify-center rounded-full bg-card/90 text-tomato shadow-xs">
+                                <Heart className="h-3.5 w-3.5 fill-current" aria-label="Favourite" />
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex flex-1 flex-col justify-between p-3">
+                            <div>
+                              <span className="line-clamp-2 font-display text-[15.5px] leading-[1.18] font-semibold text-ink">
+                                {meal.title}
+                              </span>
+                              <span className="mt-1 block truncate text-[11.5px] text-ink-2">
+                                {recipeScope === 'world' ? meal.origin || meal.cuisine : meal.cuisine}
+                                {meal.tweaks && (meal.tweaks.extraIngredients.length + meal.tweaks.extraSteps.length > 0) ? ' · tweaked' : ''}
+                              </span>
+                            </div>
+
+                            <div className="mt-2.5">
+                              {recipeScope === 'ours' && match.redMatchedItems.length > 0 ? (
+                                <span className="inline-block max-w-full truncate rounded-full bg-tomato-soft px-2 py-0.5 text-[11px] font-semibold text-tomato">
+                                  Uses up {match.redMatchedItems[0]}
+                                </span>
+                              ) : (
+                                <div className="space-y-1">
+                                  <div className="flex items-center justify-between text-[11px] text-ink-3 tabular-nums">
+                                    <span>Stock</span>
+                                    <span className="font-semibold text-ink-2">
+                                      {match.matchedCount}/{match.totalCount}
+                                    </span>
+                                  </div>
+                                  <div className="h-1 overflow-hidden rounded-full bg-line">
+                                    <div className="h-full rounded-full bg-sage" style={{ width: `${match.matchPercentage}%` }} />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         </button>
-                      )}
+
+                        {!added && (
+                          <button
+                            aria-label={`Remove ${meal.title}`}
+                            aria-expanded={confirmRemove === meal.id}
+                            onClick={() => setConfirmRemove(confirmRemove === meal.id ? null : meal.id)}
+                            className="absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/48 text-white/85 backdrop-blur-xs transition-colors hover:bg-tomato hover:text-white"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                       </div>
+
                       {confirmRemove === meal.id && (
-                        <div className="fade-up mt-1.5 rounded-xl bg-tomato-soft p-3 text-[14px] text-tomato">
+                        <div className="fade-up mt-1.5 rounded-2xl border border-tomato/25 bg-tomato-soft p-3 text-[13px] text-tomato">
                           <p>
                             {recipeScope === 'ours'
-                              ? `Remove “${meal.title}” from our recipes? We’ll swap in a similar dish from the World Kitchen.`
-                              : `Take “${meal.title}” out of the World Kitchen? Another dish will take its place.`}
+                              ? `Remove “${meal.title}”? We’ll swap in a similar dish.`
+                              : `Hide “${meal.title}” from World Kitchen?`}
                           </p>
-                          <div className="mt-2 flex gap-2">
+                          <div className="mt-2 flex flex-wrap gap-1.5">
                             <Button variant="secondary" size="sm" onClick={() => setConfirmRemove(null)}>
-                              Keep it
+                              Keep
                             </Button>
                             <Button
                               variant="primary"
@@ -1082,7 +1169,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
                                 }
                               }}
                             >
-                              {recipeScope === 'ours' ? 'Remove and replace' : 'Take it out'}
+                              {recipeScope === 'ours' ? 'Swap' : 'Hide'}
                             </Button>
                           </div>
                         </div>
@@ -1291,9 +1378,17 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
                     variant="success"
                     disabled={gotIt.length === 0}
                     onClick={() => {
-                      gotIt.forEach((i) => addPantryItem({ name: i.name, category: 'Shopping', freshness: 'green', quantity: '' }));
+                      const { cupboard: cb, fridge: fr } = splitReceiptItems(gotIt);
+                      if (cb.length) addCupboardItems(cb.map((i) => ({ name: i.name })));
+                      fr.forEach((i) => addPantryItem({ name: i.name, category: 'Shopping', freshness: 'green', quantity: '' }));
                       clearCheckedShopping();
-                      flash(`Put ${gotIt.length} ${gotIt.length === 1 ? 'item' : 'items'} away in the fridge.`);
+                      const detail =
+                        fr.length && cb.length
+                          ? ` (${fr.length} in fridge, ${cb.length} in cupboard)`
+                          : cb.length
+                            ? ' in the cupboard'
+                            : ' in the fridge';
+                      flash(`Put ${gotIt.length} ${gotIt.length === 1 ? 'item' : 'items'} away${detail}.`);
                     }}
                   >
                     <ShoppingBasket className="h-4 w-4" /> Put away

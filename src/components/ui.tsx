@@ -11,18 +11,19 @@ type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger' | 'success';
 type ButtonSize = 'sm' | 'md' | 'lg';
 
 const variantClass: Record<ButtonVariant, string> = {
-  primary: 'bg-tomato text-white hover:bg-tomato-hover disabled:bg-line-strong disabled:text-ink-3',
+  primary: 'btn-primary-tactile text-white disabled:text-ink-3',
   secondary:
-    'bg-card text-ink border border-line hover:border-line-strong disabled:text-ink-3 disabled:hover:border-line',
-  quiet: 'text-ink-2 hover:text-ink hover:bg-sunk disabled:text-ink-3 disabled:hover:bg-transparent',
-  danger: 'bg-card text-tomato border border-line hover:border-tomato disabled:text-ink-3',
-  success: 'bg-sage text-white hover:opacity-90 disabled:opacity-50',
+    'editorial-card bg-card text-ink border border-line hover:border-line-strong hover:bg-sunk/45 disabled:text-ink-3 disabled:hover:border-line',
+  quiet: 'text-ink-2 hover:text-ink hover:bg-sunk/75 disabled:text-ink-3 disabled:hover:bg-transparent',
+  danger: 'bg-tomato-soft/55 text-tomato border border-tomato/25 hover:bg-tomato-soft hover:border-tomato/45 disabled:text-ink-3',
+  success:
+    'bg-sage text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_4px_12px_-3px_rgba(51,98,68,0.4)] hover:opacity-95 disabled:opacity-50',
 };
 
 const sizeClass: Record<ButtonSize, string> = {
-  sm: 'min-h-11 px-3 text-[13px] gap-1.5 rounded-lg',
+  sm: 'min-h-11 px-3.5 text-[13px] gap-1.5 rounded-xl',
   md: 'h-11 px-4 text-[15px] gap-2 rounded-xl',
-  lg: 'h-14 px-5 text-[17px] gap-2.5 rounded-2xl',
+  lg: 'h-14 px-5 text-[16px] gap-2.5 rounded-2xl tracking-[-0.01em]',
 };
 
 export const Button: React.FC<
@@ -36,7 +37,7 @@ export const Button: React.FC<
     type="button"
     {...rest}
     className={cx(
-      'inline-flex items-center justify-center font-semibold transition-colors duration-150 select-none disabled:cursor-not-allowed active:translate-y-px',
+      'inline-flex items-center justify-center font-semibold transition-[transform,opacity,background-color,border-color] duration-150 select-none disabled:cursor-not-allowed active:translate-y-px',
       variantClass[variant],
       sizeClass[size],
       block && 'w-full',
@@ -57,7 +58,7 @@ export const IconButton: React.FC<
     {...rest}
     className={cx(
       'inline-flex h-11 w-11 items-center justify-center rounded-xl transition-colors',
-      active ? 'text-tomato bg-tomato-soft' : 'text-ink-2 hover:text-ink hover:bg-sunk',
+      active ? 'text-tomato bg-tomato-soft ring-1 ring-tomato/20' : 'text-ink-2 hover:text-ink hover:bg-sunk/80',
       className
     )}
   >
@@ -73,25 +74,27 @@ export const Card: React.FC<React.HTMLAttributes<HTMLDivElement> & { as?: 'div' 
 }) => {
   const Tag = as;
   return (
-    <Tag {...rest} className={cx('rounded-2xl border border-line bg-card shadow-[0_1px_2px_rgba(31,26,21,0.05)]', className)}>
+    <Tag {...rest} className={cx('editorial-card rounded-[20px] border border-line/90 bg-card', className)}>
       {children}
     </Tag>
   );
 };
 
-/** Every screen opens the same way: a title, one plain sentence saying what the screen is for, and at most one action. */
+/** Every screen opens the same way: an editorial serif title, one warm sentence, and at most one action. */
 export const PageHeader: React.FC<{
   title: string;
   subtitle?: React.ReactNode;
   action?: React.ReactNode;
+  eyebrow?: string;
   className?: string;
-}> = ({ title, subtitle, action, className }) => (
+}> = ({ title, subtitle, action, eyebrow, className }) => (
   <div className={cx('flex items-start justify-between gap-3', className)}>
     <div className="min-w-0">
-      <h1 className="font-display text-[28px] leading-[1.1] font-semibold tracking-tight">{title}</h1>
-      {subtitle && <p className="mt-1.5 text-[14px] leading-snug text-ink-2">{subtitle}</p>}
+      {eyebrow && <p className="eyebrow mb-1">{eyebrow}</p>}
+      <h1 className="font-display text-[30px] leading-[1.08] font-semibold tracking-tight">{title}</h1>
+      {subtitle && <p className="mt-1.5 text-[14px] leading-relaxed text-ink-2">{subtitle}</p>}
     </div>
-    {action && <div className="shrink-0 pt-1">{action}</div>}
+    {action && <div className="shrink-0 pt-0.5">{action}</div>}
   </div>
 );
 
@@ -110,7 +113,7 @@ export const SectionHeader: React.FC<{
   </div>
 );
 
-/** A single-choice segmented control (radio group semantics). */
+/** A single-choice segmented control (radio group semantics) with tactile inset track. */
 export function Segmented<T extends string>({
   label,
   value,
@@ -130,7 +133,7 @@ export function Segmented<T extends string>({
     <div
       role="radiogroup"
       aria-label={label}
-      className={cx('grid gap-1 rounded-xl bg-sunk p-1', className)}
+      className={cx('grid gap-1 rounded-2xl border border-line/80 bg-sunk/85 p-1 shadow-[inset_0_1px_2px_rgba(28,22,17,0.06)]', className)}
       style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
     >
       {options.map((opt) => {
@@ -144,10 +147,10 @@ export function Segmented<T extends string>({
             title={opt.hint}
             onClick={() => onChange(opt.value)}
             className={cx(
-              'rounded-lg font-semibold transition-colors duration-150 leading-tight',
-              size === 'sm' ? 'min-h-11 px-2 text-[13px]' : 'min-h-11 px-2 text-[13px]',
+              'rounded-xl font-semibold transition-[background-color,color,box-shadow] duration-150 leading-tight',
+              size === 'sm' ? 'min-h-10 px-2 text-[13px]' : 'min-h-11 px-2 text-[13px]',
               selected
-                ? 'bg-card text-ink shadow-[0_1px_2px_rgba(31,26,21,0.12)]'
+                ? 'bg-card text-ink ring-1 ring-line/70 shadow-[0_2px_6px_rgba(28,22,17,0.09)]'
                 : 'text-ink-2 hover:text-ink'
             )}
           >
@@ -195,10 +198,10 @@ export const Switch: React.FC<{
 type Tone = 'neutral' | 'sage' | 'saffron' | 'tomato' | 'outline';
 const toneClass: Record<Tone, string> = {
   neutral: 'bg-sunk text-ink-2',
-  sage: 'bg-sage-soft text-sage',
-  saffron: 'bg-saffron-soft text-saffron',
-  tomato: 'bg-tomato-soft text-tomato',
-  outline: 'border border-line text-ink-2',
+  sage: 'bg-sage-soft text-sage ring-1 ring-sage/15',
+  saffron: 'bg-saffron-soft text-saffron ring-1 ring-saffron/18',
+  tomato: 'bg-tomato-soft text-tomato ring-1 ring-tomato/18',
+  outline: 'border border-line bg-card/80 text-ink-2',
 };
 
 export const Chip: React.FC<{ tone?: Tone; className?: string; children: React.ReactNode }> = ({
@@ -208,7 +211,7 @@ export const Chip: React.FC<{ tone?: Tone; className?: string; children: React.R
 }) => (
   <span
     className={cx(
-      'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[12px] font-medium leading-none',
+      'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[12px] font-semibold leading-none',
       toneClass[tone],
       className
     )}
@@ -224,7 +227,7 @@ export const FreshDot: React.FC<{ level: 'green' | 'amber' | 'red'; className?: 
   <span
     aria-hidden="true"
     className={cx(
-      'inline-block h-2 w-2 shrink-0 rounded-full',
+      'inline-block h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-card',
       level === 'green' ? 'bg-sage' : level === 'amber' ? 'bg-saffron' : 'bg-tomato',
       className
     )}
@@ -244,10 +247,10 @@ export const Notice: React.FC<{
   <div
     role={tone === 'tomato' ? 'alert' : 'status'}
     className={cx(
-      'fade-up flex items-start gap-2.5 rounded-xl px-3.5 py-3 text-[14px]',
-      tone === 'sage' && 'bg-sage-soft text-sage',
-      tone === 'tomato' && 'bg-tomato-soft text-tomato',
-      tone === 'neutral' && 'bg-sunk text-ink-2',
+      'fade-up flex items-start gap-2.5 rounded-2xl border px-3.5 py-3 text-[14px]',
+      tone === 'sage' && 'border-sage/20 bg-sage-soft text-sage',
+      tone === 'tomato' && 'border-tomato/20 bg-tomato-soft text-tomato',
+      tone === 'neutral' && 'border-line bg-sunk/85 text-ink-2',
       className
     )}
   >
@@ -272,7 +275,7 @@ export const TextInput = React.forwardRef<HTMLInputElement, React.InputHTMLAttri
       ref={ref}
       {...rest}
       className={cx(
-        'h-11 w-full rounded-xl border border-line bg-card px-3.5 text-[15px] text-ink placeholder:text-ink-3 focus:border-ink-2 focus:outline-none',
+        'h-11 w-full rounded-xl border border-line bg-card px-3.5 text-[15px] text-ink shadow-[inset_0_1px_2px_rgba(28,22,17,0.04)] placeholder:text-ink-3 focus:border-tomato/60 focus:outline-none',
         className
       )}
     />
@@ -288,7 +291,7 @@ export const Select: React.FC<React.SelectHTMLAttributes<HTMLSelectElement>> = (
   <select
     {...rest}
     className={cx(
-      'h-11 rounded-xl border border-line bg-card px-3 text-[15px] text-ink focus:border-ink-2 focus:outline-none',
+      'h-11 rounded-xl border border-line bg-card px-3 text-[15px] text-ink shadow-[inset_0_1px_2px_rgba(28,22,17,0.04)] focus:border-tomato/60 focus:outline-none',
       className
     )}
   >
@@ -321,7 +324,6 @@ export const Sheet: React.FC<{
         onCloseRef.current();
         return;
       }
-      // Keep keyboard focus inside the dialog while it is open.
       if (e.key === 'Tab' && panelRef.current) {
         const focusable = Array.from(
           panelRef.current.querySelectorAll<HTMLElement>(
@@ -352,10 +354,9 @@ export const Sheet: React.FC<{
 
   if (!isOpen) return null;
 
-  // Drawn straight onto the page (not inside the screen that opened it), so the bottom tab bar can never sit on top of it.
   const sheet = (
     <div className="fixed inset-x-0 top-0 z-50 flex h-dvh items-end justify-center sm:items-center sm:p-4">
-      <div className="absolute inset-0 bg-[rgba(20,16,12,0.55)]" onClick={onClose} aria-hidden="true" />
+      <div className="absolute inset-0 bg-[rgba(18,14,10,0.58)] backdrop-blur-[3px]" onClick={onClose} aria-hidden="true" />
       <div
         ref={panelRef}
         role="dialog"
@@ -363,18 +364,19 @@ export const Sheet: React.FC<{
         aria-labelledby={labelledBy}
         tabIndex={-1}
         className={cx(
-          'fade-up relative w-full max-w-md overflow-y-auto rounded-t-3xl bg-paper p-5 pb-[calc(2rem+env(safe-area-inset-bottom))] outline-none sm:rounded-3xl sm:pb-5',
+          'fade-up relative w-full max-w-lg overflow-y-auto rounded-t-[28px] border-t border-line bg-paper p-5 pb-[calc(2rem+env(safe-area-inset-bottom))] shadow-[var(--shadow-elevated)] outline-none sm:rounded-[28px] sm:border sm:pb-6',
           tall ? 'max-h-[94dvh] min-h-[88dvh] sm:min-h-0 sm:max-h-[90dvh]' : 'max-h-[88dvh] sm:max-h-[90dvh]'
         )}
       >
+        <div className="mx-auto -mt-1.5 mb-3 h-1 w-10 rounded-full bg-line-strong/80 sm:hidden" aria-hidden="true" />
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
-            <h2 id={labelledBy} className="font-display text-[24px] font-semibold leading-tight text-ink">
+            <h2 id={labelledBy} className="font-display text-[25px] font-semibold leading-tight text-ink">
               {title}
             </h2>
-            {subtitle && <p className="mt-0.5 text-[14px] text-ink-2">{subtitle}</p>}
+            {subtitle && <p className="mt-1 text-[14px] leading-snug text-ink-2">{subtitle}</p>}
           </div>
-          <IconButton label="Close" onClick={onClose} className="-mr-2 -mt-1">
+          <IconButton label="Close" onClick={onClose} className="-mr-2 -mt-1 bg-sunk/60">
             <X className="h-5 w-5" />
           </IconButton>
         </div>
@@ -382,22 +384,24 @@ export const Sheet: React.FC<{
       </div>
     </div>
   );
-  // (There is no page to draw onto when the screen is rendered as plain HTML, as the tests do.)
   return typeof document === 'undefined' ? sheet : createPortal(sheet, document.body);
 };
 
-/** Typographic stand-in for a dish photo: cuisine initial on a tinted tile. */
+/** Typographic stand-in for a dish photo: cuisine initial on a warm editorial tile. */
 const cuisineTint: Record<string, string> = {
-  Italian: '#7d8b3f',
-  Indian: '#b4652a',
-  Chinese: '#a83a2b',
-  British: '#6d5a44',
-  Mexican: '#b0482f',
-  Thai: '#4f7a5c',
-  Greek: '#3f6a86',
-  Mediterranean: '#3f6a86',
+  Italian: '#6c7c36',
+  Indian: '#b56124',
+  Chinese: '#a43627',
+  British: '#65513b',
+  Mexican: '#ae452b',
+  Thai: '#457253',
+  Greek: '#3a6480',
+  Mediterranean: '#3a6480',
+  French: '#584b6b',
+  Japanese: '#8d433b',
+  Spanish: '#a85226',
 };
-export const cuisineColor = (cuisine?: string) => cuisineTint[cuisine || ''] || '#7a6a58';
+export const cuisineColor = (cuisine?: string) => cuisineTint[cuisine || ''] || '#786653';
 
 export const DishTile: React.FC<{ cuisine?: string; imageUrl?: string; size?: number; className?: string }> = ({
   cuisine,
@@ -412,7 +416,7 @@ export const DishTile: React.FC<{ cuisine?: string; imageUrl?: string; size?: nu
       width={size}
       height={size}
       loading="lazy"
-      className={cx('shrink-0 rounded-xl object-cover', className)}
+      className={cx('shrink-0 rounded-xl object-cover ring-1 ring-black/8', className)}
       style={{ width: size, height: size }}
     />
   ) : flagCodeFor(cuisine) ? (
@@ -420,7 +424,10 @@ export const DishTile: React.FC<{ cuisine?: string; imageUrl?: string; size?: nu
   ) : (
     <span
       aria-hidden="true"
-      className={cx('inline-flex shrink-0 items-center justify-center rounded-xl font-display font-semibold text-white', className)}
+      className={cx(
+        'inline-flex shrink-0 items-center justify-center rounded-xl font-display font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]',
+        className
+      )}
       style={{ width: size, height: size, background: cuisineColor(cuisine), fontSize: size * 0.42 }}
     >
       {(cuisine || '?').charAt(0)}

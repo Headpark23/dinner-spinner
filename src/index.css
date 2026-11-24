@@ -17,74 +17,95 @@
 }
 
 /* ------------------------------------------------------------------
-   Design tokens (see DESIGN.md). Light is the default; dark follows the OS until the header toggle picks one.
+   Warm Editorial Kitchen design tokens
+   NYT Cooking warmth meets handcrafted Italian espresso-machine hardware.
    ------------------------------------------------------------------ */
 :root {
-  --paper: #f4efe6;
-  --card: #fffcf6;
-  --sunk: #ece5d8;
-  --ink: #1f1a15;
-  --ink-2: #5c5249;
-  --ink-3: #7a6f64;
-  --line: #e3d9c8;
-  --line-strong: #cfc2ad;
-  --tomato: #b93a26;
-  --tomato-hover: #9e2f1d;
-  --tomato-soft: #f6e1da;
-  --sage: #3d6a4c;
-  --sage-soft: #e1ebe2;
-  --saffron: #9a6510;
-  --saffron-soft: #f5e8cf;
-  --enamel: #1a1612;
-  --enamel-2: #241f1a;
-  --brass: #c7a15a;
-  --on-enamel: #f3ead9;
-  --on-enamel-2: #a99b86;
+  --paper: #f6f1e7;
+  --paper-glow: rgba(255, 252, 244, 0.92);
+  --card: #fffdf9;
+  --card-edge: rgba(255, 255, 255, 0.85);
+  --sunk: #ede5d6;
+  --ink: #1c1611;
+  --ink-2: #594e43;
+  --ink-3: #7d7063;
+  --line: #e4dac8;
+  --line-strong: #cec0a9;
+  --tomato: #b83722;
+  --tomato-hover: #9d2c19;
+  --tomato-soft: #f8e3dc;
+  --sage: #336244;
+  --sage-soft: #dfece2;
+  --saffron: #9c640e;
+  --saffron-soft: #f7ead1;
+  --enamel: #17130f;
+  --enamel-2: #241e18;
+  --enamel-rim: #342b22;
+  --brass: #cfa65b;
+  --brass-bright: #e7c98a;
+  --on-enamel: #f6eedf;
+  --on-enamel-2: #b4a58f;
+  --shadow-card: 0 1px 2px rgba(28, 22, 17, 0.04), 0 10px 28px -14px rgba(28, 22, 17, 0.1);
+  --shadow-elevated: 0 4px 12px rgba(28, 22, 17, 0.07), 0 20px 44px -16px rgba(28, 22, 17, 0.18);
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --paper: #13110f;
-    --card: #1c1915;
-    --sunk: #171410;
-    --ink: #f2ece2;
-    --ink-2: #b7ac9f;
-    --ink-3: #93887b;
-    --line: #2f2a24;
-    --line-strong: #40392f;
-    --tomato: #e2604a;
-    --tomato-hover: #ec7560;
-    --tomato-soft: #3a1d17;
-    --sage: #7fb394;
-    --sage-soft: #1b2a20;
-    --saffron: #e0a94a;
-    --saffron-soft: #33260f;
-    --enamel: #0c0a08;
-    --enamel-2: #171310;
+    --paper: #120f0d;
+    --paper-glow: rgba(42, 33, 25, 0.45);
+    --card: #1b1714;
+    --card-edge: rgba(255, 245, 230, 0.05);
+    --sunk: #15120f;
+    --ink: #f5efe5;
+    --ink-2: #bdb1a2;
+    --ink-3: #8e8274;
+    --line: #2d2721;
+    --line-strong: #423930;
+    --tomato: #e35d46;
+    --tomato-hover: #ee715c;
+    --tomato-soft: #381c16;
+    --sage: #7ab692;
+    --sage-soft: #192a20;
+    --saffron: #e4ad4e;
+    --saffron-soft: #33250f;
+    --enamel: #0b0907;
+    --enamel-2: #16120e;
+    --enamel-rim: #2a221b;
+    --brass: #d4ad64;
+    --brass-bright: #ecd298;
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35), 0 12px 30px -14px rgba(0, 0, 0, 0.65);
+    --shadow-elevated: 0 8px 24px rgba(0, 0, 0, 0.5), 0 24px 52px -16px rgba(0, 0, 0, 0.75);
     color-scheme: dark;
   }
 }
 
 /* The toggle in the header sets data-theme, which wins over the OS setting. */
 :root[data-theme='dark'] {
-  --paper: #13110f;
-  --card: #1c1915;
-  --sunk: #171410;
-  --ink: #f2ece2;
-  --ink-2: #b7ac9f;
-  --ink-3: #93887b;
-  --line: #2f2a24;
-  --line-strong: #40392f;
-  --tomato: #e2604a;
-  --tomato-hover: #ec7560;
-  --tomato-soft: #3a1d17;
-  --sage: #7fb394;
-  --sage-soft: #1b2a20;
-  --saffron: #e0a94a;
-  --saffron-soft: #33260f;
-  --enamel: #0c0a08;
-  --enamel-2: #171310;
+  --paper: #120f0d;
+  --paper-glow: rgba(42, 33, 25, 0.45);
+  --card: #1b1714;
+  --card-edge: rgba(255, 245, 230, 0.05);
+  --sunk: #15120f;
+  --ink: #f5efe5;
+  --ink-2: #bdb1a2;
+  --ink-3: #8e8274;
+  --line: #2d2721;
+  --line-strong: #423930;
+  --tomato: #e35d46;
+  --tomato-hover: #ee715c;
+  --tomato-soft: #381c16;
+  --sage: #7ab692;
+  --sage-soft: #192a20;
+  --saffron: #e4ad4e;
+  --saffron-soft: #33250f;
+  --enamel: #0b0907;
+  --enamel-2: #16120e;
+  --enamel-rim: #2a221b;
+  --brass: #d4ad64;
+  --brass-bright: #ecd298;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35), 0 12px 30px -14px rgba(0, 0, 0, 0.65);
+  --shadow-elevated: 0 8px 24px rgba(0, 0, 0, 0.5), 0 24px 52px -16px rgba(0, 0, 0, 0.75);
   color-scheme: dark;
 }
 
@@ -121,7 +142,9 @@ html {
 
 body {
   margin: 0;
-  background: var(--paper);
+  background-color: var(--paper);
+  background-image: radial-gradient(ellipse 90% 420px at 50% 0%, var(--paper-glow), transparent 72%);
+  background-attachment: fixed;
   color: var(--ink);
   font-family: var(--font-sans);
   font-size: 15px;
@@ -133,7 +156,7 @@ body {
 
 .font-display {
   font-optical-sizing: auto;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
 }
 
 @layer utilities {
@@ -150,7 +173,7 @@ body {
   .eyebrow {
     font-size: 11px;
     font-weight: 600;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.09em;
     text-transform: uppercase;
     color: var(--ink-3);
   }
@@ -159,13 +182,54 @@ body {
   }
 }
 
-/* The reel window: the one deliberately "physical" surface in the product. */
-.reel-window {
-  background: linear-gradient(180deg, var(--enamel-2) 0%, var(--enamel) 45%, var(--enamel) 55%, var(--enamel-2) 100%);
+/* Warm editorial card surface: subtle top highlight + diffused studio shadow */
+.editorial-card {
+  box-shadow: inset 0 1px 0 var(--card-edge), var(--shadow-card);
+}
+
+/* Tactile primary CTA button */
+.btn-primary-tactile {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--tomato) 90%, white 10%) 0%, var(--tomato) 100%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    inset 0 18px 24px -12px rgba(0, 0, 0, 0.7),
-    inset 0 -18px 24px -12px rgba(0, 0, 0, 0.7);
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    0 2px 6px -1px color-mix(in srgb, var(--tomato) 42%, transparent),
+    0 8px 18px -8px color-mix(in srgb, var(--tomato) 50%, transparent);
+}
+.btn-primary-tactile:hover:not(:disabled) {
+  background: linear-gradient(180deg, var(--tomato) 0%, var(--tomato-hover) 100%);
+}
+.btn-primary-tactile:disabled {
+  background: var(--line-strong);
+  box-shadow: none;
+}
+
+/* Handcrafted espresso-machine / cast-enamel spinner housing */
+.cabinet-housing {
+  background: linear-gradient(165deg, var(--enamel-rim) 0%, var(--enamel-2) 22%, var(--enamel) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 244, 220, 0.14),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.6),
+    0 18px 38px -14px rgba(22, 16, 11, 0.48),
+    0 4px 10px -2px rgba(22, 16, 11, 0.22);
+}
+
+/* Curved drum glass window */
+.reel-window {
+  background: linear-gradient(180deg, #0e0b08 0%, var(--enamel-2) 38%, var(--enamel-2) 62%, #0e0b08 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 240, 210, 0.08),
+    inset 0 22px 28px -12px rgba(0, 0, 0, 0.82),
+    inset 0 -22px 28px -12px rgba(0, 0, 0, 0.82);
+}
+
+.reel-glass-sheen {
+  background: linear-gradient(
+    125deg,
+    rgba(255, 248, 232, 0.07) 0%,
+    rgba(255, 248, 232, 0.02) 34%,
+    transparent 35%,
+    transparent 100%
+  );
 }
 
 .reel-fade::before,
@@ -174,17 +238,17 @@ body {
   position: absolute;
   left: 0;
   right: 0;
-  height: 34%;
+  height: 32%;
   pointer-events: none;
   z-index: 2;
 }
 .reel-fade::before {
   top: 0;
-  background: linear-gradient(180deg, var(--enamel) 10%, transparent);
+  background: linear-gradient(180deg, var(--enamel) 8%, transparent);
 }
 .reel-fade::after {
   bottom: 0;
-  background: linear-gradient(0deg, var(--enamel) 10%, transparent);
+  background: linear-gradient(0deg, var(--enamel) 8%, transparent);
 }
 
 @keyframes reel-roll {
@@ -196,29 +260,29 @@ body {
   }
 }
 .reel-rolling {
-  animation: reel-roll 0.32s linear infinite;
-  filter: blur(1.2px);
+  animation: reel-roll 0.28s linear infinite;
+  filter: blur(1px);
 }
 
 @keyframes reel-settle {
   0% {
-    transform: translateY(-14px);
+    transform: translateY(-16px) scale(0.985);
   }
-  60% {
-    transform: translateY(4px);
+  58% {
+    transform: translateY(4px) scale(1.005);
   }
   100% {
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
 }
 .reel-settle {
-  animation: reel-settle 380ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  animation: reel-settle 420ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
 
 @keyframes fade-up {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
@@ -226,7 +290,7 @@ body {
   }
 }
 .fade-up {
-  animation: fade-up 260ms ease-out both;
+  animation: fade-up 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* Keyboard focus: visible, on-brand, never on mouse click. */

@@ -12,6 +12,7 @@ import { dishClashes, describeClashes } from '../../utils/memberDiets';
 import { useWakeLock } from '../../utils/useWakeLock';
 import { stepDelays, showStepNotification, notificationsSupported } from '../../utils/stepAlerts';
 import { sound } from '../../utils/audio';
+import { photoFor } from '../../data/photos';
 import { HouseholdMember } from '../../types';
 import { Button, Card, Chip, Notice, Segmented, TextInput, cx, timeLabel, effortLabel } from '../ui';
 
@@ -178,54 +179,88 @@ export const VotingView: React.FC = () => {
   // ---------- Empty state ----------
   if (!proposedMeal && !agreedMeal) {
     return (
-      <div className="flex flex-col items-center px-4 py-16 text-center">
-        <Clock className="h-8 w-8 text-ink-3" strokeWidth={1.5} />
-        <h1 className="mt-4 font-display text-[26px] font-semibold">Nothing on the table yet</h1>
-        <p className="mt-2 max-w-[280px] text-[15px] text-ink-2">
-          Spin for a dish, then put it to the household here.
-        </p>
-        <Button variant="primary" className="mt-6" onClick={() => setActiveView(0)}>
-          <Dices className="h-4 w-4" /> Go to the spinner
-        </Button>
-        <div className="mt-8 w-full text-left">
-          <VoteNotificationsCard compact />
-        </div>
+      <div className="space-y-6">
+        <Card className="flex flex-col items-center px-6 py-12 text-center">
+          <span className="flex h-16 w-16 items-center justify-center rounded-[22px] bg-enamel text-brass ring-1 ring-brass/40 shadow-md">
+            <Clock className="h-7 w-7" strokeWidth={1.65} />
+          </span>
+          <h1 className="mt-5 font-display text-[28px] leading-tight font-semibold">Nothing on the table yet</h1>
+          <p className="mt-2 max-w-[300px] text-[14.5px] leading-relaxed text-ink-2">
+            Spin the reel or choose a dish from your recipes, then put it to the household here.
+          </p>
+          <Button variant="primary" size="lg" className="mt-6" onClick={() => setActiveView(0)}>
+            <Dices className="h-5 w-5" /> Go to the spinner
+          </Button>
+        </Card>
+        <VoteNotificationsCard compact />
       </div>
     );
   }
 
   // ---------- Agreed: timeline ----------
   if (agreedMeal) {
+    const agreedPhoto = agreedMeal.imageUrl || photoFor(agreedMeal.id);
+    const nextStepObj = nextIdx >= 0 ? reverseTimers[nextIdx] : undefined;
     return (
       <div className="space-y-4">
-        <div>
-          <div className="flex items-center justify-between gap-2">
-            <Chip tone="sage">
-              <Check className="h-3 w-3" /> Agreed for tonight
-            </Chip>
-            {!loggedEntry && (
-              <button onClick={() => setAgreedMeal(null)} className="inline-flex min-h-10 items-center text-[13px] font-semibold text-ink-2 hover:text-ink">
-                Reopen the vote
-              </button>
+        <Card className="overflow-hidden">
+          {agreedPhoto && (
+            <div className="relative aspect-[16/9] w-full overflow-hidden">
+              <img src={agreedPhoto} alt="" className="h-full w-full object-cover" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/72 via-black/15 to-transparent" />
+              <div className="absolute top-3 left-3">
+                <span className="inline-flex items-center gap-1 rounded-full bg-sage px-3 py-1 text-[12px] font-bold text-white shadow-sm">
+                  <Check className="h-3.5 w-3.5" strokeWidth={3} /> Agreed for tonight
+                </span>
+              </div>
+              {!loggedEntry && (
+                <button
+                  onClick={() => setAgreedMeal(null)}
+                  className="absolute top-3 right-3 rounded-full bg-black/55 px-3 py-1 text-[12px] font-semibold text-white backdrop-blur-xs hover:bg-black/75"
+                >
+                  Reopen vote
+                </button>
+              )}
+              <div className="absolute right-4 bottom-3 left-4 text-white">
+                <h1 className="font-display text-[26px] leading-[1.12] font-semibold drop-shadow-xs">{agreedMeal.title}</h1>
+              </div>
+            </div>
+          )}
+          <div className="p-4">
+            {!agreedPhoto && (
+              <>
+                <div className="flex items-center justify-between gap-2">
+                  <Chip tone="sage">
+                    <Check className="h-3 w-3" /> Agreed for tonight
+                  </Chip>
+                  {!loggedEntry && (
+                    <button onClick={() => setAgreedMeal(null)} className="inline-flex min-h-10 items-center text-[13px] font-semibold text-ink-2 hover:text-ink">
+                      Reopen the vote
+                    </button>
+                  )}
+                </div>
+                <h1 className="mt-2 font-display text-[28px] leading-tight font-semibold">{agreedMeal.title}</h1>
+              </>
+            )}
+            <p className="text-[14px] leading-relaxed text-ink-2">{agreedMeal.description}</p>
+            <button
+              onClick={() => setRecipeOpen(true)}
+              className="mt-2 inline-flex min-h-9 items-center text-[13.5px] font-semibold text-tomato underline-offset-2 hover:underline"
+            >
+              Open full recipe, tweaks &amp; shopping →
+            </button>
+            {agreedMeal.tweaks?.note && (
+              <p className="mt-2 rounded-xl border border-saffron/20 bg-saffron-soft px-3 py-2 text-[13px] text-saffron">
+                Note: {agreedMeal.tweaks.note}
+              </p>
             )}
           </div>
-          <h1 className="mt-2 font-display text-[28px] leading-tight font-semibold">{agreedMeal.title}</h1>
-          <p className="mt-1 text-[14px] text-ink-2">{agreedMeal.description}</p>
-          <button
-            onClick={() => setRecipeOpen(true)}
-            className="mt-1 inline-flex min-h-10 items-center text-[14px] font-semibold text-tomato underline-offset-2 hover:underline"
-          >
-            Full recipe, tweaks and shopping
-          </button>
-          {agreedMeal.tweaks?.note && (
-            <p className="mt-2 rounded-xl bg-saffron-soft px-3 py-2 text-[13px] text-saffron">Note: {agreedMeal.tweaks.note}</p>
-          )}
           {recipeOpen && <RecipeSheet meal={agreedMeal} onClose={() => setRecipeOpen(false)} />}
-        </div>
+        </Card>
 
         {loggedEntry ? (
-          <Card className="fade-up p-5 text-center">
-            <p className="font-display text-[22px] font-semibold">Enjoy it.</p>
+          <Card className="fade-up p-6 text-center">
+            <p className="font-display text-[24px] font-semibold">Enjoy your dinner.</p>
             <p className="mt-1 text-[14px] text-ink-2">
               Logged to your history
               {loggedEntry.rescued.length > 0
@@ -245,6 +280,18 @@ export const VotingView: React.FC = () => {
           </>
         ) : (
           <>
+            {nextStepObj && (
+              <div className="cabinet-housing rounded-[22px] p-4 text-on-enamel ring-1 ring-brass/40">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-bold tracking-[0.1em] uppercase text-brass">Up next</span>
+                  <span className="rounded-full bg-white/12 px-2.5 py-0.5 text-[12.5px] font-bold text-on-enamel tabular-nums">
+                    {nextStepObj.timeString}
+                  </span>
+                </div>
+                <p className="mt-1.5 font-display text-[19px] leading-snug font-semibold text-on-enamel">{nextStepObj.label}</p>
+              </div>
+            )}
+
             <Card className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-3 p-4">
               <label htmlFor="eat-at" className="text-[14px] font-semibold">
                 Eat at
@@ -254,7 +301,7 @@ export const VotingView: React.FC = () => {
                 type="time"
                 value={targetEatingTime}
                 onChange={(e) => handleTimeChange(e.target.value)}
-                className="h-11 w-full rounded-xl border border-line bg-paper px-3 text-[17px] font-semibold tabular-nums focus:border-ink-2 focus:outline-none"
+                className="h-11 w-full rounded-xl border border-line bg-paper px-3 text-[17px] font-semibold tabular-nums focus:border-tomato/60 focus:outline-none"
               />
               <span className="text-[14px] font-semibold">Serves</span>
               <Segmented<'2' | '4' | '6' | '8'>
@@ -376,26 +423,50 @@ export const VotingView: React.FC = () => {
 
   // ---------- Voting ----------
   const meal = proposedMeal!;
+  const mealPhoto = meal.imageUrl || photoFor(meal.id);
   const liveActive = !!tonight && (tonight.status === 'open' || tonight.status === 'vetoed') && tonight.meal?.id === meal.id;
   const voterOutOfVetoes = currentVoter.vetoTokensRemaining <= 0;
   const clashes = dishClashes(meal, householdMembers);
 
-
   return (
     <div className="space-y-4">
-      <div>
-        <p className="eyebrow">Proposed for tonight</p>
-        <h1 className="mt-1 font-display text-[28px] leading-tight font-semibold">{meal.title}</h1>
-        <p className="mt-1 text-[13px] text-ink-2">
-          {timeLabel(meal.timeStake)} · {effortLabel(meal.effort)} · {meal.cuisine}
-        </p>
-        <p className="mt-2 text-[14px] text-ink-2">{meal.description}</p>
-        {clashes.length > 0 && (
-          <p role="status" className="mt-3 rounded-xl bg-saffron-soft px-3.5 py-2.5 text-[14px] font-medium text-ink">
-            Doesn’t suit {describeClashes(clashes)}.
-          </p>
+      <Card className="overflow-hidden">
+        {mealPhoto && (
+          <div className="relative aspect-[16/10] w-full overflow-hidden">
+            <img src={mealPhoto} alt="" className="h-full w-full object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/72 via-black/18 to-transparent" />
+            <div className="absolute top-3 left-3 flex gap-1.5">
+              <span className="rounded-full bg-black/55 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-xs">
+                {timeLabel(meal.timeStake)}
+              </span>
+              <span className="rounded-full bg-black/55 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-xs">
+                {meal.cuisine}
+              </span>
+            </div>
+            <div className="absolute right-4 bottom-3 left-4 text-white">
+              <p className="text-[10.5px] font-semibold tracking-[0.1em] uppercase text-white/80">On the table tonight</p>
+              <h1 className="mt-0.5 font-display text-[26px] leading-[1.12] font-semibold drop-shadow-xs">{meal.title}</h1>
+            </div>
+          </div>
         )}
-      </div>
+        <div className="p-4">
+          {!mealPhoto && (
+            <>
+              <p className="eyebrow">Proposed for tonight</p>
+              <h1 className="mt-1 font-display text-[28px] leading-tight font-semibold">{meal.title}</h1>
+              <p className="mt-1 text-[13px] text-ink-2">
+                {timeLabel(meal.timeStake)} · {effortLabel(meal.effort)} · {meal.cuisine}
+              </p>
+            </>
+          )}
+          <p className={cx('text-[14px] leading-relaxed text-ink-2', !mealPhoto && 'mt-2')}>{meal.description}</p>
+          {clashes.length > 0 && (
+            <p role="status" className="mt-3 rounded-xl border border-saffron/20 bg-saffron-soft px-3.5 py-2.5 text-[14px] font-medium text-ink">
+              Doesn’t suit {describeClashes(clashes)}.
+            </p>
+          )}
+        </div>
+      </Card>
 
       <VoteNotificationsCard compact />
 
