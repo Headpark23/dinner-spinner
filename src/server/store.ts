@@ -6,6 +6,10 @@ export type Snapshot = { syncedAt: string; syncId: string; data: any };
 /** What a household keeps on the server. The saved copy (snapshot) is stored apart because it is large. */
 export type Household = {
   keyHash: string;
+  /** Extra keys, one per phone signed in with Google. Only hashes are kept. */
+  keyHashes?: string[];
+  /** Google accounts in this family group (display only). */
+  google?: { name: string; email: string }[];
   createdAt: string;
   snapshotAt: string | null;
   shopping: { version: number; items: ShoppingItem[] };
@@ -20,6 +24,9 @@ export type Household = {
   snapshot?: Snapshot | null;
 };
 
+/** A Google account's link to the family group it belongs to. */
+export type UserLink = { householdId: string; email: string; name: string };
+
 export class HttpError extends Error {
   constructor(public status: number, public body: Record<string, unknown>) {
     super(String(body.error || status));
@@ -32,6 +39,9 @@ export interface Store {
   put(id: string, h: Household): Promise<boolean>;
   getSnapshot(id: string): Promise<Snapshot | null>;
   putSnapshot(id: string, s: Snapshot): Promise<void>;
+  /** Looks up which family group a Google account (by its hashed id) belongs to. */
+  getUser(userKey: string): Promise<UserLink | undefined>;
+  putUser(userKey: string, link: UserLink): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -49,6 +59,13 @@ export function createFileStore(filePath: string | null): Store {
     if (h.snapshotAt === undefined) h.snapshotAt = null;
   }
 
+  const usersPath = filePath ? filePath.replace(/\.json$/, '') + '.users.json' : null;
+  let users: Record<string, UserLink> = {};
+  try {
+    if (usersPath && fs.existsSync(usersPath)) users = JSON.parse(fs.readFileSync(usersPath, 'utf-8'));
+  } catch {
+    users = {};
+  }
   let timer: NodeJS.Timeout | null = null;
   const persist = () => {
     if (!filePath || timer) return;
@@ -56,6 +73,7 @@ export function createFileStore(filePath: string | null): Store {
       timer = null;
       try {
         fs.writeFileSync(filePath, JSON.stringify(households), 'utf-8');
+        if (usersPath) fs.writeFileSync(usersPath, JSON.stringify(users), 'utf-8');
       } catch {
         // Read-only disk: data still lives in memory.
       }
@@ -79,6 +97,13 @@ export function createFileStore(filePath: string | null): Store {
       if (!own(id)) return;
       households[id].snapshot = s;
       households[id].snapshotAt = s.syncedAt;
+      persist();
+    },
+    async getUser(userKey) {
+      return Object.prototype.hasOwnProperty.call(users, userKey) ? users[userKey] : undefined;
+    },
+    async putUser(userKey, link) {
+      users[userKey] = link;
       persist();
     },
   };
@@ -136,6 +161,15 @@ export function createRedisStore(url: string, token: string, doFetch: typeof fet
     async putSnapshot(id, s) {
       if (!safeId(id)) return;
       await run('SET', `hh:${id}:snap`, JSON.stringify(s));
+    },
+    async getUser(userKey) {
+      if (!/^[0-9a-f]{64}$/.test(userKey)) return undefined;
+      const raw = await run('GET', `user:${userKey}`);
+      return raw ? (JSON.parse(raw) as UserLink) : undefined;
+    },
+    async putUser(userKey, link) {
+      if (!/^[0-9a-f]{64}$/.test(userKey)) return;
+      await run('SET', `user:${userKey}`, JSON.stringify(link));
     },
   };
 }

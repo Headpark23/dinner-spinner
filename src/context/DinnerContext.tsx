@@ -170,6 +170,14 @@ interface DinnerContextType {
   createHousehold: () => Promise<{ success: boolean; message: string }>;
   joinHousehold: (code: string) => Promise<{ success: boolean; message: string }>;
   leaveHousehold: () => void;
+  /** Google sign-in for family groups. googleClientId is null when the server has none set up. */
+  googleClientId: string | null;
+  googleProfile: { name: string; email: string; picture: string } | null;
+  familyNames: string[];
+  signInWithGoogle: (
+    credential: string,
+    joinCode?: string
+  ) => Promise<{ success: boolean; message: string; created?: boolean }>;
 
   // Live vote across phones
   tonight: LiveVote | null;
@@ -297,6 +305,11 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   );
   const householdRef = useRef(household);
   householdRef.current = household;
+  const [googleClientId, setGoogleClientId] = useState<string | null>(null);
+  const [googleProfile, setGoogleProfile] = useState<{ name: string; email: string; picture: string } | null>(() =>
+    loadStored('google_profile', null)
+  );
+  const [familyNames, setFamilyNames] = useState<string[]>([]);
   // People who already have saved data skip the welcome screen.
   const [onboarded, setOnboarded] = useState<boolean>(() => {
     const saved = loadStored<boolean | null>('onboarded', null);
@@ -1615,6 +1628,77 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const leaveHousehold = () => {
     saveHousehold(null);
     setShoppingOnline(null);
+    setGoogleProfile(null);
+    setFamilyNames([]);
+    try {
+      localStorage.removeItem(`${STORAGE_KEY}_google_profile`);
+    } catch {
+      // ignore
+    }
+  };
+
+  // Is Google sign-in set up on this server? (Decides whether the button is shown at all.)
+  useEffect(() => {
+    let live = true;
+    fetch('/api/health')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (live && j && typeof j.googleClientId === 'string' && j.googleClientId) setGoogleClientId(j.googleClientId);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  // Who else is in the family group, for the "Mum and Dad are in" line.
+  useEffect(() => {
+    if (!household) return;
+    let live = true;
+    fetch('/api/households/me', { headers: { 'x-household-id': household.id, 'x-household-key': household.key } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (live && j && Array.isArray(j.familyNames)) setFamilyNames(j.familyNames.map(String));
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [household]);
+
+  const signInWithGoogle = async (
+    credential: string,
+    joinCode?: string
+  ): Promise<{ success: boolean; message: string; created?: boolean }> => {
+    try {
+      const res = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential, joinCode }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) return { success: false, message: j.error || 'Google sign-in didn’t work. Try again.' };
+      saveHousehold({ id: j.householdId, key: j.key });
+      const profile = {
+        name: String(j.profile?.name || ''),
+        email: String(j.profile?.email || ''),
+        picture: String(j.profile?.picture || ''),
+      };
+      setGoogleProfile(profile);
+      setFamilyNames(Array.isArray(j.familyNames) ? j.familyNames.map(String) : []);
+      try {
+        localStorage.setItem(`${STORAGE_KEY}_google_profile`, JSON.stringify(profile));
+      } catch {
+        // ignore
+      }
+      return {
+        success: true,
+        created: Boolean(j.created),
+        message: j.created ? 'Your family group is ready.' : 'Signed in. You’re in your family group.',
+      };
+    } catch {
+      return { success: false, message: 'Couldn’t reach the server.' };
+    }
   };
 
   // ---- Live vote: every phone in the household votes on one proposal -------
@@ -1871,6 +1955,10 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         createHousehold,
         joinHousehold,
         leaveHousehold,
+        googleClientId,
+        googleProfile,
+        familyNames,
+        signInWithGoogle,
         tonight,
         startLiveVote,
         castLiveVote,

@@ -380,7 +380,7 @@ test('React UI Component Suite: renders every screen and modal cleanly without e
     { name: 'Shopping', el: React.createElement(PantryView, { scope: 'shop' }), expectedText: '>Shopping</h1>' },
     {
       name: 'MoreView',
-      el: React.createElement(MoreView, { onOpenProfile: () => {}, onOpenRules: () => {} }),
+      el: React.createElement(MoreView, { onOpenProfile: () => {}, onOpenRules: () => {}, onOpenFamily: () => {} }),
       expectedText: 'Order takeaway',
     },
     { name: 'DinnerSteps', el: React.createElement(DinnerSteps), expectedText: 'Pick' },
@@ -681,7 +681,7 @@ test('Planner: supermarket links encode the search term', () => {
 // Hosted storage: the same server behaviour on a Redis-style store, including
 // two phones writing at the same moment.
 // ---------------------------------------------------------------------------
-import { createRedisStore, mutate, Store } from '../server/store';
+import { createRedisStore, createFileStore, mutate, Store, HttpError } from '../server/store';
 
 /** A stand-in for Upstash's REST API that understands GET, SET and the compare-and-set script. */
 async function withFakeRedis(run: (url: string, data: Map<string, string>) => Promise<void>) {
@@ -781,6 +781,68 @@ test('Hosted storage: households, shopping, saved copy and live vote work on a R
   });
 });
 
+test('Google sign-in: one family group across phones, kept apart from others', async () => {
+  const { useGoogleVerifier, useStore } = await import('../../server');
+  useStore(createFileStore(null));
+  const people: Record<string, { sub: string; email: string; name: string }> = {
+    mum: { sub: 'g-mum', email: 'mum@example.com', name: 'Mum' },
+    dad: { sub: 'g-dad', email: 'dad@example.com', name: 'Dad' },
+    other: { sub: 'g-other', email: 'other@example.com', name: 'Other' },
+  };
+  useGoogleVerifier(async (cred) => {
+    if (!people[cred]) throw new HttpError(401, { error: 'bad token' });
+    return people[cred];
+  });
+  await withServer(async (baseUrl) => {
+    const signIn = (credential: string, joinCode?: string) =>
+      fetch(`${baseUrl}/api/auth/google`, { method: 'POST', headers: json, body: JSON.stringify({ credential, joinCode }) });
+
+    // A bad token is refused.
+    assert.equal((await signIn('nope')).status, 401);
+
+    // First sign-in makes a family group.
+    const first = await (await signIn('mum')).json();
+    assert.equal(first.created, true);
+    assert.deepEqual(first.familyNames, ['Mum']);
+
+    // Mum's data is reachable with the key she was given.
+    await fetch(`${baseUrl}/api/shopping/ops`, {
+      method: 'POST',
+      headers: authed(first),
+      body: JSON.stringify({ ops: [{ type: 'add', item: { id: 's1', name: 'Milk', addedBy: 'Mum' } }] }),
+    });
+
+    // Signing in again, on another phone, lands in the same group with a different key.
+    const second = await (await signIn('mum')).json();
+    assert.equal(second.created, false);
+    assert.equal(second.householdId, first.householdId);
+    assert.notEqual(second.key, first.key);
+    const list = await (await fetch(`${baseUrl}/api/shopping`, { headers: authed(second) })).json();
+    assert.equal(list.items.length, 1);
+    // The first phone still works.
+    assert.equal((await fetch(`${baseUrl}/api/shopping`, { headers: authed(first) })).status, 200);
+
+    // Dad joins Mum's group with her code; a stranger gets their own.
+    const dad = await (await signIn('dad', first.code)).json();
+    assert.equal(dad.householdId, first.householdId);
+    assert.deepEqual(dad.familyNames.sort(), ['Dad', 'Mum']);
+    const other = await (await signIn('other')).json();
+    assert.notEqual(other.householdId, first.householdId);
+    assert.equal((await fetch(`${baseUrl}/api/shopping`, { headers: authed(other) })).status, 200);
+    assert.equal(
+      (await (await fetch(`${baseUrl}/api/shopping`, { headers: authed(other) })).json()).items.length,
+      0
+    );
+
+    // A wrong family code is refused and nothing is created.
+    assert.equal((await signIn('other', 'h_aaaaaaaaaaaa.wrong')).status, 400);
+
+    // Dad, signing in later with no code, returns to Mum's group.
+    const dadAgain = await (await signIn('dad')).json();
+    assert.equal(dadAgain.householdId, first.householdId);
+  });
+});
+
 test('Hosted storage: a failing store gives a calm error, not a crash', async () => {
   const broken: Store = {
     async get() {
@@ -793,6 +855,12 @@ test('Hosted storage: a failing store gives a calm error, not a crash', async ()
       throw new Error('down');
     },
     async putSnapshot() {
+      throw new Error('down');
+    },
+    async getUser() {
+      throw new Error('down');
+    },
+    async putUser() {
       throw new Error('down');
     },
   };

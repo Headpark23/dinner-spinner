@@ -7,7 +7,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { applyShoppingOp } from './src/utils/shopping';
 import { applyFridgeOp, type FridgeState } from './src/utils/fridge';
 import { cleanLog, unionLog } from './src/utils/history';
-import { Household, HttpError, Store, createFileStore, createStoreFromEnv, mutate } from './src/server/store';
+import { Household, HttpError, Store, UserLink, createFileStore, createStoreFromEnv, mutate } from './src/server/store';
 
 dotenv.config();
 
@@ -94,6 +94,25 @@ const fail = (res: express.Response, err: unknown) => {
   return res.status(503).json({ error: 'Storage is unavailable just now. Try again in a moment.' });
 };
 
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID?.trim() || '';
+
+export type GoogleProfile = { sub: string; email: string; name: string; picture?: string };
+/** Checks a Google sign-in token with Google and returns who it belongs to. Tests replace this. */
+let verifyGoogle: (credential: string) => Promise<GoogleProfile> = async (credential) => {
+  if (!GOOGLE_CLIENT_ID) throw new HttpError(503, { error: 'Google sign-in is not set up on this server.' });
+  const res = await fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(credential));
+  if (!res.ok) throw new HttpError(401, { error: 'Google sign-in could not be verified.' });
+  const t: any = await res.json();
+  const issuerOk = t.iss === 'accounts.google.com' || t.iss === 'https://accounts.google.com';
+  if (t.aud !== GOOGLE_CLIENT_ID || !issuerOk || !t.sub || String(t.email_verified) !== 'true') {
+    throw new HttpError(401, { error: 'Google sign-in could not be verified.' });
+  }
+  return { sub: String(t.sub), email: String(t.email || ''), name: String(t.name || t.given_name || ''), picture: t.picture };
+};
+export const useGoogleVerifier = (fn: typeof verifyGoogle) => {
+  verifyGoogle = fn;
+};
+
 const sha256 = (v: string) => crypto.createHash('sha256').update(v).digest();
 
 async function authenticate(req: express.Request): Promise<{ id: string; household: Household } | null> {
@@ -103,9 +122,11 @@ async function authenticate(req: express.Request): Promise<{ id: string; househo
   const household = await store.get(id);
   if (!household) return null;
   const given = sha256(key);
-  const stored = Buffer.from(household.keyHash, 'hex');
-  if (given.length !== stored.length || !crypto.timingSafeEqual(given, stored)) return null;
-  return { id, household };
+  const matches = [household.keyHash, ...(household.keyHashes || [])].some((h) => {
+    const stored = Buffer.from(h, 'hex');
+    return given.length === stored.length && crypto.timingSafeEqual(given, stored);
+  });
+  return matches ? { id, household } : null;
 }
 
 type AuthedRequest = express.Request & { household?: Household; householdId?: string };
@@ -127,6 +148,8 @@ app.get('/api/health', (_req, res) => {
     status: 'ok',
     appName: 'Dinner Spinner',
     aiEnabled: hasRealGeminiKey,
+    // The Google client id is public by design; the page needs it to show the button.
+    googleClientId: GOOGLE_CLIENT_ID || null,
     timestamp: new Date().toISOString(),
   });
 });
@@ -149,7 +172,73 @@ app.post('/api/households', rateLimit('household', 10, 60 * 60_000), async (_req
 
 app.get('/api/households/me', requireHousehold, (req, res) => {
   const h = (req as AuthedRequest).household!;
-  res.json({ ok: true, hasSnapshot: Boolean(h.snapshotAt), createdAt: h.createdAt });
+  res.json({
+    ok: true,
+    hasSnapshot: Boolean(h.snapshotAt),
+    createdAt: h.createdAt,
+    familyNames: (h.google || []).map((g) => g.name).filter(Boolean),
+  });
+});
+
+// Sign in with Google: the same family group on every phone, no code to copy. A phone gets its
+// own key each time it signs in, so signing in elsewhere never signs anyone out.
+app.post('/api/auth/google', smallJson, rateLimit('sign-in', 30, 10 * 60_000), async (req, res) => {
+  try {
+    const credential = String(req.body?.credential || '');
+    if (!credential || credential.length > 4000) return res.status(400).json({ error: 'Missing Google sign-in.' });
+    const profile = await verifyGoogle(credential);
+    const userKey = sha256('google:' + profile.sub).toString('hex');
+    const name = (profile.name || profile.email.split('@')[0] || 'Someone').slice(0, 40);
+    const key = crypto.randomBytes(16).toString('hex');
+    const keyHash = sha256(key).toString('hex');
+    const me = { name, email: profile.email };
+
+    let householdId: string | null = null;
+    let created = false;
+    const joinCode = String(req.body?.joinCode || '');
+    if (joinCode) {
+      const [jid, jkey] = joinCode.trim().split('.');
+      const asReq = {
+        header: (n: string) => (n === 'x-household-id' ? jid : n === 'x-household-key' ? jkey : ''),
+      } as express.Request;
+      const ok = jid && jkey ? await authenticate(asReq) : null;
+      if (!ok) return res.status(400).json({ error: 'That family code wasn’t recognised.' });
+      householdId = jid;
+    } else {
+      const link: UserLink | undefined = await store.getUser(userKey);
+      if (link && (await store.get(link.householdId))) householdId = link.householdId;
+    }
+
+    if (householdId) {
+      await mutate(store, householdId, (h) => {
+        h.keyHashes = [...(h.keyHashes || []), keyHash].slice(-25);
+        const others = (h.google || []).filter((g) => g.email !== me.email);
+        h.google = [...others, me].slice(-12);
+      });
+    } else {
+      householdId = 'h_' + crypto.randomBytes(6).toString('hex');
+      created = true;
+      await store.put(householdId, {
+        keyHash,
+        createdAt: new Date().toISOString(),
+        snapshotAt: null,
+        shopping: { version: 0, items: [] },
+        google: [me],
+      });
+    }
+    await store.putUser(userKey, { householdId, email: profile.email, name });
+    const final = await store.get(householdId);
+    res.json({
+      householdId,
+      key,
+      code: householdId + '.' + key,
+      created,
+      profile: { name, email: profile.email, picture: profile.picture || '' },
+      familyNames: (final?.google || []).map((g) => g.name).filter(Boolean),
+    });
+  } catch (err) {
+    fail(res, err);
+  }
 });
 
 app.post('/api/sync/cloud', smallJson, requireHousehold, async (req, res) => {

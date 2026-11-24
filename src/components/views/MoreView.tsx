@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bike, BarChart3, Users, CircleHelp, Volume2, VolumeX, ChevronRight } from 'lucide-react';
+import { Bike, BarChart3, Users, UsersRound, HardDriveDownload, CircleHelp, Volume2, VolumeX, ChevronRight } from 'lucide-react';
 import { useDinner } from '../../context/DinnerContext';
 import { Card, PageHeader, cx } from '../ui';
 
@@ -13,13 +13,26 @@ interface Row {
 }
 
 /** Everything that isn't part of tonight's dinner, each with a plain-English description. */
-export const MoreView: React.FC<{ onOpenProfile: () => void; onOpenRules: () => void }> = ({
+export const MoreView: React.FC<{ onOpenProfile: () => void; onOpenRules: () => void; onOpenFamily: () => void }> = ({
   onOpenProfile,
   onOpenRules,
+  onOpenFamily,
 }) => {
-  const { setActiveView, takeawayOverrideActive, soundMuted, toggleSound, householdMembers, cookLog } = useDinner();
+  const { setActiveView, takeawayOverrideActive, soundMuted, toggleSound, householdMembers, cookLog, householdCode, familyNames } = useDinner();
 
   const rows: Row[] = [
+    {
+      key: 'family',
+      icon: <UsersRound className="h-5 w-5" />,
+      title: householdCode ? 'Your family group' : 'Start a family group',
+      body: householdCode
+        ? familyNames.length > 0
+          ? `${familyNames.join(', ')} share the list, fridge and vote.`
+          : 'Shared list, fridge and vote. Invite someone.'
+        : 'Share the list, the fridge and the vote. Sign in with Google.',
+      onClick: onOpenFamily,
+      flag: householdCode ? undefined : 'Recommended',
+    },
     {
       key: 'takeaway',
       icon: <Bike className="h-5 w-5" />,
@@ -37,9 +50,9 @@ export const MoreView: React.FC<{ onOpenProfile: () => void; onOpenRules: () => 
     },
     {
       key: 'household',
-      icon: <Users className="h-5 w-5" />,
-      title: 'Household and backup',
-      body: `${householdMembers.length} ${householdMembers.length === 1 ? 'person' : 'people'} voting. Back up or restore your data.`,
+      icon: <HardDriveDownload className="h-5 w-5" />,
+      title: 'Backup and restore',
+      body: `Save your recipes and settings, or move them to a new phone. ${householdMembers.length} ${householdMembers.length === 1 ? 'person' : 'people'} voting.`,
       onClick: onOpenProfile,
     },
     {
