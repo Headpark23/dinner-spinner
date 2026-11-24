@@ -14,7 +14,7 @@ Effort: S = under a day, M = 1 to 3 days, L = a week or more.
 | 4 | Voting from separate phones | **Done, different design.** Household-wide live vote (`LiveVote.tsx`, `/api/tonight`), decided on the server, phones poll. Uses Google-sign-in family groups instead of a 4-digit room code. | Nothing: guests do not need to vote, so no code. |
 | 5 | Dietary needs per person | **Mostly built.** `utils/diets.ts` (vegetarian, vegan, pescatarian, gluten-free, dairy-free, nut-free), `DietPicker`, avoid list with plural matching. | Ask per-person diets during onboarding. |
 | 6 | Leftovers | **Mostly built.** "Made extra?" after dinner sends the rest to the fridge (use next, eat-by date) or the freezer; fridge rows show the use-by. | Use-by on ordinary items, auto use-next near the date, `makesLeftovers` on recipes. |
-| 7 | Supermarket links | **Built.** `utils/delivery.ts` (Tesco, Sainsbury's, Asda, Morrisons, Ocado, Waitrose, plus Uber Eats and Just Eat) and `DeliverySheet.tsx`. `planner.ts` also holds a shorter `STORES` list. | Merge the two shop lists. |
+| 7 | Supermarket links | **Done.** `utils/delivery.ts` (Tesco, Sainsbury's, Asda, Morrisons, Ocado, Waitrose, plus Uber Eats and Just Eat) and `DeliverySheet.tsx`. The shopping tab's `STORES` is built from the same list. | Nothing. |
 | 8 | Cost per serving | **Built, differently.** `utils/cost.ts` estimates what you would have to *buy* (ingredient price table minus fridge and staples). Cost filter (Free, £5, £10, no limit) and "about £4 to buy" on the result. `Meal.estimatedCostPerHead` is still unused. | Show cost per head, cost on planner, retire the unused field. |
 | 9 | Share a recipe card | **Not built.** `navigator.share` is used only for the family invite link. | Everything. |
 | 10 | Surprise me from the fridge | **Mostly built.** "Cook from what we have" (`cupboard.ts`, `CupboardSheet.tsx`) plus the fridge photo scan. | Link the photo scan straight into one spin; include the freezer. |
@@ -70,8 +70,9 @@ The Freezer tab is built and, as of PR 31, shared with the household like the fr
 - ~~`PantryItem.useBy`~~ **Done.** Optional YYYY-MM-DD, cleaned in `cleanItem` (so the server keeps it). Fridge rows show "Eat within 3 days" (grey), "Eat by tomorrow" (amber), "Eat today" or "Past its date" (red). It is not yet an input for ordinary items.
 - **Still open.** A use-by field when adding an ordinary fridge item; let a use-by date that has passed or arrives soon raise the item to use next on its own; set `makesLeftovers` on recipes that obviously make extra. Tests: `utils/leftovers.test.ts`.
 
-### 7. Supermarket links (S)
-- Done in `delivery.ts`. Clean-up only: `planner.ts` has its own four-shop `STORES` list used by the shopping tab's store picker, which duplicates `DELIVERY_SHOPS`. Point both at one list so a changed URL is fixed once. Add a test that every shop builds a valid search URL.
+### 7. Supermarket links (done)
+- ~~One shop list~~ **Done.** `planner.ts` `STORES` is now built from the supermarkets in `DELIVERY_SHOPS`, so the shopping tab's store picker offers all six (Tesco, Sainsbury's, Asda, Morrisons, Ocado, Waitrose) and a changed URL is fixed once. `StoreId` is a plain string; a saved choice that no longer exists falls back to Tesco.
+- ~~Test~~ **Done.** `utils/stores.test.ts` checks every shop builds a valid https search URL, with awkward characters escaped, and that the picker list and the delivery list cannot drift apart.
 
 ### 8. Cost per serving (S)
 - Keep what is there (cost to buy tonight). Add a per-head figure on recipe cards, calculated from the same price table and `servings`, so "£2 a head" and "£8 to buy" can both appear.
