@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { RecipeSheet } from '../RecipeSheet';
 import { photoFor } from '../../data/photos';
 import { useDinner } from '../../context/DinnerContext';
@@ -63,18 +63,13 @@ export const MachineView: React.FC = () => {
   } = useDinner();
   const leagueTop = householdCode ? shared.league.find((r) => r.votes > 0) : undefined;
 
+  // The reels stay where they are when they stop, so the person sees what landed. A cue under the reels
+  // says the recipe and method are below, and scrolls there only when asked.
   const resultRef = useRef<HTMLDivElement | null>(null);
-  const wasSpinning = useRef(false);
-  // When the reel stops, bring the result into view so the next step is never hidden below the fold.
-  useEffect(() => {
-    if (wasSpinning.current && !isSpinning && activeMealResult) {
-      const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-      requestAnimationFrame(() =>
-        resultRef.current?.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' })
-      );
-    }
-    wasSpinning.current = isSpinning;
-  }, [isSpinning, activeMealResult]);
+  const showResult = () => {
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    resultRef.current?.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+  };
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -191,6 +186,16 @@ export const MachineView: React.FC = () => {
       )}
 
       <ReelWindow onSpin={spin} />
+
+      {activeMealResult && !isSpinning && (
+        <button
+          type="button"
+          onClick={showResult}
+          className="fade-up -mt-1 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-line-strong bg-card px-3.5 text-[14px] font-semibold text-ink hover:bg-sunk"
+        >
+          Recipe and method below <ChevronDown className="h-4 w-4 animate-bounce" />
+        </button>
+      )}
 
       {activeMealResult && !isSpinning && pantryMatch && (
         <div ref={resultRef} className="scroll-mt-[68px]">
@@ -309,7 +314,7 @@ export const MachineView: React.FC = () => {
         type="button"
         onClick={() => {
           openWorldKitchen();
-          setActiveView(2);
+          setActiveView(5);
         }}
         className="flex min-h-11 w-full items-center gap-2.5 rounded-xl border border-line bg-card px-3.5 py-2.5 text-left hover:border-line-strong"
       >

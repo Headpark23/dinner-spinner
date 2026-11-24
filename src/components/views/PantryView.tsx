@@ -1,6 +1,9 @@
 import React, { useRef, useState } from 'react';
 import { useDinner } from '../../context/DinnerContext';
 import { DietPicker } from '../DietPicker';
+import { ImportRecipe } from '../ImportRecipe';
+import { DeliverySheet } from '../DeliverySheet';
+import type { ImportedRecipe } from '../../utils/recipeImport';
 import { mealFitsDiets } from '../../utils/diets';
 import { STORES, StoreId } from '../../utils/planner';
 import {
@@ -12,6 +15,7 @@ import {
   CircleCheck,
   CircleAlert,
   ShoppingBasket,
+  Bike,
   Check,
   Star,
   X,
@@ -134,6 +138,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
   const [newLovedName, setNewLovedName] = useState('');
 
   const [copiedShopping, setCopiedShopping] = useState(false);
+  const [deliveryOpen, setDeliveryOpen] = useState(false);
 
   // Vault
   const [vaultSearch, setVaultSearch] = useState('');
@@ -146,6 +151,22 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
   const [customEffort, setCustomEffort] = useState<EffortLevel>('one-pot');
   const [customIngredients, setCustomIngredients] = useState('');
   const [customSteps, setCustomSteps] = useState('');
+
+  const addFormRef = useRef<HTMLDivElement | null>(null);
+
+  /** Fills the add-a-recipe form with something imported, so it can be checked and edited before saving. */
+  const applyDraft = (r: ImportedRecipe, note: string) => {
+    setCustomTitle(r.title);
+    setCustomDesc(r.description);
+    setCustomCuisine(r.cuisine || 'Other');
+    setCustomTime(r.timeStake);
+    setCustomEffort(r.effort);
+    setCustomIngredients(r.ingredients.join('\n'));
+    setCustomSteps(r.prepSteps.join('\n'));
+    setShowAddRecipe(true);
+    flash(note);
+    requestAnimationFrame(() => addFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
 
   const flash = (msg: string) => {
     setAnalysisError(null);
@@ -187,18 +208,19 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
       flash(`Added ${data.items.length} items from ${data.storeName || 'your receipt'}${note}.`);
       setActiveTab('fridge');
     } else if ((type === 'recipe-photo' || type === 'recipe-text') && data.meal) {
-      addMeal({
-        title: data.meal.title || 'New recipe',
-        description: data.meal.description || '',
-        cuisine: data.meal.cuisine || 'British',
-        timeStake: data.meal.timeStake || '30m',
-        effort: data.meal.effort || 'standard',
-        ingredients: data.meal.ingredients || [],
-        prepSteps: data.meal.prepSteps || [],
-        tags: data.meal.tags || ['Scanned'],
-      });
-      flash(`Saved “${data.meal.title}” to your recipes${note}.`);
-      setShowAddRecipe(false);
+      applyDraft(
+        {
+          title: data.meal.title || 'New recipe',
+          description: data.meal.description || '',
+          cuisine: data.meal.cuisine || 'Other',
+          timeStake: data.meal.timeStake || '30m',
+          effort: data.meal.effort || 'standard',
+          ingredients: data.meal.ingredients || [],
+          prepSteps: data.meal.prepSteps || [],
+          tags: data.meal.tags || ['Scanned'],
+        },
+        `Drafted “${data.meal.title}”${note}. Check it over, then save.`
+      );
       setActiveTab('vault');
     } else {
       setAnalysisError('Nothing usable came back. Try a clearer photo.');
@@ -278,7 +300,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
   const handleSaveManualRecipe = (e: React.FormEvent) => {
     e.preventDefault();
     if (!customTitle.trim()) return;
-    const ingList = customIngredients.split(',').map((s) => s.trim()).filter(Boolean);
+    const ingList = customIngredients.split(/\n|,(?!\s*\d)/).map((s) => s.trim()).filter(Boolean);
     const stepList = customSteps.split('\n').map((s) => s.trim()).filter(Boolean);
     addMeal({
       title: customTitle.trim(),
@@ -360,7 +382,8 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
     { type: 'scan-receipt', icon: <Receipt className="h-5 w-5" />, title: 'Supermarket receipt', body: 'Adds the food lines from your shop.' },
     { type: 'recipe-photo', icon: <BookOpen className="h-5 w-5" />, title: 'Recipe page or plate', body: 'Turns it into a recipe with a timeline.' },
   ];
-  const scanRows = allScanRows.filter((r) => (scope === 'recipes' ? r.type === 'recipe-photo' : r.type !== 'recipe-photo'));
+  // Recipe photos now live in the "Add a recipe" panel with the other ways in.
+  const scanRows = allScanRows.filter((r) => scope !== 'recipes' && r.type !== 'recipe-photo');
 
   const renderScan = () => (
     <div className="space-y-4">
@@ -566,14 +589,24 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
           <>
             {showAddRecipe && (
               <Card as="div" className="fade-up space-y-4 p-4">
-                <p className="text-[15px] font-semibold">Add a recipe</p>
+                <div ref={addFormRef} className="scroll-mt-[68px]">
+                  <p className="text-[15px] font-semibold">Add a recipe</p>
+                  <p className="mb-3 text-[13px] text-ink-2">Bring in one you already have, or type it below. You’ll check it before it’s saved.</p>
+                  <ImportRecipe onDraft={applyDraft} />
+                </div>
+                {analysisSuccess && (
+                  <p role="status" className="rounded-xl bg-sage-soft px-3 py-2 text-[13px] text-sage">
+                    {analysisSuccess}
+                  </p>
+                )}
+                <p className="border-t border-line pt-4 text-[13px] font-semibold text-ink-2">Check it over, or type it in yourself</p>
                 {(
                   <form onSubmit={handleSaveManualRecipe} className="space-y-2">
                     <TextInput value={customTitle} onChange={(e) => setCustomTitle(e.target.value)} placeholder="Dish name" aria-label="Dish name" required />
                     <TextInput value={customDesc} onChange={(e) => setCustomDesc(e.target.value)} placeholder="One line about it (optional)" aria-label="Description" />
                     <div className="grid grid-cols-3 gap-2">
                       <Select value={customCuisine} onChange={(e) => setCustomCuisine(e.target.value)} aria-label="Cuisine">
-                        {['British', 'Italian', 'Indian', 'Mexican', 'Chinese', 'Thai', 'Greek', 'French', 'Japanese', 'Other'].map((c) => (
+                        {Array.from(new Set(['British', 'Italian', 'Indian', 'Mexican', 'Chinese', 'Thai', 'Greek', 'French', 'Japanese', customCuisine, 'Other'])).map((c) => (
                           <option key={c}>{c}</option>
                         ))}
                       </Select>
@@ -589,16 +622,18 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
                         <option value="chef-mode">Chef mode</option>
                       </Select>
                     </div>
-                    <TextInput
+                    <textarea
                       value={customIngredients}
                       onChange={(e) => setCustomIngredients(e.target.value)}
-                      placeholder="Ingredients, separated by commas"
+                      rows={4}
+                      placeholder={'Ingredients, one per line'}
                       aria-label="Ingredients"
+                      className="w-full rounded-xl border border-line bg-card px-3.5 py-2.5 text-[15px] placeholder:text-ink-3 focus:border-ink-2 focus:outline-none"
                     />
                     <textarea
                       value={customSteps}
                       onChange={(e) => setCustomSteps(e.target.value)}
-                      rows={3}
+                      rows={5}
                       placeholder={'Steps, one per line. Add timing like (-15m)'}
                       aria-label="Steps"
                       className="w-full rounded-xl border border-line bg-card px-3.5 py-2.5 text-[15px] placeholder:text-ink-3 focus:border-ink-2 focus:outline-none"
@@ -609,7 +644,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
                   </form>
                 )}
                 <div className="border-t border-line pt-4">
-                  <p className="mb-2 text-[13px] font-semibold text-ink-2">Or let the app do the typing</p>
+                  <p className="mb-2 text-[13px] font-semibold text-ink-2">Or describe a dish and let the app draft it</p>
                   {renderScan()}
                 </div>
               </Card>
@@ -908,9 +943,13 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
                     <ShoppingBasket className="h-4 w-4" /> Put away
                   </Button>
                 </div>
+                <Button variant="primary" block onClick={() => setDeliveryOpen(true)} disabled={toBuy.length === 0}>
+                  <Bike className="h-4 w-4" /> Get it delivered
+                </Button>
                 <p className="text-center text-[12px] text-ink-3">
                   “Put away” moves ticked items into the fridge and clears them from the list.
                 </p>
+                <DeliverySheet isOpen={deliveryOpen} onClose={() => setDeliveryOpen(false)} items={toBuy.map((i) => i.name)} />
               </>
             )}
           </>

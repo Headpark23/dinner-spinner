@@ -185,6 +185,10 @@ interface DinnerContextType {
   leaveHousehold: () => void;
   /** Google sign-in for family groups. googleClientId is null when the server has none set up. */
   googleClientId: string | null;
+  /** True when the server can read photos and PDFs of recipes. Links and pasted text always work. */
+  aiEnabled: boolean;
+  /** Headers that prove this phone belongs to its family group (empty for a guest). */
+  authHeaders: () => Record<string, string>;
   googleProfile: { name: string; email: string; picture: string } | null;
   familyNames: string[];
   signInWithGoogle: (
@@ -320,6 +324,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const householdRef = useRef(household);
   householdRef.current = household;
   const [googleClientId, setGoogleClientId] = useState<string | null>(null);
+  const [aiEnabled, setAiEnabled] = useState(false);
   const [googleProfile, setGoogleProfile] = useState<{ name: string; email: string; picture: string } | null>(() =>
     loadStored('google_profile', null)
   );
@@ -1754,6 +1759,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
         if (live && j && typeof j.googleClientId === 'string' && j.googleClientId) setGoogleClientId(j.googleClientId);
+        if (live && j && j.aiEnabled === true) setAiEnabled(true);
       })
       .catch(() => {});
     return () => {
@@ -2091,6 +2097,8 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         joinHousehold,
         leaveHousehold,
         googleClientId,
+        aiEnabled,
+        authHeaders,
         googleProfile,
         familyNames,
         signInWithGoogle,
