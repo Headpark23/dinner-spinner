@@ -348,7 +348,7 @@ test('Takeaways: a place can be added from its own website', async () => {
   assert.deepEqual(T.placeFromHtml('<html><head><title>Spice Hut - Takeaway in Leeds</title></head></html>'), { name: 'Spice Hut' });
   assert.equal(T.placeFromHtml('<html></html>'), null);
 
-  const { usePageFetcher, useStore } = await import('../../server');
+  const { usePageFetcher, useStore, usePlaces } = await import('../../server');
   useStore(createFileStore(null));
   usePageFetcher((async (url: string) => ({ html: url.includes('blank') ? '<html></html>' : page, url })) as any);
   await withServer(async (baseUrl) => {
@@ -371,6 +371,16 @@ test('Takeaways: a place can be added from its own website', async () => {
     assert.match(body.error, /type the name/i);
     assert.doesNotMatch(body.error, /recipe/i, 'this is a restaurant, not a recipe');
     assert.equal(body.website, 'https://blocked.example', 'the link is kept for the form');
+    // With a Google key, a blocked site is looked up by its address instead.
+    const asked: any[] = [];
+    usePlaces({ geocode: async () => ({ label: 'x', lat: 1, lon: 2 }), takeawaysNear: async () => ({ spots: [], complete: true }), findByWebsite: async (host: string) => { asked.push(host); return host.replace(/^www./, '') === 'blocked.example' ? { name: 'Blocked Bites', phone: '01234 567890' } : null; } } as any);
+    const viaGoogle = await (await lookup(a, { url: 'https://www.blocked.example/Home' })).json();
+    assert.equal(viaGoogle.details.name, 'Blocked Bites');
+    assert.equal(viaGoogle.via, 'google');
+    assert.equal(viaGoogle.website, 'https://www.blocked.example/Home');
+    assert.deepEqual(asked, ['www.blocked.example']);
+    const nobody = await lookup(a, { url: 'https://other.example' });
+    assert.equal(nobody.status, 502, 'no match: back to typing it in');
   });
   const { fetchPublicPage } = await import('../server/fetchPage');
   usePageFetcher(fetchPublicPage);
@@ -461,4 +471,22 @@ test('Takeaways: Google results are followed across pages and joined with the ma
   }) as unknown as typeof fetch;
   const only = await createPlaces(mapDown, async () => {}, 'k').takeawaysNear(53.99, -1.54, 3000);
   assert.deepEqual(only.spots.map((s) => s.name), ['Golden Wok']);
+});
+
+test('Takeaways: findByWebsite asks Google by the site address and only trusts a place whose own website matches', async () => {
+  const { createPlaces } = await import('../server/places');
+  const calls: any[] = [];
+  const reply = {
+    places: [
+      { displayName: { text: 'Somewhere Else' }, websiteUri: 'https://other.example/', formattedAddress: '9 Far St' },
+      { displayName: { text: 'Two Fat Indians' }, websiteUri: 'https://twofatindians.co.uk/Home', formattedAddress: '1 High St, Leeds LS1 1AA, UK', nationalPhoneNumber: '0113 000 0000', primaryTypeDisplayName: { text: 'Indian restaurant' }, location: { latitude: 53.8, longitude: -1.55 } },
+    ],
+  };
+  const fake = (async (url: string, init: any) => { calls.push({ url, headers: init.headers, body: JSON.parse(init.body) }); return new Response(JSON.stringify(reply)); }) as unknown as typeof fetch;
+  const found = await createPlaces(fake, async () => {}, 'key').findByWebsite!('www.twofatindians.co.uk', { lat: 53.8, lon: -1.55 });
+  assert.deepEqual(found, { name: 'Two Fat Indians', cuisine: 'Indian', address: '1 High St, Leeds LS1 1AA, UK', phone: '0113 000 0000', lat: 53.8, lon: -1.55 });
+  assert.equal(calls[0].body.textQuery, 'twofatindians.co.uk');
+  assert.equal(calls[0].headers['X-Goog-Api-Key'], 'key');
+  assert.equal(await createPlaces(fake, async () => {}, 'key').findByWebsite!('nobody.example'), null, 'no matching website, no guess');
+  assert.equal(await createPlaces(fake, async () => {}, undefined).findByWebsite!('twofatindians.co.uk'), null, 'no key, no lookup');
 });

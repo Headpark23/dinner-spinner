@@ -11,6 +11,7 @@ import {
   parseOverpass,
   viewbox,
   type SharedSpot,
+  type PlaceDetails,
 } from '../utils/takeaways';
 
 /**
@@ -27,6 +28,8 @@ export type Nearby = { spots: SharedSpot[]; complete: boolean };
 export type Places = {
   geocode(query: string): Promise<{ label: string; lat: number; lon: number }>;
   takeawaysNear(lat: number, lon: number, radiusM: number): Promise<Nearby>;
+  /** A place's details from Google by its website's host, for when the site itself refuses to be read. Needs a key; null if none matched. */
+  findByWebsite?(host: string, near?: { lat: number; lon: number }): Promise<PlaceDetails | null>;
 };
 
 const OVERPASS_ENDPOINTS = [
@@ -160,6 +163,55 @@ export function createPlaces(
   };
 
   return {
+    async findByWebsite(host, near) {
+      if (!googleKey) return null;
+      const bare = (h: string) => h.toLowerCase().replace(/^www./, '');
+      const want = bare(host);
+      try {
+        const res = await withTimeout(
+          GOOGLE_SEARCH,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Goog-Api-Key': googleKey,
+              'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.location,places.primaryTypeDisplayName,places.nationalPhoneNumber,places.websiteUri',
+            },
+            body: JSON.stringify({
+              textQuery: want,
+              pageSize: 10,
+              regionCode: 'GB',
+              ...(near ? { locationBias: { circle: { center: { latitude: near.lat, longitude: near.lon }, radius: 50_000 } } } : {}),
+            }),
+          },
+          8_000
+        );
+        if (!res.ok) return null;
+        const json: any = await res.json();
+        for (const p of Array.isArray(json?.places) ? json.places : []) {
+          let theirs = '';
+          try {
+            theirs = bare(new URL(String(p?.websiteUri || '')).hostname);
+          } catch {
+            continue;
+          }
+          const name = typeof p?.displayName?.text === 'string' ? p.displayName.text.trim() : '';
+          if (theirs !== want || !name) continue;
+          const cuisine = typeof p?.primaryTypeDisplayName?.text === 'string' ? p.primaryTypeDisplayName.text.replace(/ restaurant$/i, '').trim() : '';
+          return {
+            name: name.slice(0, 80),
+            ...(cuisine ? { cuisine: cuisine.slice(0, 40) } : {}),
+            ...(typeof p.formattedAddress === 'string' ? { address: p.formattedAddress.slice(0, 120) } : {}),
+            ...(typeof p.nationalPhoneNumber === 'string' ? { phone: p.nationalPhoneNumber.slice(0, 30) } : {}),
+            ...(typeof p.location?.latitude === 'number' && typeof p.location?.longitude === 'number' ? { lat: p.location.latitude, lon: p.location.longitude } : {}),
+          };
+        }
+      } catch {
+        // fall through: nothing found
+      }
+      return null;
+    },
+
     async geocode(query) {
       let json: unknown;
       try {
