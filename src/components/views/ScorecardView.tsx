@@ -3,10 +3,9 @@ import { useDinner } from '../../context/DinnerContext';
 import { Snowflake, Search } from 'lucide-react';
 import { Button, Card, FreshDot, Sheet, TextInput, cx, cuisineColor } from '../ui';
 import { DishRow, RateStars } from '../DishRows';
+import { cookingStreak, homeCookedThisWeek, milestones, statsFrom, dayKey } from '../../utils/milestones';
 
 const TAKEAWAY_COST_GBP = 24; // assumed average household takeaway, used only for the savings estimate
-
-const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 
 export const ScorecardView: React.FC = () => {
   const {
@@ -18,6 +17,7 @@ export const ScorecardView: React.FC = () => {
     householdMembers,
     voteLogs,
     rescuedItemsCount,
+    freezer,
     setClearoutActive,
     setActiveView,
     setActiveMealResult,
@@ -52,14 +52,11 @@ export const ScorecardView: React.FC = () => {
       takeaway: takeawayDays.has(key),
     };
   });
-  let streak = 0;
-  for (let i = 0; i < 60; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
-    if (cookedDays.has(dayKey(d))) streak++;
-    else if (i > 0) break; // today not cooked yet doesn't break the streak
-  }
-  const homeThisWeek = week.filter((d) => d.cooked).length;
+  const streak = cookingStreak(cookLog, today);
+  const homeThisWeek = homeCookedThisWeek(cookLog, today);
+  const { earned: earnedMilestones, next: nextMilestone } = milestones(
+    statsFrom({ cookLog, takeawayLog, freezer, rescued: rescuedItemsCount, now: today })
+  );
 
   // --- Rating ---
   const recentCookedIds = Array.from(new Set(cookLog.map((c) => c.mealId))).filter((id) =>
@@ -153,7 +150,7 @@ export const ScorecardView: React.FC = () => {
                 className={cx(
                   'flex h-9 w-9 items-center justify-center rounded-full text-[11px] font-semibold',
                   d.cooked && 'bg-sage text-white',
-                  !d.cooked && d.takeaway && 'border-2 border-tomato text-tomato',
+                  !d.cooked && d.takeaway && 'border-2 border-saffron text-saffron',
                   !d.cooked && !d.takeaway && 'border border-dashed border-line-strong'
                 )}
                 aria-label={`${d.label}: ${d.cooked ? 'cooked at home' : d.takeaway ? 'takeaway' : 'nothing logged'}`}
@@ -187,6 +184,22 @@ export const ScorecardView: React.FC = () => {
           </p>
         )}
       </Card>
+
+      {(earnedMilestones.length > 0 || nextMilestone) && (
+        <Card className="p-4">
+          <h2 className="text-[15px] font-semibold">Milestones</h2>
+          {earnedMilestones.length > 0 && (
+            <ul className="mt-3 flex flex-wrap gap-2">
+              {earnedMilestones.map((m) => (
+                <li key={m.key} className="rounded-full bg-sage-soft px-3 py-1.5 text-[13px] font-semibold text-sage">
+                  {m.label}
+                </li>
+              ))}
+            </ul>
+          )}
+          {nextMilestone && <p className="mt-3 text-[13px] text-ink-2">Next: {nextMilestone.label}.</p>}
+        </Card>
+      )}
 
       {/* Rate */}
       {recentCookedIds.length > 0 && (
