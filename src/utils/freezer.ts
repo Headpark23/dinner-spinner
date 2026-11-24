@@ -1,4 +1,5 @@
 import { FreezerItem } from '../types';
+import { alreadyApplied, cleanOpId, remember } from './opIds';
 
 export const newFreezerId = () => `fz_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
@@ -93,19 +94,23 @@ export function sanitizeFreezer(raw: unknown): FreezerItem[] {
 // Shared freezer. Same idea as the fridge: small operations applied identically on
 // the server and on each phone, so two people ticking portions never overwrite each other.
 // ---------------------------------------------------------------------------
-export type FreezerOp =
+/** Every op may carry an `opId`; the server skips one it has already applied (a resend after a lost reply). */
+export type FreezerOp = { opId?: string } & (
   | { type: 'seed'; items: FreezerItem[] } // first phone to arrive fills an empty server; ignored afterwards
   | { type: 'replaceAll'; items: FreezerItem[] } // restore a backup or reset
   | { type: 'add'; item: FreezerItem }
   | { type: 'tick'; id: string; at: string } // one portion eaten
   | { type: 'putBack'; id: string } // undo one portion
   | { type: 'remove'; id: string }
-  | { type: 'clearUsed' };
+  | { type: 'clearUsed' }
+);
 
 export interface FreezerState {
   version: number;
   seeded: boolean;
   items: FreezerItem[];
+  /** Ids of the most recent operations applied, so a repeat is ignored. */
+  applied?: string[];
 }
 
 const MAX_ITEMS = 300;
@@ -113,6 +118,13 @@ const MAX_ITEMS = 300;
 /** Pure: returns the new state without touching the old one. */
 export function applyFreezerOp(state: FreezerState, op: FreezerOp | any): FreezerState {
   if (!op || typeof op !== 'object') return state;
+  const id = cleanOpId(op.opId);
+  if (alreadyApplied(state.applied, id)) return state;
+  const next = applyOne(state, op);
+  return id ? { ...next, applied: remember(state.applied, id) } : next;
+}
+
+function applyOne(state: FreezerState, op: any): FreezerState {
   switch (op.type) {
     case 'seed':
       return state.seeded ? state : { ...state, seeded: true, items: sanitizeFreezer(op.items).slice(0, MAX_ITEMS) };

@@ -295,6 +295,57 @@ test('Server: shared freezer, ticks from two phones add up and households stay a
   });
 });
 
+test('Operation ids: a resent operation is applied once, in the fridge and the freezer', async () => {
+  const { applyFreezerOp } = await import('./freezer');
+  const { applyFridgeOp } = await import('./fridge');
+  const { withOpIds, remember } = await import('./opIds');
+
+  const batch = { id: 'z1', name: 'Chilli', portions: 3, totalPortions: 3, frozenDate: '2026-01-01T12:00:00Z' };
+  let fz: any = applyFreezerOp({ version: 0, seeded: true, items: [] }, { type: 'add', item: batch });
+  const tick = { type: 'tick', id: 'z1', at: '2026-02-01T18:00:00Z', opId: 'op_a' };
+  fz = applyFreezerOp(fz, tick);
+  fz = applyFreezerOp(fz, tick); // the resend
+  assert.equal(fz.items[0].portions, 2, 'the same tick counts once');
+  fz = applyFreezerOp(fz, { ...tick, opId: 'op_b' });
+  assert.equal(fz.items[0].portions, 1, 'a different tick still counts');
+  fz = applyFreezerOp(fz, { type: 'tick', id: 'z1', at: '2026-02-02T18:00:00Z' });
+  assert.equal(fz.items[0].portions, 0, 'ops without an id still work');
+
+  const item = { id: 'f1', name: 'Milk', category: 'Fridge', freshness: 'green', addedDate: '2026-01-01' };
+  let fr: any = applyFridgeOp({ version: 0, seeded: true, items: [item] } as any, { type: 'cycle', id: 'f1', opId: 'c1' });
+  fr = applyFridgeOp(fr, { type: 'cycle', id: 'f1', opId: 'c1' });
+  assert.equal(fr.items[0].freshness, 'amber', 'a resent cycle does not move it twice');
+
+  const ids = withOpIds([{ type: 'x' }, { type: 'y', opId: 'keep' }]).map((o: any) => o.opId);
+  assert.equal(ids[1], 'keep');
+  assert.notEqual(ids[0], ids[1]);
+  let seen: string[] | undefined;
+  for (let i = 0; i < 400; i++) seen = remember(seen, 'id' + i);
+  assert.equal(seen!.length, 300, 'only the most recent ids are kept');
+  assert.equal(seen!.at(-1), 'id399');
+});
+
+test('Server: a resent freezer or fridge operation is not applied twice', async () => {
+  await withServer(async (baseUrl) => {
+    const a = await newHousehold(baseUrl);
+    const post = (path: string, ops: any[]) => fetch(`${baseUrl}${path}`, { method: 'POST', headers: authed(a), body: JSON.stringify({ ops }) }).then((r) => r.json());
+    const batch = { id: 'z1', name: 'Chilli', portions: 3, totalPortions: 3, frozenDate: '2026-01-01T12:00:00Z' };
+    await post('/api/freezer/ops', [{ type: 'add', item: batch, opId: 'a1' }]);
+    const tick = { type: 'tick', id: 'z1', at: '2026-02-01T18:00:00Z', opId: 'a2' };
+    await post('/api/freezer/ops', [tick]);
+    const again = await post('/api/freezer/ops', [tick, { type: 'putBack', id: 'nope', opId: 'a3' }]); // phone resends its queue
+    assert.equal(again.items[0].portions, 2);
+    assert.ok(again.applied.includes('a2'));
+
+    const milk = { id: 'f1', name: 'Milk', category: 'Fridge', freshness: 'green', addedDate: '2026-01-01' };
+    await post('/api/fridge/ops', [{ type: 'add', item: milk, opId: 'b1' }]);
+    const cycle = { type: 'cycle', id: 'f1', opId: 'b2' };
+    await post('/api/fridge/ops', [cycle]);
+    const fridge = await post('/api/fridge/ops', [cycle]);
+    assert.equal(fridge.items[0].freshness, 'amber');
+  });
+});
+
 test('Server: shared fridge and cooking history, isolated per household', async () => {
   await withServer(async (baseUrl) => {
     for (const [method, path] of [['GET', '/api/fridge'], ['POST', '/api/fridge/ops'], ['GET', '/api/history'], ['POST', '/api/history']]) {

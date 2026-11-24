@@ -23,6 +23,7 @@ import {
   FreezerItem,
 } from '../types';
 import { createFreezerItem, applyFreezerOp, sanitizeFreezer, FreezerOp } from '../utils/freezer';
+import { withOpIds } from '../utils/opIds';
 import { WORLD_RECIPES } from '../data/worldRecipes';
 import { adaptRecipes, describeTasteChange, lovedCount, TasteResult } from '../utils/taste';
 import { applyShoppingOp, newShoppingId, ShoppingOp } from '../utils/shopping';
@@ -706,7 +707,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           json = await res.json();
         }
         // Re-apply anything queued meanwhile so local edits never flicker away.
-        const merged = pendingFridgeOps.current.reduce(applyFridgeOp, { version: json.version, seeded: true, items: json.items });
+        const merged = pendingFridgeOps.current.reduce(applyFridgeOp, { version: json.version, seeded: true, items: json.items, applied: json.applied });
         setPantry(merged.items);
       } while (fridgeDirty.current);
     } catch {
@@ -724,8 +725,9 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return () => clearInterval(timer);
   }, [syncFridge, household]);
 
-  const queueFridge = (ops: FridgeOp[]) => {
-    if (ops.length === 0) return;
+  const queueFridge = (rawOps: FridgeOp[]) => {
+    if (rawOps.length === 0) return;
+    const ops = withOpIds(rawOps); // an id per operation, so a resend after a lost reply is not counted twice
     setPantry((prev) => ops.reduce(applyFridgeOp, { version: 0, seeded: true, items: prev }).items);
     if (!householdRef.current) return;
     pendingFridgeOps.current = [...pendingFridgeOps.current, ...ops];
@@ -775,7 +777,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           json = await res.json();
         }
         // Re-apply anything queued meanwhile so local edits never flicker away.
-        const merged = pendingFreezerOps.current.reduce(applyFreezerOp, { version: json.version, seeded: true, items: sanitizeFreezer(json.items) });
+        const merged = pendingFreezerOps.current.reduce(applyFreezerOp, { version: json.version, seeded: true, items: sanitizeFreezer(json.items), applied: json.applied });
         setFreezer(merged.items);
       } while (freezerDirty.current);
     } catch {
@@ -793,8 +795,9 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return () => clearInterval(timer);
   }, [syncFreezer, household]);
 
-  const queueFreezer = (ops: FreezerOp[]) => {
-    if (ops.length === 0) return;
+  const queueFreezer = (rawOps: FreezerOp[]) => {
+    if (rawOps.length === 0) return;
+    const ops = withOpIds(rawOps); // an id per operation, so a resend after a lost reply is not counted twice
     setFreezer((prev) => ops.reduce(applyFreezerOp, { version: 0, seeded: true, items: prev }).items);
     if (!householdRef.current) return;
     pendingFreezerOps.current = [...pendingFreezerOps.current, ...ops];
