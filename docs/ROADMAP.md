@@ -9,7 +9,7 @@ Effort: S = under a day, M = 1 to 3 days, L = a week or more.
 | # | Idea | Status on main | What is left |
 | --- | --- | --- | --- |
 | 1 | Week planner | **Mostly built.** `PlannerSheet.tsx`, `utils/planner.ts` (`suggestWeek`, themes per night, `tidyPlan`, `weekShopping`), "shop for the week" in one tap. | Freezer nights, household sharing, cost cap, cuisine variety. |
-| 2 | Installable and offline | **Built.** `public/manifest.webmanifest`, `public/sw.js` (app shell, assets, photos, fonts cached), registered in `main.tsx`, offline shopping queue. | Update prompt, install prompt. |
+| 2 | Installable and offline | **Built.** `public/manifest.webmanifest`, `public/sw.js` (app shell, assets, photos, fonts cached), registered in `main.tsx`, offline shopping queue, install and update prompts. | Build-generated `VERSION`. |
 | 3 | Step alerts | **Mostly built.** Screen wake lock, service-worker notifications and an in-app banner when a step is due. | Real background push (needs a server), install prompt for iPhone. |
 | 4 | Voting from separate phones | **Built, different design.** Household-wide live vote (`LiveVote.tsx`, `/api/tonight`), decided on the server, phones poll. Uses Google-sign-in family groups instead of a 4-digit room code. | Decide whether a code is still wanted. |
 | 5 | Dietary needs per person | **Partly built, household-wide.** `utils/diets.ts` (vegetarian, vegan, pescatarian, gluten-free, dairy-free, nut-free), `DietPicker`, avoid list with plural matching. | Per-person diets and a clash warning on the vote. |
@@ -43,9 +43,10 @@ The Freezer tab is built and, as of PR 31, shared with the household like the fr
 - Tests: extend the planner tests to cover freezer nights, cost cap and cuisine spacing.
 
 ### 2. Installable and offline (S)
-- The service worker calls `skipWaiting()` on install, so a new version takes over at once but an open page keeps running old code until it reloads. Add a small "A new version is ready, reload" notice (listen for `controllerchange`).
-- Add a gentle in-app "Install" prompt using `beforeinstallprompt` (Android and desktop) and a one-line "Share, then Add to Home Screen" hint on iPhone. Nothing handles this today.
-- Bump `VERSION` in `sw.js` on each release that changes the shell. Consider generating it from the build so this cannot be forgotten.
+- ~~Update prompt~~ **Done.** `sw.js` no longer calls `skipWaiting()` on install. A new version waits, `utils/swUpdate.ts` (`watchForUpdate`) notices it (already waiting, or `updatefound` then `installed`, and only when a controller exists so a first visit is not an "update"), and `UpdateNotice` in `components/InstallUpdate.tsx` shows "A new version is ready, Refresh". Tapping posts `SKIP_WAITING` to the waiting worker and the page reloads on `controllerchange`, so nobody is reloaded mid-recipe. The app also re-checks for a new version whenever it returns to the foreground.
+- ~~Install prompt~~ **Done.** `utils/installPrompt.ts` captures `beforeinstallprompt` (Android and desktop Chrome) for an "Install" button, and on iPhone and iPad Safari (which has no such event) shows "Tap Share, then Add to Home Screen". It is hidden when `display-mode: standalone` or `navigator.standalone` is true, and a dismissal is remembered for 30 days. It sits at the top of the More view as `InstallCard`. The iPhone wording says step reminders (item 3) need the app installed, which is why the two pair up.
+- Tests: `utils/installUpdate.test.ts`. Not checkable in a dev build: the service worker only registers in production, so the waiting-worker flow and a real install dialog need a production build on a device.
+- **Still open.** Bump `VERSION` in `sw.js` on each release that changes the shell (now `v3`). Consider generating it from the build so this cannot be forgotten.
 
 ### 3. Step alerts (S to M)
 - ~~Wake lock~~ **Done.** `src/utils/wakeLock.ts` holds the screen awake while a dinner is agreed and steps remain (a "Keep the screen on while I cook" tick, on by default), asks again when the page becomes visible, and does nothing where the browser lacks it.

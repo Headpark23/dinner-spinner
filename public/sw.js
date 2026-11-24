@@ -3,7 +3,7 @@
  * - Dish photos and fonts are cached as they are seen.
  * - /api is never cached: household data must always come from the server.
  * Bump VERSION to force every device to refresh its cache. */
-const VERSION = 'v2';
+const VERSION = 'v3';
 const SHELL = `ds-shell-${VERSION}`;
 const ASSETS = `ds-assets-${VERSION}`;
 
@@ -12,7 +12,6 @@ self.addEventListener('install', (event) => {
     caches
       .open(SHELL)
       .then((cache) => cache.addAll(['/', '/manifest.webmanifest', '/icons/icon-192.png']))
-      .then(() => self.skipWaiting())
   );
 });
 
@@ -23,6 +22,11 @@ self.addEventListener('activate', (event) => {
       .then((keys) => Promise.all(keys.filter((k) => ![SHELL, ASSETS].includes(k)).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
+});
+
+// A new version waits until the page asks for it (the "Refresh" notice), so nobody is reloaded mid-recipe.
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 // Tapping a step reminder brings the app forward (or opens it) on the cooking screen.
