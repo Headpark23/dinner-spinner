@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useDinner } from '../context/DinnerContext';
 import { Lock, ChevronDown, Dices, RotateCcw } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { COMBO_REELS, COMBO_HEADERS } from '../data/initialData';
+import { COMBO_HEADERS } from '../data/initialData';
 import { Button, cx, timeLabel, effortLabel } from './ui';
 
 interface ReelWindowProps {
@@ -46,6 +46,7 @@ export const ReelWindow: React.FC<ReelWindowProps> = ({ onSpin }) => {
     resetNudges,
     meals,
     eligiblePool,
+    comboReels,
     activeView,
     toggleSound,
   } = useDinner();
@@ -118,7 +119,7 @@ export const ReelWindow: React.FC<ReelWindowProps> = ({ onSpin }) => {
   };
 
   const pool = eligiblePool.length > 0 ? eligiblePool : meals;
-  const reelLists = mode === 'single' ? [] : COMBO_REELS[mode];
+  const reelLists = mode === 'single' ? [] : comboReels[mode];
 
   // Neighbours on the single-reel drum, so the window reads as a physical reel.
   const currentIdx = pool.findIndex((m) => m.id === activeMealResult?.id);

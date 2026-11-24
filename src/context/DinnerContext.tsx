@@ -4,6 +4,7 @@ import {
   TimeStake,
   EffortLevel,
   MachineMode,
+  ReelComboItem,
   PantryItem,
   PantryMatchInfo,
   HouseholdMember,
@@ -55,6 +56,7 @@ import {
   buildComboMeal,
   buildReverseTimerSteps,
 } from '../utils/dinnerEngine';
+import { buildReels, reelExtras, jackpotRecipeId, JACKPOT_FILL, type ComboMode } from '../utils/reelParts';
 
 interface DinnerContextType {
   // Machine State
@@ -80,6 +82,8 @@ interface DinnerContextType {
   toggleSound: () => void;
   eligiblePoolCount: number;
   eligiblePool: Meal[];
+  /** The reels for each mode, including parts and whole dishes from our own saved recipes. */
+  comboReels: Record<ComboMode, ReelComboItem[][]>;
   exactEffortMatchCount: number;
 
   // Takeaway Override State
@@ -791,6 +795,24 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Eligible pool computation for current filters
   const eligibleInfo = filterEligibleMeals(meals, timeStake, effort, bannedIngredients, diets);
   const eligiblePoolCount = eligibleInfo.pool.length;
+
+  // Saved recipes feed the 3 and 4 reel spinner: their parts join the reels, and the whole dish can land on Main.
+  const reelAllowed = (label: string) =>
+    mealFitsDiets([label], diets) &&
+    !bannedIngredients.some((b) => b.trim().length > 0 && label.toLowerCase().includes(b.toLowerCase()));
+  const extras = reelExtras(meals, reelAllowed);
+  const comboReels: Record<ComboMode, ReelComboItem[][]> = {
+    '3-reel': buildReels('3-reel', extras),
+    '4-reel': buildReels('4-reel', extras),
+    sunday: buildReels('sunday', extras),
+  };
+  /** Settles a set of reel labels: a whole saved dish if Main landed on one, otherwise a plate built from the parts. */
+  const settleReels = (m: MachineMode, labels: string[]): { labels: string[]; meal: Meal } => {
+    const id = m === 'sunday' ? null : jackpotRecipeId(labels[1], extras);
+    const dish = id ? meals.find((x) => x.id === id) : undefined;
+    if (dish) return { labels: labels.map((l, i) => (i === 1 ? l : JACKPOT_FILL)), meal: dish };
+    return { labels, meal: buildComboMeal(m, labels, ...comboLimits(m)) };
+  };
   const exactEffortMatchCount = eligibleInfo.exactMatchCount;
 
   // Nudge logic: steps a reel to adjacent item AND updates activeMealResult immediately
@@ -811,13 +833,18 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setActiveMealResult(meals[nextIndex]);
       }
     } else {
-      const list = COMBO_REELS[mode][reelIndex] || COMBO_REELS[mode][0];
+      const list = comboReels[mode][reelIndex] || comboReels[mode][0];
       const currentVal = customReelResult[reelIndex];
       const currentIndex = list.findIndex((i) => i.label === currentVal);
       const nextReels = [...customReelResult];
+      // Nudging a reel that is showing "Part of the recipe" starts again from the top of that reel.
       nextReels[reelIndex] = list[(currentIndex + 1) % list.length].label;
-      setCustomReelResult(nextReels);
-      setActiveMealResult(buildComboMeal(mode, nextReels, ...comboLimits(mode)));
+      for (let i = 0; i < nextReels.length; i++) {
+        if (nextReels[i] === JACKPOT_FILL && i !== reelIndex) nextReels[i] = comboReels[mode][i][0].label;
+      }
+      const settled = settleReels(mode, nextReels);
+      setCustomReelResult(settled.labels);
+      setActiveMealResult(settled.meal);
     }
   };
 
@@ -852,11 +879,14 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       } else {
         const newRes = [...customReelResult];
-        COMBO_REELS[mode].forEach((list, i) => {
-          if (!heldReels[i]) newRes[i] = list[Math.floor(Math.random() * list.length)].label;
+        comboReels[mode].forEach((list, i) => {
+          // A reel that was only showing "Part of the recipe" has nothing real to hold on to.
+          const holding = heldReels[i] && newRes[i] !== JACKPOT_FILL;
+          if (!holding) newRes[i] = list[Math.floor(Math.random() * list.length)].label;
         });
-        setCustomReelResult(newRes);
-        setActiveMealResult(buildComboMeal(mode, newRes, ...comboLimits(mode)));
+        const settled = settleReels(mode, newRes);
+        setCustomReelResult(settled.labels);
+        setActiveMealResult(settled.meal);
         sound.playReelLock();
         sound.playWin();
       }
@@ -2017,6 +2047,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         toggleSound,
         eligiblePoolCount,
         eligiblePool: eligibleInfo.pool,
+        comboReels,
         exactEffortMatchCount,
 
         consecutiveRejections,
