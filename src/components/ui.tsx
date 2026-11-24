@@ -353,7 +353,7 @@ export const Sheet: React.FC<{
   if (!isOpen) return null;
 
   // Drawn straight onto the page (not inside the screen that opened it), so the bottom tab bar can never sit on top of it.
-  return createPortal(
+  const sheet = (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
       <div className="absolute inset-0 bg-[rgba(20,16,12,0.55)]" onClick={onClose} aria-hidden="true" />
       <div
@@ -380,9 +380,10 @@ export const Sheet: React.FC<{
         </div>
         {children}
       </div>
-    </div>,
-    document.body
+    </div>
   );
+  // (There is no page to draw onto when the screen is rendered as plain HTML, as the tests do.)
+  return typeof document === 'undefined' ? sheet : createPortal(sheet, document.body);
 };
 
 /** Typographic stand-in for a dish photo: cuisine initial on a tinted tile. */
