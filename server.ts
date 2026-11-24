@@ -611,6 +611,28 @@ function withTimeout<T>(promise: Promise<T>, ms = GEMINI_TIMEOUT_MS): Promise<T>
   });
 }
 
+// Gemini is sometimes overloaded (503) or rate limited (429). Try the main model, then a second one, each with its
+// own short timeout so both fit inside the serverless time limit.
+const GEMINI_MODELS = ['gemini-3.8-flash', 'gemini-2.5-flash'];
+const GEMINI_ATTEMPT_MS = Math.min(GEMINI_TIMEOUT_MS, 12000);
+const isBusyError = (e: any) => /\b(503|429|UNAVAILABLE|RESOURCE_EXHAUSTED|overloaded|high demand|timed out|abort)/i.test(String(e?.message || e));
+async function generateWithFallback(request: any): Promise<any> {
+  let last: any;
+  for (const model of GEMINI_MODELS) {
+    try {
+      return await withTimeout(
+        ai!.models.generateContent({ ...request, model, config: { ...request.config, abortSignal: AbortSignal.timeout(GEMINI_ATTEMPT_MS) } }),
+        GEMINI_ATTEMPT_MS
+      );
+    } catch (e) {
+      last = e;
+      if (!isBusyError(e)) throw e;
+      console.warn(`Gemini ${model} busy, trying the next model:`, (e as any)?.message);
+    }
+  }
+  throw last;
+}
+
 // Realistic UK Kitchen Demo Fallbacks when GEMINI_API_KEY is not configured
 function getSimulatedVisionResponse(type: string, textPrompt?: string) {
   if (type === 'snap-fridge') {
@@ -786,13 +808,10 @@ For each item:
 
       parts.push({ text: prompt });
 
-      const response = await withTimeout(ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+      const response = await generateWithFallback({
         contents: { parts },
         config: {
           responseMimeType: 'application/json',
-          // Cancel the underlying HTTP request too, so nothing lingers after we fall back.
-          abortSignal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
           responseSchema: {
             type: Type.OBJECT,
             properties: {
@@ -816,7 +835,7 @@ For each item:
             required: ['detectedItems'],
           },
         },
-      }));
+      });
 
       const parsed = JSON.parse(response.text || '{"detectedItems":[]}');
       return res.json(parsed);
@@ -830,13 +849,10 @@ Extract:
 
       parts.push({ text: prompt });
 
-      const response = await withTimeout(ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+      const response = await generateWithFallback({
         contents: { parts },
         config: {
           responseMimeType: 'application/json',
-          // Cancel the underlying HTTP request too, so nothing lingers after we fall back.
-          abortSignal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
           responseSchema: {
             type: Type.OBJECT,
             properties: {
@@ -859,7 +875,7 @@ Extract:
             required: ['items'],
           },
         },
-      }));
+      });
 
       const parsed = JSON.parse(response.text || '{"items":[]}');
       return res.json(parsed);
@@ -879,13 +895,10 @@ Fields:
 
       parts.push({ text: prompt });
 
-      const response = await withTimeout(ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+      const response = await generateWithFallback({
         contents: { parts },
         config: {
           responseMimeType: 'application/json',
-          // Cancel the underlying HTTP request too, so nothing lingers after we fall back.
-          abortSignal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
           responseSchema: {
             type: Type.OBJECT,
             properties: {
@@ -924,13 +937,16 @@ Fields:
             ],
           },
         },
-      }));
+      });
 
       const parsed = JSON.parse(response.text || '{}');
       return res.json({ meal: parsed });
     }
   } catch (error: any) {
     console.warn('Gemini API error:', error?.message);
+    if (isBusyError(error)) {
+      return res.status(503).json({ busy: true, error: 'The scanner is busy right now. Give it a minute and try again.' });
+    }
     return res.status(502).json({
       error: 'The scanner couldn’t read that just now. Try again, or add it by hand.',
     });
