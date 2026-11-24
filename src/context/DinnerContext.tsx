@@ -56,6 +56,7 @@ import {
   buildReverseTimerSteps,
 } from '../utils/dinnerEngine';
 import { mentionsAny } from '../utils/avoid';
+import { missingCost, costLimitValue, type CostLimit } from '../utils/cost';
 import { buildReels, reelExtras, jackpotRecipeId, JACKPOT_FILL, type ComboMode } from '../utils/reelParts';
 
 interface DinnerContextType {
@@ -64,6 +65,12 @@ interface DinnerContextType {
   setMode: (m: MachineMode) => void;
   timeStake: TimeFilter;
   setTimeStake: (t: TimeFilter) => void;
+  /** How much the household is happy to spend on ingredients tonight ("free" = only what is already in the house). */
+  costLimit: CostLimit;
+  setCostLimit: (c: CostLimit) => void;
+  /** Roughly what a dish would cost to buy, given what is in the fridge and cupboards. */
+  costToBuy: (meal: Meal) => number;
+  costRelaxed: boolean;
   effort: EffortFilter;
   setEffort: (e: EffortFilter) => void;
   clearoutActive: boolean;
@@ -361,6 +368,14 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   });
   const [timeStake, setTimeStake] = useState<TimeFilter>('any');
   const [effort, setEffort] = useState<EffortFilter>('any');
+  const [costLimit, setCostLimitState] = useState<CostLimit>(() => {
+    const saved = loadStored<string>('cost', 'any');
+    return saved === 'free' || saved === '5' || saved === '10' ? saved : 'any';
+  });
+  const setCostLimit = (c: CostLimit) => {
+    setCostLimitState(c);
+    localStorage.setItem(`${STORAGE_KEY}_cost`, JSON.stringify(c));
+  };
   const [clearoutActive, setClearoutActive] = useState<boolean>(false);
   const [nudgesRemaining, setNudgesRemaining] = useState<number>(3);
   const [heldReels, setHeldReels] = useState<boolean[]>([false, false, false, false]);
@@ -772,7 +787,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setCustomReelResult(initial);
       setActiveMealResult(buildComboMeal(nextMode, initial, ...comboLimits(nextMode)));
     } else {
-      const { pool } = filterEligibleMeals(meals, timeStake, effort, bannedIngredients, diets);
+      const { pool } = filterEligibleMeals(meals, timeStake, effort, bannedIngredients, diets, costRule);
       if (pool.length > 0) {
         setActiveMealResult(pool[0]);
       }
@@ -800,7 +815,9 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   // Eligible pool computation for current filters
-  const eligibleInfo = filterEligibleMeals(meals, timeStake, effort, bannedIngredients, diets);
+  const costToBuy = (m: Meal) => missingCost(m, pantry, staples);
+  const costRule = { limit: costLimitValue(costLimit), of: costToBuy };
+  const eligibleInfo = filterEligibleMeals(meals, timeStake, effort, bannedIngredients, diets, costRule);
   const eligiblePoolCount = eligibleInfo.pool.length;
 
   // Saved recipes feed the 3 and 4 reel spinner: their parts join the reels, and the whole dish can land on Main.
@@ -827,6 +844,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return { labels, meal: buildComboMeal(m, labels, ...comboLimits(m)) };
   };
   const exactEffortMatchCount = eligibleInfo.exactMatchCount;
+  const costRelaxed = !!eligibleInfo.costRelaxed;
 
   // Nudge logic: steps a reel to adjacent item AND updates activeMealResult immediately
   const useNudge = (reelIndex: number) => {
@@ -880,7 +898,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       clearInterval(tickInterval);
 
       if (mode === 'single') {
-        const { pool } = filterEligibleMeals(meals, timeStake, effort, bannedIngredients, diets);
+        const { pool } = filterEligibleMeals(meals, timeStake, effort, bannedIngredients, diets, costRule);
         if (pool.length === 0) {
           // Every dish clashes with the household's diets: show nothing rather than a wrong dish.
           setActiveMealResult(null);
@@ -2097,6 +2115,10 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         eligiblePool: eligibleInfo.pool,
         comboReels,
         exactEffortMatchCount,
+        costLimit,
+        setCostLimit,
+        costToBuy,
+        costRelaxed,
 
         consecutiveRejections,
         takeawayOverrideActive,
