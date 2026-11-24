@@ -71,11 +71,27 @@ export const Card: React.FC<React.HTMLAttributes<HTMLDivElement> & { as?: 'div' 
 }) => {
   const Tag = as;
   return (
-    <Tag {...rest} className={cx('rounded-2xl border border-line bg-card', className)}>
+    <Tag {...rest} className={cx('rounded-2xl border border-line bg-card shadow-[0_1px_2px_rgba(31,26,21,0.05)]', className)}>
       {children}
     </Tag>
   );
 };
+
+/** Every screen opens the same way: a title, one plain sentence saying what the screen is for, and at most one action. */
+export const PageHeader: React.FC<{
+  title: string;
+  subtitle?: React.ReactNode;
+  action?: React.ReactNode;
+  className?: string;
+}> = ({ title, subtitle, action, className }) => (
+  <div className={cx('flex items-start justify-between gap-3', className)}>
+    <div className="min-w-0">
+      <h1 className="font-display text-[28px] leading-[1.1] font-semibold tracking-tight">{title}</h1>
+      {subtitle && <p className="mt-1.5 text-[14px] leading-snug text-ink-2">{subtitle}</p>}
+    </div>
+    {action && <div className="shrink-0 pt-1">{action}</div>}
+  </div>
+);
 
 export const SectionHeader: React.FC<{
   eyebrow?: string;

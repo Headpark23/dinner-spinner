@@ -1,10 +1,9 @@
 import React from 'react';
 import { useDinner } from '../context/DinnerContext';
-import { Volume2, VolumeX, CircleHelp, HardDriveDownload, ArrowRight } from 'lucide-react';
+import { Volume2, VolumeX, CircleHelp, ArrowRight } from 'lucide-react';
 import { IconButton } from './ui';
 
 interface CabinetHeaderProps {
-  onOpenProfile: () => void;
   onOpenRules: () => void;
 }
 
@@ -19,13 +18,13 @@ const Mark: React.FC = () => (
   </svg>
 );
 
-export const CabinetHeader: React.FC<CabinetHeaderProps> = ({ onOpenProfile, onOpenRules }) => {
-  const { takeawayOverrideActive, soundMuted, toggleSound, isSyncing, setActiveView, activeView } =
-    useDinner();
+/** Slim top bar: brand on the left, the two things you reach for mid-dinner on the right. */
+export const CabinetHeader: React.FC<CabinetHeaderProps> = ({ onOpenRules }) => {
+  const { takeawayOverrideActive, soundMuted, toggleSound, setActiveView, activeView } = useDinner();
 
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-paper/95 backdrop-blur-sm">
-      <div className="flex h-14 items-center justify-between px-3">
+      <div className="flex h-14 items-center justify-between px-4">
         <button
           onClick={() => setActiveView(0)}
           className="flex min-h-11 items-center gap-2.5 rounded-lg px-1"
@@ -37,22 +36,12 @@ export const CabinetHeader: React.FC<CabinetHeaderProps> = ({ onOpenProfile, onO
           </span>
         </button>
 
-        <div className="flex items-center">
+        <div className="-mr-2 flex items-center">
+          <IconButton label={soundMuted ? 'Turn sound on' : 'Turn sound off'} onClick={toggleSound}>
+            {soundMuted ? <VolumeX className="h-5 w-5" strokeWidth={1.75} /> : <Volume2 className="h-5 w-5" strokeWidth={1.75} />}
+          </IconButton>
           <IconButton label="How it works" onClick={onOpenRules}>
             <CircleHelp className="h-5 w-5" strokeWidth={1.75} />
-          </IconButton>
-          <IconButton label="Household and backup" onClick={onOpenProfile}>
-            <HardDriveDownload
-              className={`h-5 w-5 ${isSyncing ? 'animate-pulse' : ''}`}
-              strokeWidth={1.75}
-            />
-          </IconButton>
-          <IconButton label={soundMuted ? 'Turn sound on (M)' : 'Turn sound off (M)'} onClick={toggleSound}>
-            {soundMuted ? (
-              <VolumeX className="h-5 w-5" strokeWidth={1.75} />
-            ) : (
-              <Volume2 className="h-5 w-5" strokeWidth={1.75} />
-            )}
           </IconButton>
         </div>
       </div>
@@ -63,10 +52,10 @@ export const CabinetHeader: React.FC<CabinetHeaderProps> = ({ onOpenProfile, onO
           className="flex w-full items-center justify-between gap-2 bg-tomato px-4 py-2.5 text-left text-[14px] text-white"
         >
           <span>
-            <strong className="font-semibold">Three vetoes in a row.</strong> The kitchen's closed tonight.
+            <strong className="font-semibold">Three vetoes in a row.</strong> The kitchen’s closed tonight.
           </span>
           <span className="flex shrink-0 items-center gap-1 font-semibold">
-            Takeaway <ArrowRight className="h-4 w-4" />
+            Order in <ArrowRight className="h-4 w-4" />
           </span>
         </button>
       )}

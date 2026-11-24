@@ -110,6 +110,9 @@ export function calculateMealPantryMatch(
   };
 }
 
+const TIME_RANK: Record<TimeStake, number> = { '20m': 0, '30m': 1, '60m': 2, 'all-day': 3 };
+const EFFORT_RANK: Record<EffortLevel, number> = { 'one-pot': 0, standard: 1, 'chef-mode': 2 };
+
 export interface EligiblePoolResult {
   pool: Meal[];
   exactMatchCount: number;
@@ -118,7 +121,7 @@ export interface EligiblePoolResult {
 }
 
 /**
- * Filters meals matching TimeStake, EffortLevel, and excluding Banned Ingredients.
+ * Filters meals that fit within the chosen time and effort ("up to"), excluding Banned Ingredients.
  * Gracefully falls back if exact (timeStake + effort) pool is empty while preserving banned exclusions.
  */
 export function filterEligibleMeals(
@@ -148,6 +151,22 @@ export function filterEligibleMeals(
 
   const baseMeals = nonBannedMeals.length > 0 ? nonBannedMeals : meals;
 
+  // "Up to": 30 min also allows 20 min dishes, and Standard also allows one-pot dishes. "Any" is no limit.
+  const withinLimits = baseMeals.filter(
+    (m) =>
+      (timeStake === 'any' || TIME_RANK[m.timeStake] <= TIME_RANK[timeStake]) &&
+      (effort === 'any' || EFFORT_RANK[m.effort] <= EFFORT_RANK[effort])
+  );
+  if (withinLimits.length > 0) {
+    return {
+      pool: withinLimits,
+      exactMatchCount: withinLimits.length,
+      timeStakeMatchCount: withinLimits.length,
+      isExactEffortMatch: true,
+    };
+  }
+
+  // Nothing fits (everything is longer or fussier than asked): fall back to the closest matches.
   const timeMatched = timeStake === 'any' ? baseMeals : baseMeals.filter((m) => m.timeStake === timeStake);
   const exactMatched = effort === 'any' ? timeMatched : timeMatched.filter((m) => m.effort === effort);
 
@@ -253,7 +272,7 @@ export function selectWeightedMeal(
 }
 
 /**
- * Synthesizes an accurate, cookable Meal Card from 3-Reel or 4-Reel Sunday Roast combinations.
+ * Synthesizes an accurate, cookable Meal Card from 3-reel, 4-reel or Sunday Roast combinations.
  * Used both after a spin and immediately after a reel NUDGE so the card is always in sync.
  */
 export function buildComboMeal(
@@ -302,10 +321,11 @@ export function buildComboMeal(
     };
   }
 
-  // 3-Reel Builder Mode
+  // 3-Reel and 4-Reel Builder Modes
   const carb = reels[0] || 'Rigatoni Pasta';
   const protein = reels[1] || 'Free-Range Chicken';
   const sauce = reels[2] || 'Spicy Arrabbiata';
+  const veg = mode === '4-reel' ? reels[3] || 'Garlic Green Beans' : null;
 
   const inferredCuisine = sauce.toLowerCase().includes('tikka')
     ? 'Indian'
@@ -320,15 +340,18 @@ export function buildComboMeal(
     : 'British';
 
   return {
-    id: `combo_${carb}_${protein}_${sauce}`.replace(/\s+/g, '_').toLowerCase(),
-    title: `${protein} with ${sauce} & ${carb}`,
-    description: `Custom 3-reel creation: tender ${protein} glazed in ${sauce}, served piping hot with ${carb}.`,
+    id: `${veg ? 'combo4' : 'combo'}_${carb}_${protein}_${sauce}${veg ? `_${veg}` : ''}`.replace(/\s+/g, '_').toLowerCase(),
+    title: veg ? `${protein} with ${sauce}` : `${protein} with ${sauce} & ${carb}`,
+    description: veg
+      ? `Served with ${carb} and ${veg}. Tender ${protein} glazed in ${sauce}.`
+      : `Custom 3-reel creation: tender ${protein} glazed in ${sauce}, served piping hot with ${carb}.`,
     cuisine: inferredCuisine,
     timeStake,
     effort,
-    ingredients: [protein, carb, sauce, 'Garlic Bulbs', 'Olive Oil', 'Maldon Sea Salt'],
+    ingredients: [protein, carb, sauce, ...(veg ? [veg] : []), 'Garlic Bulbs', 'Olive Oil', 'Maldon Sea Salt'],
     prepSteps: [
       `Prep ingredients and start cooking ${carb} (-22m)`,
+      ...(veg ? [`Get ${veg} cooking alongside (-16m)`] : []),
       `Sear ${protein} in a hot pan until golden brown (-15m)`,
       `Pour in ${sauce} and simmer gently to infuse flavours (-8m)`,
       `Combine with ${carb}, garnish, and plate up (-0m)`,
@@ -337,7 +360,7 @@ export function buildComboMeal(
     isFavorite: false,
     lastCookedDate: null,
     cookCount: 0,
-    tags: ['3-Reel Custom Combo', inferredCuisine],
+    tags: [veg ? '4-Reel Custom Combo' : '3-Reel Custom Combo', inferredCuisine],
     servings: 4,
   };
 }
