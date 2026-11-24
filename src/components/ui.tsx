@@ -1,5 +1,6 @@
 import { flagCodeFor, FlagTile } from './CuisineFlag';
 import React, { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 /** Join class names, skipping falsy values. */
@@ -303,7 +304,9 @@ export const Sheet: React.FC<{
   subtitle?: string;
   children: React.ReactNode;
   labelledBy: string;
-}> = ({ isOpen, onClose, title, subtitle, children, labelledBy }) => {
+  /** Fill most of the screen on a phone, so the page behind clearly isn't the thing to use. */
+  tall?: boolean;
+}> = ({ isOpen, onClose, title, subtitle, children, labelledBy, tall }) => {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -349,7 +352,8 @@ export const Sheet: React.FC<{
 
   if (!isOpen) return null;
 
-  return (
+  // Drawn straight onto the page (not inside the screen that opened it), so the bottom tab bar can never sit on top of it.
+  const sheet = (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
       <div className="absolute inset-0 bg-[rgba(20,16,12,0.55)]" onClick={onClose} aria-hidden="true" />
       <div
@@ -358,7 +362,10 @@ export const Sheet: React.FC<{
         aria-modal="true"
         aria-labelledby={labelledBy}
         tabIndex={-1}
-        className="fade-up relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-paper p-5 pb-8 outline-none sm:rounded-3xl sm:pb-5"
+        className={cx(
+          'fade-up relative w-full max-w-md overflow-y-auto rounded-t-3xl bg-paper p-5 pb-8 outline-none sm:rounded-3xl sm:pb-5',
+          tall ? 'max-h-[94dvh] min-h-[88dvh] sm:min-h-0 sm:max-h-[90dvh]' : 'max-h-[90vh]'
+        )}
       >
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
@@ -375,6 +382,8 @@ export const Sheet: React.FC<{
       </div>
     </div>
   );
+  // (There is no page to draw onto when the screen is rendered as plain HTML, as the tests do.)
+  return typeof document === 'undefined' ? sheet : createPortal(sheet, document.body);
 };
 
 /** Typographic stand-in for a dish photo: cuisine initial on a tinted tile. */

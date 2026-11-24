@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { BookmarkPlus, Dices, Lightbulb, Refrigerator } from 'lucide-react';
 import { useDinner } from '../context/DinnerContext';
 import { Button, Chip, Notice, Sheet, timeLabel, effortLabel } from './ui';
@@ -22,6 +22,12 @@ export const CupboardSheet: React.FC<{ isOpen: boolean; onClose: () => void }> =
     setSaved(false);
   };
 
+  // Open straight onto a first idea, so the sheet is never a blank panel waiting for a tap.
+  useEffect(() => {
+    if (isOpen && !pick && candidates.length > 0) spin();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, candidates.length]);
+
   const fridgeCount = pantry.length;
   const empty = fridgeCount === 0;
 
@@ -37,6 +43,7 @@ export const CupboardSheet: React.FC<{ isOpen: boolean; onClose: () => void }> =
       title="Cook from what we have"
       subtitle="Dinner from the fridge, the tins and the staples cupboard. No shopping trip."
       labelledBy="cupboard-title"
+      tall
     >
       <div className="space-y-4">
         <p className="flex items-center gap-2 text-[13px] text-ink-2">
