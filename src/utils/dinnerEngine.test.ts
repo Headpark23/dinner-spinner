@@ -1127,3 +1127,9 @@ test('Backup check: a damaged freezer list is refused, a good one passes', async
   assert.match(bad([{ name: 'Soup', portions: -1 }]).error, /freezer/, 'negative portions');
   assert.match(bad(Array.from({ length: 301 }, () => good)).error, /freezer/, 'too many');
 });
+
+test('Freezer card: renders nothing on the home screen while the freezer is empty', async () => {
+  const { FreezerCard } = await import('../components/FreezerCard');
+  const html = renderToString(React.createElement(DinnerProvider, null, React.createElement(FreezerCard, { onOpen: () => {} })));
+  assert.equal(html, '');
+});

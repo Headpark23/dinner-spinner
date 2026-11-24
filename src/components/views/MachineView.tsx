@@ -9,6 +9,7 @@ import { PlannerSheet } from '../PlannerSheet';
 import { DinnerSteps } from '../DinnerSteps';
 import { FamilyPrompt } from '../FamilyPrompt';
 import { CupboardSheet } from '../CupboardSheet';
+import { FreezerCard } from '../FreezerCard';
 import { costLabel, type CostLimit } from '../../utils/cost';
 import { Card, Chip, Notice, DishTile, Segmented, Switch, Button, IconButton, Sheet, cx, timeLabel, effortLabel } from '../ui';
 
@@ -316,6 +317,12 @@ export const MachineView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFam
           </span>
         </button>
       </div>
+      <FreezerCard
+        onOpen={() => {
+          openPantryTab('freezer');
+          setActiveView(2);
+        }}
+      />
       <CupboardSheet isOpen={cupboardOpen} onClose={() => setCupboardOpen(false)} />
       {onOpenFamily && <FamilyPrompt onOpen={onOpenFamily} />}
 

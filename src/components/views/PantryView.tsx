@@ -64,8 +64,20 @@ type ScanType = 'snap-fridge' | 'scan-receipt' | 'recipe-photo' | 'recipe-text';
 
 export type PantryScope = 'fridge' | 'recipes' | 'shop';
 
-const initialTabFor = (scope: PantryScope): Tab =>
-  scope === 'recipes' ? 'vault' : scope === 'shop' ? 'missing' : 'fridge';
+const initialTabFor = (scope: PantryScope): Tab => {
+  if (scope === 'recipes') return 'vault';
+  if (scope === 'shop') return 'missing';
+  // The Dinner screen's freezer card asks for the Freezer tab once.
+  try {
+    if (sessionStorage.getItem('ds_pantry_tab') === 'freezer') {
+      sessionStorage.removeItem('ds_pantry_tab');
+      return 'freezer';
+    }
+  } catch {
+    // ignore
+  }
+  return 'fridge';
+};
 
 const CHIP_LIST_INPUT = 'flex gap-2 border-t border-line pt-3';
 
