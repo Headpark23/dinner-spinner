@@ -4,8 +4,9 @@ import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
-import { applyShoppingOp } from './src/utils/shopping';
+import { applyShoppingOpToState } from './src/utils/shopping';
 import { applyFridgeOp, type FridgeState } from './src/utils/fridge';
+import { applyFreezerOp, type FreezerState } from './src/utils/freezer';
 import { cleanLog, unionLog } from './src/utils/history';
 import { DEFAULT_RADIUS_M, MAX_RADIUS_M, chainOf, cleanHub, distanceM, emptyHub, mergeHub, placeFromHtml, sameSpot, type SharedSpot } from './src/utils/takeaways';
 import { createPlaces, type Places } from './src/server/places';
@@ -292,8 +293,8 @@ app.post('/api/shopping/ops', smallJson, requireHousehold, async (req, res) => {
   if (ops.length === 0) return res.status(400).json({ error: 'No operations' });
   try {
     const shopping = await mutate(store, (req as AuthedRequest).householdId!, (h) => {
-      h.shopping.items = ops.reduce(applyShoppingOp, h.shopping.items);
-      h.shopping.version += 1;
+      const next = ops.reduce(applyShoppingOpToState, h.shopping);
+      h.shopping = { ...next, version: next.version + 1 };
       return h.shopping;
     });
     res.json(shopping);
@@ -322,6 +323,31 @@ app.post('/api/fridge/ops', smallJson, requireHousehold, async (req, res) => {
       return next;
     });
     res.json(fridge);
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Shared freezer: same operations idea as the fridge. The first phone to arrive seeds it.
+// ---------------------------------------------------------------------------
+const freezerOf = (h: Household): FreezerState => ((h.freezer ||= { version: 0, seeded: false, items: [] }) as FreezerState);
+
+app.get('/api/freezer', requireHousehold, (req, res) => {
+  res.json(freezerOf((req as AuthedRequest).household!));
+});
+
+app.post('/api/freezer/ops', smallJson, requireHousehold, async (req, res) => {
+  const ops = Array.isArray(req.body?.ops) ? req.body.ops.slice(0, 200) : [];
+  if (ops.length === 0) return res.status(400).json({ error: 'No operations' });
+  try {
+    const freezer = await mutate(store, (req as AuthedRequest).householdId!, (h) => {
+      const next = ops.reduce(applyFreezerOp, freezerOf(h));
+      next.version += 1;
+      h.freezer = next;
+      return next;
+    });
+    res.json(freezer);
   } catch (err) {
     fail(res, err);
   }

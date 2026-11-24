@@ -13,10 +13,12 @@ export type Household = {
   google?: { name: string; email: string }[];
   createdAt: string;
   snapshotAt: string | null;
-  shopping: { version: number; items: ShoppingItem[] };
+  shopping: { version: number; items: ShoppingItem[]; applied?: string[] };
   tonight?: unknown;
   /** The shared fridge (small operations, like the shopping list). */
   fridge?: { version: number; seeded: boolean; items: unknown[] };
+  /** The shared freezer (batch-cooked meals, ticked off a portion at a time). */
+  freezer?: { version: number; seeded: boolean; items: unknown[] };
   /** Dinners the household has cooked, merged from every phone. */
   cookLog?: unknown[];
   /** Local takeaways, the family's scores and notes. Merged by id from every phone. */

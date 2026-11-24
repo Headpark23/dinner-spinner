@@ -1,18 +1,23 @@
 import { PantryItem, FreshnessLevel } from '../types';
+import { alreadyApplied, cleanOpId, remember } from './opIds';
 
 /** One change to the shared fridge. Applied identically on the server and on each phone. */
-export type FridgeOp =
+/** Every op may carry an `opId`; the server skips one it has already applied (a resend after a lost reply). */
+export type FridgeOp = { opId?: string } & (
   | { type: 'seed'; items: PantryItem[] } // first phone to arrive fills an empty server; ignored afterwards
   | { type: 'replaceAll'; items: PantryItem[] } // restore a backup or reset
   | { type: 'add'; item: PantryItem }
   | { type: 'cycle'; id: string } // Fresh -> Eat soon -> Use next -> Fresh
   | { type: 'remove'; id: string }
-  | { type: 'removeUseNextByNames'; names: string[] }; // cooked: take the rescued "use next" items out
+  | { type: 'removeUseNextByNames'; names: string[] } // cooked: take the rescued "use next" items out
+);
 
 export interface FridgeState {
   version: number;
   seeded: boolean;
   items: PantryItem[];
+  /** Ids of the most recent operations applied, so a repeat is ignored. */
+  applied?: string[];
 }
 
 const FRESH: FreshnessLevel[] = ['green', 'amber', 'red'];
@@ -37,6 +42,13 @@ const cleanList = (raw: unknown): PantryItem[] =>
 /** Pure: returns the new state without touching the old one. */
 export function applyFridgeOp(state: FridgeState, op: FridgeOp | any): FridgeState {
   if (!op || typeof op !== 'object') return state;
+  const id = cleanOpId(op.opId);
+  if (alreadyApplied(state.applied, id)) return state;
+  const next = applyOne(state, op);
+  return id ? { ...next, applied: remember(state.applied, id) } : next;
+}
+
+function applyOne(state: FridgeState, op: any): FridgeState {
   switch (op.type) {
     case 'seed':
       return state.seeded ? state : { ...state, seeded: true, items: cleanList(op.items) };

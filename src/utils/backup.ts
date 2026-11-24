@@ -26,7 +26,7 @@ export function checkBackup(raw: unknown): BackupCheck {
 
   const members = payload.members ?? payload.householdMembers;
   const banned = payload.banned ?? payload.bannedIngredients;
-  const known = ['meals', 'pantry', 'staples', 'takeaways', 'voteLogs', 'cookLog', 'takeawayLog', 'rejectedMealIds'];
+  const known = ['meals', 'pantry', 'staples', 'takeaways', 'voteLogs', 'cookLog', 'takeawayLog', 'rejectedMealIds', 'freezer'];
   if (!known.some((k) => payload[k] !== undefined) && members === undefined) {
     return { ok: false, error: 'That isn’t a Dinner Spinner backup.' };
   }
@@ -57,6 +57,18 @@ export function checkBackup(raw: unknown): BackupCheck {
       !payload.pantry.every((p: any) => isObj(p) && str(p.id) && str(p.name) && FRESH.includes(p.freshness))
     ) {
       return { ok: false, error: 'The fridge in this backup looks damaged, so nothing was changed.' };
+    }
+  }
+
+  if (payload.freezer !== undefined) {
+    if (
+      !Array.isArray(payload.freezer) ||
+      payload.freezer.length > 300 ||
+      !payload.freezer.every(
+        (f: any) => isObj(f) && str(f.name) && Number.isFinite(f.portions) && f.portions >= 0 && f.portions <= 999
+      )
+    ) {
+      return { ok: false, error: 'The freezer in this backup looks damaged, so nothing was changed.' };
     }
   }
 

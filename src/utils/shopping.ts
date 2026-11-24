@@ -1,13 +1,24 @@
 import { ShoppingItem } from '../types';
+import { alreadyApplied, cleanOpId, remember } from './opIds';
 
 /** One change to the shared shopping list. Applied identically on the server and on the phone. */
-export type ShoppingOp =
+/** Every op may carry an `opId`; the server skips one it has already applied (a resend after a lost reply). */
+export type ShoppingOp = { opId?: string } & (
   | { type: 'add'; item: { id?: string; name: string; forMeal?: string; addedBy?: string } }
   | { type: 'set'; id: string; checked: boolean; by?: string }
   | { type: 'toggle'; id: string; by?: string }
   | { type: 'remove'; id: string }
   | { type: 'removeByName'; name: string }
-  | { type: 'clearChecked' };
+  | { type: 'clearChecked' }
+);
+
+/** The shared list as the server keeps it. */
+export interface ShoppingState {
+  version: number;
+  items: ShoppingItem[];
+  /** Ids of the most recent operations applied, so a repeat is ignored. */
+  applied?: string[];
+}
 
 const clip = (v: unknown, n: number) => (typeof v === 'string' ? v.trim().slice(0, n) : undefined);
 
@@ -52,4 +63,13 @@ export function applyShoppingOp(items: ShoppingItem[], op: ShoppingOp | any): Sh
     default:
       return items;
   }
+}
+
+/** Applies one operation to the whole shared list, skipping it if its id was already applied. */
+export function applyShoppingOpToState(state: ShoppingState, op: ShoppingOp | any): ShoppingState {
+  if (!op || typeof op !== 'object') return state;
+  const id = cleanOpId(op.opId);
+  if (alreadyApplied(state.applied, id)) return state;
+  const items = applyShoppingOp(state.items, op);
+  return id ? { ...state, items, applied: remember(state.applied, id) } : { ...state, items };
 }
