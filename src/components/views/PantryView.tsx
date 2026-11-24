@@ -471,32 +471,6 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
               ))}
             </ul>
 
-            {scope === 'recipes' && (
-            <form
-              className="space-y-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!aiRecipePrompt.trim()) return;
-                callAnalyze('recipe-text', { textPrompt: aiRecipePrompt.trim() });
-              }}
-            >
-              <label htmlFor="describe-dish" className="block text-[15px] font-semibold">
-                Or describe a dish
-              </label>
-              <div className="flex gap-2">
-                <TextInput
-                  id="describe-dish"
-                  value={aiRecipePrompt}
-                  onChange={(e) => setAiRecipePrompt(e.target.value)}
-                  placeholder="e.g. Lamb kofta flatbreads"
-                />
-                <Button type="submit" variant="primary" disabled={!!analyzing || !aiRecipePrompt.trim()}>
-                  {analyzing === 'recipe-text' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                  Create
-                </Button>
-              </div>
-            </form>
-            )}
             {analyzing && (
               <p className="rounded-xl bg-saffron-soft px-3 py-2.5 text-[13px] text-ink" role="status">
                 <span className="font-semibold">Working on it. Please wait, this can take up to a minute.</span>{' '}
@@ -698,10 +672,6 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
                     </Button>
                   </form>
                 )}
-                <div className="border-t border-line pt-4">
-                  <p className="mb-2 text-[13px] font-semibold text-ink-2">Or describe a dish and let the app draft it</p>
-                  {renderScan()}
-                </div>
               </Card>
             )}
 

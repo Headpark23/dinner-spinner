@@ -1,16 +1,17 @@
 import React, { useRef, useState } from 'react';
-import { Camera, FileText, Image as ImageIcon, Link2, LoaderCircle, ClipboardPaste } from 'lucide-react';
+import { Camera, FileText, Image as ImageIcon, Link2, LoaderCircle, ClipboardPaste, Sparkles } from 'lucide-react';
 import { useDinner } from '../context/DinnerContext';
 import { textFromDocument, textFromLegacyDoc, previewFromPages } from '../utils/docText';
 import { extractRecipeFromHtml, parseRecipeText, recipeFromJsonLd, type ImportedRecipe } from '../utils/recipeImport';
 import { Button, TextInput, cx } from './ui';
 
-type Way = 'link' | 'photo' | 'file' | 'text';
+type Way = 'link' | 'photo' | 'file' | 'text' | 'describe';
 
 const WAYS: { id: Way; label: string; hint: string; icon: React.ReactNode }[] = [
   { id: 'link', label: 'Web link', hint: 'From a recipe site', icon: <Link2 className="h-5 w-5" /> },
   { id: 'photo', label: 'Photo', hint: 'Book, card or screen', icon: <Camera className="h-5 w-5" /> },
   { id: 'file', label: 'PDF or file', hint: 'PDF, Word, text, saved page', icon: <FileText className="h-5 w-5" /> },
+  { id: 'describe', label: 'Describe it', hint: 'Name a dish, we draft it', icon: <Sparkles className="h-5 w-5" /> },
   { id: 'text', label: 'Paste text', hint: 'From notes or a message', icon: <ClipboardPaste className="h-5 w-5" /> },
 ];
 
@@ -59,6 +60,7 @@ export const ImportRecipe: React.FC<{ onDraft: (recipe: ImportedRecipe, note: st
   const [way, setWay] = useState<Way>('link');
   const [url, setUrl] = useState('');
   const [text, setText] = useState('');
+  const [describe, setDescribe] = useState('');
   const [busy, setBusy] = useState(false);
   const [attempt, setAttempt] = useState(1);
   const [error, setError] = useState('');
@@ -90,6 +92,61 @@ export const ImportRecipe: React.FC<{ onDraft: (recipe: ImportedRecipe, note: st
     }
   };
 
+  /** Ask the reader (Gemini). If it is busy, wait a few seconds and ask again, up to three goes in all. */
+  const runAi = async (payload: Record<string, unknown>, note: string) => {
+    let res!: Response;
+    let json: any = {};
+    for (let n = 1; n <= 3; n++) {
+      setAttempt(n);
+      res = await fetch('/api/pantry/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify(payload),
+      });
+      json = await res.json().catch(() => ({}));
+      if (!(res.status === 503 && json.busy) || n === 3) break;
+      await new Promise((r) => setTimeout(r, 4000));
+    }
+    if (!res.ok || !json.meal) {
+      return fail(
+        res.status === 413
+          ? 'That is too big to send. Try a smaller file, or paste the text.'
+          : res.status === 503 && json.busy
+          ? String(json.error)
+          : res.status === 503
+          ? 'Reading photos, PDFs and writing recipes isn’t switched on yet. A web link or pasted text works now.'
+          : res.status === 401
+            ? 'Start a family group first, because reading photos and PDFs and writing recipes is for groups. A web link, pasted text or typing it in works without one.'
+            : String(json.error || 'Couldn’t do that. Try again, or paste the text.')
+      );
+    }
+    onDraft(
+      {
+        title: json.meal.title || 'New recipe',
+        description: json.meal.description || '',
+        cuisine: json.meal.cuisine || 'Other',
+        timeStake: json.meal.timeStake || '30m',
+        effort: json.meal.effort || 'standard',
+        ingredients: json.meal.ingredients || [],
+        prepSteps: json.meal.prepSteps || [],
+        tags: json.meal.tags || ['AI drafted'],
+      },
+      note
+    );
+  };
+
+  const describeDish = async () => {
+    setError('');
+    setBusy(true);
+    try {
+      await runAi({ type: 'recipe-text', textPrompt: describe.trim() }, 'Drafted from your description. Check it over, then save.');
+    } catch (e: any) {
+      fail(e?.message || 'Couldn’t write that recipe. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const scan = async (file: File) => {
     setError('');
     // The host rejects requests over about 4.5MB, and base64 adds a third, so a PDF has to be under ~3MB.
@@ -110,46 +167,7 @@ export const ImportRecipe: React.FC<{ onDraft: (recipe: ImportedRecipe, note: st
           sendType = 'image/jpeg';
         }
       }
-      // The scanner is sometimes swamped. If so, wait a few seconds and ask again, up to three times in all.
-      let res!: Response;
-      let json: any = {};
-      for (let n = 1; n <= 3; n++) {
-        setAttempt(n);
-        res = await fetch('/api/pantry/analyze', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...authHeaders() },
-          body: JSON.stringify({ type: 'recipe-photo', imageBase64: dataUrl, mimeType: sendType }),
-        });
-        json = await res.json().catch(() => ({}));
-        if (!(res.status === 503 && json.busy) || n === 3) break;
-        await new Promise((r) => setTimeout(r, 4000));
-      }
-      if (!res.ok || !json.meal) {
-        return fail(
-          res.status === 413
-            ? 'That file is too big to send. Try a smaller PDF or photo, or paste the text.'
-            : res.status === 503 && json.busy
-            ? String(json.error)
-            : res.status === 503
-            ? 'Reading photos and PDFs isn’t switched on yet. A web link or pasted text works now.'
-            : res.status === 401
-              ? 'Start a family group first, because reading photos and PDFs is for groups. A web link or pasted text works without one.'
-              : String(json.error || 'Couldn’t read that. Try a clearer photo, or paste the text.')
-        );
-      }
-      onDraft(
-        {
-          title: json.meal.title || 'New recipe',
-          description: json.meal.description || '',
-          cuisine: json.meal.cuisine || 'Other',
-          timeStake: json.meal.timeStake || '30m',
-          effort: json.meal.effort || 'standard',
-          ingredients: json.meal.ingredients || [],
-          prepSteps: json.meal.prepSteps || [],
-          tags: json.meal.tags || ['Scanned'],
-        },
-        'Read from your file. Check it over, then save.'
-      );
+      await runAi({ type: 'recipe-photo', imageBase64: dataUrl, mimeType: sendType }, 'Read from your file. Check it over, then save.');
     } catch (e: any) {
       fail(e?.message || 'Couldn’t read that file.');
     } finally {
@@ -303,6 +321,27 @@ export const ImportRecipe: React.FC<{ onDraft: (recipe: ImportedRecipe, note: st
             tabIndex={-1}
           />
         </div>
+      )}
+
+      {way === 'describe' && (
+        <form
+          className="space-y-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (describe.trim() && !busy) describeDish();
+          }}
+        >
+          <label htmlFor="recipe-describe" className="text-[13px] font-semibold">
+            Describe a dish and the app will write the recipe
+          </label>
+          <div className="flex gap-2">
+            <TextInput id="recipe-describe" value={describe} onChange={(e) => setDescribe(e.target.value)} placeholder="e.g. Lamb kofta flatbreads" />
+            <Button type="submit" variant="primary" disabled={busy || !describe.trim()}>
+              {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Create
+            </Button>
+          </div>
+          <p className="text-[12px] text-ink-3">You can change anything before it’s saved. Needs a family group.</p>
+        </form>
       )}
 
       {way === 'text' && (
