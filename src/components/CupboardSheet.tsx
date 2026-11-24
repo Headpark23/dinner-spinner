@@ -1,15 +1,21 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { BookmarkPlus, Dices, Lightbulb, Refrigerator } from 'lucide-react';
+import { BookmarkPlus, Camera, Dices, Lightbulb, Refrigerator, Snowflake } from 'lucide-react';
 import { useDinner } from '../context/DinnerContext';
 import { Button, Chip, Notice, Sheet, timeLabel, effortLabel } from './ui';
-import { CupboardCandidate, cupboardCandidates, pickSurprise } from '../utils/cupboard';
+import { CupboardCandidate, cupboardCandidates, freezerCandidates, pickSurprise } from '../utils/cupboard';
 
 /** Spin for a dinner that needs nothing from the shop: fridge, tins, staples and leftovers. */
 export const CupboardSheet: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
-  const { meals, pantry, staples, bannedIngredients, diets, sendToVote, addMeal, setActiveView } = useDinner();
+  const { meals, pantry, staples, restrictions, freezer, useFreezerPortion, setSurpriseStep, sendToVote, addMeal, setActiveView } = useDinner();
   const candidates = useMemo(
-    () => (isOpen ? cupboardCandidates({ meals, pantry, staples, banned: bannedIngredients, diets }) : []),
-    [isOpen, meals, pantry, staples, bannedIngredients, diets]
+    () =>
+      isOpen
+        ? [
+            ...freezerCandidates(freezer, meals, restrictions.avoid, restrictions.diets),
+            ...cupboardCandidates({ meals, pantry, staples, banned: restrictions.avoid, diets: restrictions.diets }),
+          ]
+        : [],
+    [isOpen, meals, pantry, staples, restrictions, freezer]
   );
   const [pick, setPick] = useState<CupboardCandidate | null>(null);
   const [saved, setSaved] = useState(false);
@@ -67,6 +73,18 @@ export const CupboardSheet: React.FC<{ isOpen: boolean; onClose: () => void }> =
           </Notice>
         )}
 
+        <Button
+          variant="secondary"
+          block
+          onClick={() => {
+            setSurpriseStep('scan');
+            close();
+            setActiveView(2);
+          }}
+        >
+          <Camera className="h-4 w-4" /> Start with a photo of the fridge
+        </Button>
+
         {candidates.length === 0 ? (
           <Notice tone="tomato">
             Nothing fits what’s in the house yet. Add a few things to the fridge or the staples list (pasta, rice, eggs, a
@@ -82,7 +100,11 @@ export const CupboardSheet: React.FC<{ isOpen: boolean; onClose: () => void }> =
           <article className="fade-up space-y-3 rounded-2xl border border-line bg-card p-4" aria-live="polite">
             <div>
               <p className="eyebrow flex items-center gap-1.5">
-                {pick.kind === 'idea' ? (
+                {pick.kind === 'freezer' ? (
+                  <>
+                    <Snowflake className="h-3.5 w-3.5" /> From the freezer · {pick.portionsLeft} {pick.portionsLeft === 1 ? 'portion' : 'portions'} left{pick.eatSoon ? ' · eat soon' : ''}
+                  </>
+                ) : pick.kind === 'idea' ? (
                   <>
                     <Lightbulb className="h-3.5 w-3.5" /> Cupboard idea
                   </>
@@ -124,16 +146,30 @@ export const CupboardSheet: React.FC<{ isOpen: boolean; onClose: () => void }> =
             </p>
 
             <div className="flex flex-col gap-2">
-              <Button
-                variant="primary"
-                block
-                onClick={() => {
-                  sendToVote(pick.meal);
-                  close();
-                }}
-              >
-                Put it to the household
-              </Button>
+              {pick.kind === 'freezer' && (
+                <Button
+                  variant="primary"
+                  block
+                  onClick={() => {
+                    useFreezerPortion(pick.freezerId!);
+                    close();
+                  }}
+                >
+                  Eat a portion tonight
+                </Button>
+              )}
+              {!(pick.kind === 'freezer' && pick.meal.id.startsWith('freezer:')) && (
+                <Button
+                  variant={pick.kind === 'freezer' ? 'secondary' : 'primary'}
+                  block
+                  onClick={() => {
+                    sendToVote(pick.meal);
+                    close();
+                  }}
+                >
+                  Put it to the household
+                </Button>
+              )}
               {pick.kind === 'idea' && (
                 <Button
                   variant="secondary"

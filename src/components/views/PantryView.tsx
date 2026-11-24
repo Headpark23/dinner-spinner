@@ -85,6 +85,8 @@ const CHIP_LIST_INPUT = 'flex gap-2 border-t border-line pt-3';
 
 export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
   const {
+    surpriseStep,
+    setSurpriseStep,
     pantry,
     togglePantryFreshness,
     addPantryItem,
@@ -237,6 +239,11 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
       );
       flash(`Added ${data.detectedItems.length} items to your fridge${note}.`);
       setActiveTab('fridge');
+      if (surpriseStep === 'scan') {
+        // "Surprise me from the fridge": the photo is in, so go and spin from it.
+        setSurpriseStep('spin');
+        setActiveView(0);
+      }
     } else if (type === 'scan-receipt' && data.items) {
       data.items.forEach((item: any) =>
         addPantryItem({
@@ -591,6 +598,28 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
             );
           })}
         </div>
+      )}
+
+      {surpriseStep === 'scan' && scope === 'fridge' && (
+        <Card className="space-y-3 p-4">
+          <p className="text-[15px] font-semibold">Surprise me from the fridge</p>
+          <p className="text-[14px] text-ink-2">Take a photo of the open fridge. What it sees is added, then you get a dinner from what is in the house.</p>
+          <div className="flex flex-col gap-2">
+            <Button variant="primary" block disabled={!!analyzing} onClick={() => triggerCameraUpload('snap-fridge')}>
+              <Camera className="h-4 w-4" /> Take the photo
+            </Button>
+            <Button
+              variant="quiet"
+              block
+              onClick={() => {
+                setSurpriseStep('spin');
+                setActiveView(0);
+              }}
+            >
+              Skip the photo, spin from what is listed
+            </Button>
+          </div>
+        </Card>
       )}
 
       {analysisSuccess && (

@@ -1,7 +1,8 @@
-import type { Meal, PantryItem, TimeStake, EffortLevel } from '../types';
+import type { Meal, PantryItem, FreezerItem, TimeStake, EffortLevel } from '../types';
 import { mentionsAny } from './avoid';
 import { calculateMealPantryMatch, isMealCoolingOff } from './dinnerEngine';
 import { DietId, mealFitsDiets } from './diets';
+import { inFreezer, oldestFirst, isEatSoon } from './freezer';
 
 /**
  * "Cook from what we have": dinners that need nothing from the shop.
@@ -15,8 +16,13 @@ import { DietId, mealFitsDiets } from './diets';
  */
 
 export interface CupboardCandidate {
-  kind: 'saved' | 'idea';
+  kind: 'saved' | 'idea' | 'freezer';
   meal: Meal;
+  /** For kind "freezer": the batch, and how many portions are left. */
+  freezerId?: string;
+  portionsLeft?: number;
+  /** True when the batch has been frozen long enough that it should be eaten soon. */
+  eatSoon?: boolean;
   /** What from the house this dinner uses. */
   uses: string[];
   /** Fridge items marked "use next" that it rescues. */
@@ -435,6 +441,53 @@ function buildIdea(t: Template, stock: StockItem[], banned: string[]): CupboardC
   };
 }
 
+/**
+ * Batches in the freezer are dinners that need nothing from the shop, so they are offered first: oldest first,
+ * which also puts the "eat soon" ones at the front. A batch from one of our recipes uses that recipe; any other
+ * is a plain "defrost and reheat" card named after the batch.
+ */
+export function freezerCandidates(
+  freezer: FreezerItem[],
+  meals: Meal[],
+  banned: string[],
+  diets: DietId[],
+  now: Date = new Date()
+): CupboardCandidate[] {
+  const lowerBanned = banned.map((b) => b.toLowerCase()).filter(Boolean);
+  return oldestFirst(inFreezer(freezer)).flatMap((item) => {
+    const linked = item.mealId ? meals.find((m) => m.id === item.mealId) : undefined;
+    const texts = linked ? [linked.title, ...linked.ingredients] : [item.name];
+    if (!mealFitsDiets(linked ? linked.ingredients : [item.name], diets)) return [];
+    if (mentionsAny(texts, lowerBanned)) return [];
+    const meal: Meal = linked ?? {
+      id: `freezer:${item.id}`,
+      title: item.name,
+      description: 'A batch from the freezer. Nothing to buy.',
+      cuisine: 'Freezer',
+      timeStake: '30m',
+      effort: 'one-pot',
+      ingredients: [item.name],
+      prepSteps: ['Defrost overnight in the fridge, or in the microwave', 'Reheat until piping hot all the way through'],
+      rating: 0,
+      isFavorite: false,
+      lastCookedDate: null,
+      cookCount: 0,
+      tags: ['Freezer'],
+    };
+    return [
+      {
+        kind: 'freezer' as const,
+        meal,
+        uses: [item.name],
+        rescues: [],
+        freezerId: item.id,
+        portionsLeft: item.portions,
+        eatSoon: isEatSoon(item, now),
+      },
+    ];
+  });
+}
+
 export interface CupboardOptions {
   meals: Meal[];
   pantry: PantryItem[];
@@ -483,6 +536,9 @@ export function pickSurprise(
   let pool = candidates.filter((c) => !avoidIds.includes(c.meal.id));
   if (pool.length === 0) pool = candidates;
   if (pool.length === 0) return null;
+  // Freezer batches come first, in the order given (oldest first), before anything that needs the fridge.
+  const frozen = pool.find((c) => c.kind === 'freezer');
+  if (frozen) return frozen;
   const weights = pool.map((c) => (c.kind === 'idea' ? 1.5 : 1) + c.rescues.length * 2);
   const total = weights.reduce((a, b) => a + b, 0);
   let roll = rng() * total;

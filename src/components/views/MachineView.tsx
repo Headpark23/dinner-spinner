@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { RecipeSheet } from '../RecipeSheet';
 import { photoFor } from '../../data/photos';
 import { useDinner } from '../../context/DinnerContext';
@@ -82,6 +82,13 @@ export const MachineView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFam
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [plannerOpen, setPlannerOpen] = useState(false);
   const [cupboardOpen, setCupboardOpen] = useState(false);
+  const { surpriseStep, setSurpriseStep } = useDinner();
+  useEffect(() => {
+    if (surpriseStep === 'spin') {
+      setCupboardOpen(true);
+      setSurpriseStep(null);
+    }
+  }, [surpriseStep, setSurpriseStep]);
   const [swapNote, setSwapNote] = useState<string | null>(null);
   const redItems = pantry.filter((p) => p.freshness === 'red');
   const pantryMatch = activeMealResult ? getMealPantryMatch(activeMealResult) : null;
