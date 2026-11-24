@@ -928,3 +928,40 @@ test('Cook from what we have: peppercorns are not a vegetable', async () => {
   assert.ok(!c.some((x) => x.meal.ingredients.some((i) => /peppercorn/i.test(i))), 'spices are never the vegetable');
   assert.ok(!c.some((x) => x.meal.id === 'idea_rice-bowl'), 'stock cubes are not leftover chicken');
 });
+
+test('Taste engine: dislikes shelve and replace dishes, likes bring in more, and it is reversible', async () => {
+  const { adaptRecipes, mealContains } = await import('./taste');
+  const { WORLD_RECIPES } = await import('../data/worldRecipes');
+  const { STARTER_MEALS } = await import('../data/initialData');
+  const base = { meals: STARTER_MEALS.slice(0, 6), shelved: [] as any[], rejectedIds: [] as string[], loved: [] as string[], diets: [] as any[], library: WORLD_RECIPES };
+
+  // Pick an ingredient that really is in some of the starter dishes.
+  const term = base.meals[0].ingredients[0].split(' ').pop()!.toLowerCase();
+  const hit = base.meals.filter((m) => mealContains(m, [term]));
+  assert.ok(hit.length >= 1);
+
+  const r1 = adaptRecipes({ ...base, banned: [term] });
+  assert.equal(r1.removed.length, hit.length);
+  assert.ok(r1.meals.every((m) => !mealContains(m, [term])), 'nothing left in the rotation contains the refused ingredient');
+  assert.ok(r1.added.length > 0 && r1.added.length <= hit.length, 'replaced, never more than were removed');
+  assert.equal(r1.meals.length, base.meals.length - r1.removed.length + r1.added.length);
+  assert.deepEqual(r1.shelved.map((m) => m.id).sort(), hit.map((m) => m.id).sort());
+
+  // Taking it off the list brings the shelved dishes back.
+  const r2 = adaptRecipes({ ...base, meals: r1.meals, shelved: r1.shelved, banned: [] });
+  assert.deepEqual(r2.restored.map((m) => m.id).sort(), hit.map((m) => m.id).sort());
+  assert.equal(r2.shelved.length, 0);
+
+  // Loving something brings in dishes that contain it, none that are refused, hidden, or already there.
+  const loved = adaptRecipes({ ...base, banned: ['mushroom'], loved: ['chilli'], extraSlots: 3, mustContain: 'chilli' });
+  assert.ok(loved.added.length > 0 && loved.added.length <= 3);
+  assert.ok(loved.added.every((m) => mealContains(m, ['chilli']) && !mealContains(m, ['mushroom'])));
+  const ids = loved.meals.map((m) => m.id);
+  assert.equal(new Set(ids).size, ids.length, 'no duplicates');
+  const hidden = adaptRecipes({ ...base, banned: [], loved: ['chilli'], extraSlots: 50, mustContain: 'chilli', rejectedIds: loved.added.map((m) => m.id) });
+  assert.ok(!hidden.added.some((m) => loved.added.some((l) => l.id === m.id)), 'hidden dishes stay hidden');
+
+  // Diets are respected for the new dishes.
+  const vegan = adaptRecipes({ ...base, banned: [term], diets: ['vegan'] });
+  assert.ok(vegan.added.every((m) => !m.ingredients.some((i) => /chicken|beef|pork|cheese|egg|milk|butter/i.test(i))));
+});

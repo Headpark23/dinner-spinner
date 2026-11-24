@@ -15,13 +15,15 @@ export const WelcomeSheet: React.FC = () => {
   const [stage, setStage] = useState<'family' | 'details'>('family');
   const [names, setNames] = useState<string[]>(['', '']);
   const [avoid, setAvoid] = useState('');
+  const [loves, setLoves] = useState('');
   const [diets, setDiets] = useState<DietId[]>([]);
 
   const finish = () =>
     completeOnboarding(
       names,
       avoid.split(',').map((a) => a.trim()),
-      diets
+      diets,
+      loves.split(',').map((a) => a.trim())
     );
 
   // Someone arriving from an invite link is already in a group; skip straight to the questions.
@@ -94,6 +96,14 @@ export const WelcomeSheet: React.FC = () => {
               Separate with commas. Dishes containing these never come up. For serious allergies, always check the recipe
               yourself too.
             </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="loves" className="text-[15px] font-semibold">
+              Anything you love?
+            </label>
+            <TextInput id="loves" value={loves} onChange={(e) => setLoves(e.target.value)} placeholder="e.g. chilli, salmon, cheese" />
+            <p className="text-[13px] text-ink-2">We’ll fill your recipes with more dishes built on these.</p>
           </div>
 
           <div className="space-y-1.5">
