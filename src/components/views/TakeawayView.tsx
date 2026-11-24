@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useDinner } from '../../context/DinnerContext';
 import { Copy, Check, Plus, Pencil, Dices, DoorOpen, Star } from 'lucide-react';
 import { Button, Card, Notice, Select, TextInput, cx, cuisineColor } from '../ui';
-import { LocalTakeaways, RatePanel } from '../TakeawayLeague';
+import { LocalTakeaways, RatePanel, SpotContact } from '../TakeawayLeague';
 
 export const TakeawayView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFamily }) => {
   const {
@@ -151,6 +151,12 @@ export const TakeawayView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFa
                 <strong className="font-semibold">{doorDutyPerson.name}</strong> answers the door
               </span>
             </p>
+          )}
+
+          {(winningTakeaway.phone || winningTakeaway.website || winningTakeaway.address || winningTakeaway.lat !== undefined) && (
+            <div className="mt-3">
+              <SpotContact spot={winningTakeaway} />
+            </div>
           )}
 
           <h3 className="mt-4 text-[15px] font-semibold">The usual orders</h3>

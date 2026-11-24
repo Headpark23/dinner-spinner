@@ -76,6 +76,12 @@ export interface TakeawayOption {
   usualOrders: { memberName: string; order: string }[];
   orderCount?: number;
   lastOrderedDate?: string | null;
+  /** Contact details, when the place came from a map search or its own web page. */
+  phone?: string;
+  website?: string;
+  address?: string;
+  lat?: number;
+  lon?: number;
 }
 
 export interface PantryItem {
