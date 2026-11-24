@@ -4,6 +4,18 @@ A pub fruit machine for deciding what's for dinner. Spin your household's recipe
 
 Built with React 19, TypeScript, Tailwind CSS v4 and Vite, served by a small Express server (which also handles the shared shopping list and optional Gemini photo scanning).
 
+## Where things are
+
+Five tabs, each named for what you'll find there:
+
+| Tab | What's inside |
+|---|---|
+| **Dinner** | The evening in four steps: Pick (spin) → Vote → Cook (timeline) → Rate |
+| **Recipes** | Your dishes, the 119 World Kitchen classics, add or scan a recipe, hidden dishes |
+| **Shopping** | The shared household list |
+| **Fridge** | What you have, always-have staples, never-use ingredients, scan a fridge or receipt |
+| **More** | Takeaway, history and ratings, household and backup, how it works, sound |
+
 ## What it does
 
 - **Spin**: three machines (your recipes, build-a-plate from 3 reels, or a 4-reel Sunday roast), with hold, nudge and a lever. You can filter by time and washing-up, and the spinner can favour dishes that use up "use next" fridge items.
@@ -12,9 +24,12 @@ Built with React 19, TypeScript, Tailwind CSS v4 and Vite, served by a small Exp
 - **Make it yours**: add your own ingredients, steps (with timing) and a note to any recipe. The original is kept, and your additions show up in the cooking timeline.
 - **Not for us**: hide a dish for good, and a similar one from the World Kitchen replaces it automatically. Hidden dishes can be brought back.
 - **Your own recipes**: add them by hand, or scan a recipe page or plate photo.
-- **Tonight**: the household votes on one phone, with vetoes. Three vetoes in a row closes the kitchen and sends you to the takeaway spinner. A majority yes builds a timeline back from when you want to eat.
+- **Tonight**: the household votes on one phone, or each person votes on their own phone once the household is set up (More, then Household and backup), with vetoes. Three vetoes in a row closes the kitchen and sends you to the takeaway spinner. A majority yes builds a timeline back from when you want to eat.
 - **After dinner**: everyone gives the dish stars and a quick comment. The average becomes the dish's rating.
 - **Shared shopping list**: one list for the whole household. Whoever's at the shop ticks items off ("Got it · Mum") and everyone else sees it within seconds. "Put away" moves ticked items into the fridge.
+- **Shopping icons**: each shopping item gets a small picture, and ticked items are struck through.
+- **Cooking reminders**: on the Cook step, "Remind me" sends a notification when each step is due.
+- **Shared fridge and history**: once a household exists, the fridge and cooking history sync between phones within seconds. Without one the app stays on-device. The recipe book (your recipes, hidden dishes, favourites, ratings) is not live-shared; use backup and restore to move it.
 - **Stats**: built only from what you've actually logged.
 
 ## Run locally

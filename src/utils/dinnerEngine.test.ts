@@ -17,6 +17,9 @@ import { DinnerProvider } from '../context/DinnerContext';
 import { MachineView } from '../components/views/MachineView';
 import { TakeawayView } from '../components/views/TakeawayView';
 import { PantryView } from '../components/views/PantryView';
+import { MoreView } from '../components/views/MoreView';
+import { DinnerSteps } from '../components/DinnerSteps';
+import { WelcomeSheet } from '../components/WelcomeSheet';
 import { VotingView } from '../components/views/VotingView';
 import { ScorecardView } from '../components/views/ScorecardView';
 import { RulesModal } from '../components/RulesModal';
@@ -58,6 +61,29 @@ test('Eligibility Engine: respects timeStake, effort, and bannedIngredients', ()
     withBan.pool.some((m) => m.title.includes('Halloumi')),
     false
   );
+});
+
+test('Eligibility Engine: time and effort mean "up to", so wider limits widen the reel', () => {
+  const tight = filterEligibleMeals(INITIAL_MEALS, '20m', 'one-pot', []);
+  const wide = filterEligibleMeals(INITIAL_MEALS, '30m', 'standard', []);
+  assert.ok(wide.pool.length > tight.pool.length);
+  for (const m of tight.pool) assert.ok(wide.pool.some((w) => w.id === m.id));
+  for (const m of wide.pool) {
+    assert.ok(['20m', '30m'].includes(m.timeStake));
+    assert.notEqual(m.effort, 'chef-mode');
+  }
+  const everything = filterEligibleMeals(INITIAL_MEALS, 'all-day', 'chef-mode', []);
+  assert.equal(everything.pool.length, INITIAL_MEALS.length);
+});
+
+test('4-reel plate: adds a veg reel to the title, shopping list and timeline', () => {
+  const plate = buildComboMeal('4-reel', ['Basmati Rice', 'King Prawns', 'Thai Green Coconut', 'Charred Broccoli'], '30m', 'standard');
+  assert.equal(plate.title, 'King Prawns with Thai Green Coconut');
+  assert.ok(plate.description.includes('Basmati Rice') && plate.description.includes('Charred Broccoli'));
+  assert.ok(plate.ingredients.includes('Charred Broccoli'));
+  assert.ok(plate.prepSteps.some((s) => s.includes('Charred Broccoli')));
+  assert.ok(plate.prepSteps.every((s) => /\(-\d+m\)$/.test(s)));
+  assert.ok(plate.tags.includes('4-Reel Custom Combo'));
 });
 
 test('Pantry Match Engine: detects stock percentage and Red rescue items', () => {
@@ -237,6 +263,39 @@ test('Server: shared shopping list round trip, isolated per household', async ()
   });
 });
 
+test('Server: shared fridge and cooking history, isolated per household', async () => {
+  await withServer(async (baseUrl) => {
+    for (const [method, path] of [['GET', '/api/fridge'], ['POST', '/api/fridge/ops'], ['GET', '/api/history'], ['POST', '/api/history']]) {
+      const res = await fetch(`${baseUrl}${path}`, { method, headers: json, body: method === 'POST' ? JSON.stringify({ ops: [{ type: 'remove', id: 'x' }] }) : undefined });
+      assert.equal(res.status, 401, `${method} ${path} should be 401`);
+    }
+    const a = await newHousehold(baseUrl);
+    const b = await newHousehold(baseUrl);
+    const item = (id: string, name: string, freshness = 'green') => ({ id, name, category: 'Fridge', freshness, addedDate: '2026-01-01' });
+    const send = (h: any, ops: any[]) => fetch(`${baseUrl}/api/fridge/ops`, { method: 'POST', headers: authed(h), body: JSON.stringify({ ops }) }).then((r) => r.json());
+
+    const empty = await (await fetch(`${baseUrl}/api/fridge`, { headers: authed(a) })).json();
+    assert.equal(empty.seeded, false);
+    const first = await send(a, [{ type: 'seed', items: [item('f1', 'Milk'), item('f2', 'Courgettes', 'red')] }]);
+    assert.equal(first.items.length, 2);
+    const second = await send(a, [{ type: 'seed', items: [item('z', 'Other')] }]);
+    assert.equal(second.items.length, 2, 'a second phone cannot overwrite the first seed');
+    const edited = await send(a, [{ type: 'cycle', id: 'f1' }, { type: 'add', item: item('f3', 'Eggs') }, { type: 'remove', id: 'f2' }]);
+    assert.deepEqual(edited.items.map((i: any) => i.id).sort(), ['f1', 'f3']);
+    assert.equal(edited.items.find((i: any) => i.id === 'f1').freshness, 'amber');
+    assert.equal((await (await fetch(`${baseUrl}/api/fridge`, { headers: authed(b) })).json()).items.length, 0, 'other households see nothing');
+
+    const log = (id: string, date: string, title = 'Curry') => ({ id, mealId: 'm1', title, cuisine: 'x', date, rescued: [] });
+    const postHistory = (h: any, body: any) => fetch(`${baseUrl}/api/history`, { method: 'POST', headers: authed(h), body: JSON.stringify(body) }).then((r) => r.json());
+    await postHistory(a, { entries: [log('l1', '2026-01-01')] });
+    const merged = await postHistory(a, { entries: [log('l2', '2026-02-01'), { id: 5 }] });
+    assert.deepEqual(merged.entries.map((e: any) => e.id), ['l2', 'l1'], 'newest first, junk dropped, nothing lost');
+    const reset = await postHistory(a, { entries: [], replace: true });
+    assert.equal(reset.entries.length, 0);
+    assert.equal((await (await fetch(`${baseUrl}/api/history`, { headers: authed(b) })).json()).entries.length, 0);
+  });
+});
+
 test('Server: scanning never invents a result for something the user asked for', async () => {
   await withServer(async (baseUrl) => {
     // No AI key in tests: a real request is refused honestly...
@@ -312,13 +371,21 @@ test('Fresh start: a new household sees no invented history, family, fridge or d
   assert.equal(INITIAL_USER_PROFILE.avatarUrl, '');
 });
 
-test('React UI Component Suite: renders all 5 Cabinet Views and Modals cleanly without error', () => {
+test('React UI Component Suite: renders every screen and modal cleanly without error', () => {
   const views = [
     { name: 'MachineView', el: React.createElement(MachineView), expectedText: 'What’s for dinner?' },
     { name: 'TakeawayView', el: React.createElement(TakeawayView), expectedText: 'Spin for takeaway' },
-    { name: 'PantryView', el: React.createElement(PantryView), expectedText: '>Kitchen</h1>' },
+    { name: 'Fridge', el: React.createElement(PantryView, { scope: 'fridge' }), expectedText: '>Fridge</h1>' },
+    { name: 'Recipes', el: React.createElement(PantryView, { scope: 'recipes' }), expectedText: '>Recipes</h1>' },
+    { name: 'Shopping', el: React.createElement(PantryView, { scope: 'shop' }), expectedText: '>Shopping</h1>' },
+    {
+      name: 'MoreView',
+      el: React.createElement(MoreView, { onOpenProfile: () => {}, onOpenRules: () => {} }),
+      expectedText: 'Order takeaway',
+    },
+    { name: 'DinnerSteps', el: React.createElement(DinnerSteps), expectedText: 'Pick' },
     { name: 'VotingView', el: React.createElement(VotingView), expectedText: 'Nothing on the table yet' },
-    { name: 'ScorecardView', el: React.createElement(ScorecardView), expectedText: 'Your kitchen' },
+    { name: 'ScorecardView', el: React.createElement(ScorecardView), expectedText: '>History</h1>' },
     {
       name: 'RulesModal',
       el: React.createElement(RulesModal, { isOpen: true, onClose: () => {} }),
@@ -367,6 +434,34 @@ test('Tweaks: extra ingredients count for stock and extra steps slot into the ti
   const offsets = steps.map((s) => s.minuteOffset);
   assert.deepEqual(offsets, [...offsets].sort((a, b) => b - a), 'timeline stays in time order');
   assert.ok(steps.some((s) => s.label === 'Toast breadcrumbs' && s.timeString === '18:21'));
+});
+
+test('Fridge ops: seed once, add, cycle freshness, remove, rescue use-next items', async () => {
+  const { applyFridgeOp } = await import('./fridge');
+  const mk = (id: string, name: string, freshness: any) => ({ id, name, category: 'Fridge', freshness, addedDate: '2026-01-01' });
+  let st: any = { version: 0, seeded: false, items: [] };
+  st = applyFridgeOp(st, { type: 'seed', items: [mk('a', 'Milk', 'green'), mk('b', 'Courgettes', 'red')] });
+  assert.equal(st.items.length, 2);
+  const again = applyFridgeOp(st, { type: 'seed', items: [mk('z', 'Other', 'green')] });
+  assert.equal(again.items.length, 2, 'a second seed is ignored');
+  st = applyFridgeOp(st, { type: 'add', item: mk('c', 'Eggs', 'green') });
+  assert.equal(st.items[0].name, 'Eggs');
+  assert.equal(applyFridgeOp(st, { type: 'add', item: mk('c', 'Eggs', 'green') }).items.length, 3, 'same id is not duplicated');
+  st = applyFridgeOp(st, { type: 'cycle', id: 'a' });
+  assert.equal(st.items.find((i: any) => i.id === 'a').freshness, 'amber');
+  st = applyFridgeOp(st, { type: 'removeUseNextByNames', names: ['courgettes'] });
+  assert.equal(st.items.some((i: any) => i.name === 'Courgettes'), false);
+  st = applyFridgeOp(st, { type: 'remove', id: 'c' });
+  assert.equal(st.items.length, 1);
+  assert.equal(applyFridgeOp(st, { type: 'nonsense' }), st);
+});
+
+test('Item icons: keywords map to graphics with a basket fallback', async () => {
+  const { itemIcon } = await import('./itemIcon');
+  assert.equal(itemIcon('Semi-Skimmed Milk'), '🥛');
+  assert.equal(itemIcon('Free-Range Chicken Thighs'), '🍗');
+  assert.equal(itemIcon('Greek yoghurt'), '🥣');
+  assert.equal(itemIcon('Mystery thing'), '🛒');
 });
 
 test('Shopping list ops: add dedupes, ticks record who, clear removes ticked', async () => {

@@ -93,10 +93,10 @@ export const ScorecardView: React.FC = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display text-[28px] leading-tight font-semibold">Your kitchen</h1>
+        <h1 className="font-display text-[28px] leading-tight font-semibold">History</h1>
         <p className="mt-1 text-[14px] text-ink-2">
           {cookLog.length === 0
-            ? 'Log dinners from Tonight and this page fills in with your real week.'
+            ? 'Log a dinner from the Dinner tab and this page fills in with your real week.'
             : `Built from ${cookLog.length} logged ${cookLog.length === 1 ? 'dinner' : 'dinners'}.`}
         </p>
       </div>

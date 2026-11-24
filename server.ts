@@ -5,6 +5,8 @@ import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
 import { applyShoppingOp } from './src/utils/shopping';
+import { applyFridgeOp, type FridgeState } from './src/utils/fridge';
+import { cleanLog, unionLog } from './src/utils/history';
 import { Household, HttpError, Store, createFileStore, createStoreFromEnv, mutate } from './src/server/store';
 
 dotenv.config();
@@ -201,6 +203,53 @@ app.post('/api/shopping/ops', smallJson, requireHousehold, async (req, res) => {
       return h.shopping;
     });
     res.json(shopping);
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Shared fridge: same idea as the shopping list. The first phone to arrive seeds it.
+// ---------------------------------------------------------------------------
+const fridgeOf = (h: Household): FridgeState => ((h.fridge ||= { version: 0, seeded: false, items: [] }) as FridgeState);
+
+app.get('/api/fridge', requireHousehold, (req, res) => {
+  res.json(fridgeOf((req as AuthedRequest).household!));
+});
+
+app.post('/api/fridge/ops', smallJson, requireHousehold, async (req, res) => {
+  const ops = Array.isArray(req.body?.ops) ? req.body.ops.slice(0, 200) : [];
+  if (ops.length === 0) return res.status(400).json({ error: 'No operations' });
+  try {
+    const fridge = await mutate(store, (req as AuthedRequest).householdId!, (h) => {
+      const next = ops.reduce(applyFridgeOp, fridgeOf(h));
+      next.version += 1;
+      h.fridge = next;
+      return next;
+    });
+    res.json(fridge);
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Shared cooking history. Entries from every phone are merged, so nobody's dinners are lost.
+// ---------------------------------------------------------------------------
+app.get('/api/history', requireHousehold, (req, res) => {
+  res.json({ entries: cleanLog((req as AuthedRequest).household!.cookLog) });
+});
+
+app.post('/api/history', smallJson, requireHousehold, async (req, res) => {
+  const incoming = cleanLog(req.body?.entries);
+  const replace = req.body?.replace === true; // a deliberate reset or restore
+  try {
+    const entries = await mutate(store, (req as AuthedRequest).householdId!, (h) => {
+      const merged = replace ? incoming : unionLog(cleanLog(h.cookLog) as any, incoming);
+      h.cookLog = merged;
+      return merged;
+    });
+    res.json({ entries });
   } catch (err) {
     fail(res, err);
   }

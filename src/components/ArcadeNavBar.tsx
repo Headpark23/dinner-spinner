@@ -1,83 +1,92 @@
 import React from 'react';
 import { useDinner } from '../context/DinnerContext';
-import { Dices, ChefHat, Refrigerator, Bike, BarChart3 } from 'lucide-react';
+import { UtensilsCrossed, BookOpen, ShoppingBasket, Refrigerator, Menu } from 'lucide-react';
 import { cx } from './ui';
 
+/** Which tab owns each internal view id. Takeaway (1) and Stats (4) live under More. */
+const TAB_OF_VIEW: Record<number, string> = { 0: 'dinner', 3: 'dinner', 5: 'recipes', 6: 'shopping', 2: 'fridge', 1: 'more', 4: 'more', 7: 'more' };
+
 export const ArcadeNavBar: React.FC = () => {
-  const { activeView, setActiveView, takeawayOverrideActive, pantry, agreedMeal, proposedMeal } =
+  const { activeView, setActiveView, takeawayOverrideActive, pantry, agreedMeal, proposedMeal, shoppingList } =
     useDinner();
 
   const redPantryCount = pantry.filter((p) => p.freshness === 'red').length;
+  const toBuy = shoppingList.filter((i) => !i.checked).length;
+  const activeTab = TAB_OF_VIEW[activeView] ?? 'dinner';
 
-  // Ordered by the evening's flow: decide, agree & cook, stock, fall back, reflect.
-  const navItems = [
-    { id: 0, label: 'Spin', icon: Dices },
+  const items = [
     {
-      id: 3,
-      label: 'Tonight',
-      icon: ChefHat,
-      dot: agreedMeal ? 'sage' : proposedMeal ? 'ink' : undefined,
-      srHint: agreedMeal ? 'dinner agreed' : undefined,
+      key: 'dinner',
+      label: 'Dinner',
+      icon: UtensilsCrossed,
+      go: () => setActiveView(agreedMeal || proposedMeal ? 3 : 0),
+      dot: agreedMeal ? 'sage' : proposedMeal ? 'saffron' : undefined,
+      hint: agreedMeal ? 'dinner agreed' : proposedMeal ? 'waiting for a vote' : undefined,
+    },
+    { key: 'recipes', label: 'Recipes', icon: BookOpen, go: () => setActiveView(5) },
+    {
+      key: 'shopping',
+      label: 'Shopping',
+      icon: ShoppingBasket,
+      go: () => setActiveView(6),
+      count: toBuy > 0 ? toBuy : undefined,
+      hint: toBuy > 0 ? `${toBuy} to buy` : undefined,
     },
     {
-      id: 2,
-      label: 'Kitchen',
+      key: 'fridge',
+      label: 'Fridge',
       icon: Refrigerator,
-      count: redPantryCount > 0 ? redPantryCount : undefined,
-      srHint: redPantryCount > 0 ? `${redPantryCount} items to use next` : undefined,
+      go: () => setActiveView(2),
+      dot: redPantryCount > 0 ? 'tomato' : undefined,
+      hint: redPantryCount > 0 ? `${redPantryCount} to use up` : undefined,
     },
     {
-      id: 1,
-      label: 'Takeaway',
-      icon: Bike,
+      key: 'more',
+      label: 'More',
+      icon: Menu,
+      go: () => setActiveView(7),
       dot: takeawayOverrideActive ? 'tomato' : undefined,
-      srHint: takeawayOverrideActive ? 'kitchen closed' : undefined,
+      hint: takeawayOverrideActive ? 'kitchen closed, takeaway tonight' : undefined,
     },
-    { id: 4, label: 'Stats', icon: BarChart3 },
-  ] as const;
+  ];
 
   return (
     <nav
       aria-label="Main"
-      className="pb-safe sticky bottom-0 z-30 border-t border-line bg-paper/95 px-2 pt-1.5 backdrop-blur-sm"
+      className="pb-safe sticky bottom-0 z-30 border-t border-line bg-card/95 px-1.5 pt-1.5 backdrop-blur-sm"
     >
-      <ul className="grid grid-cols-5">
-        {navItems.map((item) => {
-          const isActive = activeView === item.id;
+      <ul className="grid grid-cols-5 gap-0.5">
+        {items.map((item) => {
+          const isActive = activeTab === item.key;
           const Icon = item.icon;
-          const count = 'count' in item ? item.count : undefined;
-          const dot = 'dot' in item ? item.dot : undefined;
           return (
-            <li key={item.id}>
+            <li key={item.key}>
               <button
-                onClick={() => setActiveView(item.id)}
+                onClick={item.go}
                 aria-current={isActive ? 'page' : undefined}
                 className={cx(
-                  'relative flex min-h-[52px] w-full flex-col items-center justify-center gap-1 rounded-xl transition-colors',
-                  isActive ? 'text-ink' : 'text-ink-3 hover:text-ink-2'
+                  'relative flex min-h-[56px] w-full flex-col items-center justify-center gap-1 rounded-2xl transition-colors',
+                  isActive ? 'bg-tomato-soft text-tomato' : 'text-ink-2 hover:text-ink'
                 )}
               >
                 <span className="relative">
-                  <Icon className="h-[22px] w-[22px]" strokeWidth={isActive ? 2.1 : 1.75} />
-                  {count !== undefined && (
-                    <span className="absolute -top-1.5 -right-2.5 min-w-[18px] rounded-full bg-tomato px-1 text-center text-[11px] font-semibold leading-[18px] text-white tabular-nums">
-                      {count}
+                  <Icon className="h-[24px] w-[24px]" strokeWidth={isActive ? 2.1 : 1.75} />
+                  {'count' in item && item.count !== undefined && (
+                    <span className="absolute -top-1.5 -right-3 min-w-[18px] rounded-full bg-tomato px-1 text-center text-[11px] font-semibold leading-[18px] text-white tabular-nums">
+                      {item.count}
                     </span>
                   )}
-                  {dot && (
+                  {'dot' in item && item.dot && (
                     <span
                       className={cx(
-                        'absolute -top-0.5 -right-1 h-2.5 w-2.5 rounded-full ring-2 ring-paper',
-                        dot === 'sage' ? 'bg-sage' : dot === 'tomato' ? 'bg-tomato' : 'bg-ink'
+                        'absolute -top-0.5 -right-1.5 h-2.5 w-2.5 rounded-full ring-2 ring-card',
+                        item.dot === 'sage' ? 'bg-sage' : item.dot === 'tomato' ? 'bg-tomato' : 'bg-saffron'
                       )}
                     />
                   )}
                 </span>
-                <span className={cx('text-[11px] leading-none', isActive ? 'font-semibold' : 'font-medium')}>
-                  {item.label}
-                </span>
-                {'srHint' in item && item.srHint && <span className="sr-only">, {item.srHint}</span>}
-                {isActive && <span className="absolute top-0 h-0.5 w-6 rounded-full bg-tomato" />}
+                <span className={cx('text-[12px] leading-none', isActive ? 'font-bold' : 'font-medium')}>{item.label}</span>
+                {item.hint && <span className="sr-only">, {item.hint}</span>}
               </button>
             </li>
           );

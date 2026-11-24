@@ -301,6 +301,16 @@ export const REEL_SAUCES: ReelComboItem[] = [
   { id: 's7', label: 'Thai Green Coconut', category: 'Style', icon: '🥥' },
 ];
 
+export const REEL_VEG: ReelComboItem[] = [
+  { id: 'v1', label: 'Garlic Green Beans', category: 'Veg', icon: '🫛' },
+  { id: 'v2', label: 'Honey-Roast Carrots', category: 'Veg', icon: '🥕' },
+  { id: 'v3', label: 'Charred Broccoli', category: 'Veg', icon: '🥦' },
+  { id: 'v4', label: 'Buttered Peas', category: 'Veg', icon: '🟢' },
+  { id: 'v5', label: 'Crunchy Slaw', category: 'Veg', icon: '🥬' },
+  { id: 'v6', label: 'Sweetcorn', category: 'Veg', icon: '🌽' },
+  { id: 'v7', label: 'Roast Peppers & Courgette', category: 'Veg', icon: '🫑' },
+];
+
 // Sunday Roast Builder 4-Reels
 export const SUNDAY_MEATS: ReelComboItem[] = [
   { id: 'sm1', label: 'Dry-Aged Roast Beef', category: 'Roast Main', icon: '🥩' },
@@ -503,3 +513,15 @@ export const STARTER_TAKEAWAYS: TakeawayOption[] = INITIAL_TAKEAWAYS.map((t) => 
   orderCount: 0,
   lastOrderedDate: null,
 }));
+/** The reels for each build-it mode, in order. */
+export const COMBO_REELS: Record<'3-reel' | '4-reel' | 'sunday', ReelComboItem[][]> = {
+  '3-reel': [REEL_CARBS, REEL_PROTEINS, REEL_SAUCES],
+  '4-reel': [REEL_CARBS, REEL_PROTEINS, REEL_SAUCES, REEL_VEG],
+  sunday: [SUNDAY_MEATS, SUNDAY_POTATOES, SUNDAY_STAR_SIDES, SUNDAY_VEG_GRAVY],
+};
+
+export const COMBO_HEADERS: Record<'3-reel' | '4-reel' | 'sunday', string[]> = {
+  '3-reel': ['Base', 'Main', 'Sauce'],
+  '4-reel': ['Base', 'Main', 'Sauce', 'Veg'],
+  sunday: ['Roast', 'Potatoes', 'Side', 'Veg & gravy'],
+};

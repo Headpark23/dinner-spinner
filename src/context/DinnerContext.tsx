@@ -22,6 +22,7 @@ import {
 } from '../types';
 import { WORLD_RECIPES } from '../data/worldRecipes';
 import { applyShoppingOp, newShoppingId, ShoppingOp } from '../utils/shopping';
+import { applyFridgeOp, FridgeOp } from '../utils/fridge';
 import {
   STARTER_MEALS,
   STARTER_TAKEAWAYS,
@@ -33,6 +34,7 @@ import {
   REEL_CARBS,
   REEL_PROTEINS,
   REEL_SAUCES,
+  COMBO_REELS,
   SUNDAY_MEATS,
   SUNDAY_POTATOES,
   SUNDAY_STAR_SIDES,
@@ -198,6 +200,11 @@ interface DinnerContextType {
   shoppingOnline: boolean | null;
   meId: string;
   setMeId: (id: string) => void;
+  roomCode: string;
+  roomError: string | null;
+  createRoom: () => Promise<boolean>;
+  joinRoom: (code: string) => Promise<boolean>;
+  leaveRoom: () => void;
   addShoppingItems: (names: string[], forMeal?: string) => void;
   removeShoppingByName: (name: string) => void;
   toggleShoppingItem: (id: string) => void;
@@ -213,9 +220,11 @@ const DinnerContext = createContext<DinnerContextType | null>(null);
 
 const STORAGE_KEY = 'dinner_spinner_state_v1';
 
-const VIEW_PATHS = ['/', '/takeaway', '/kitchen', '/tonight', '/stats'];
+// Indexed by view id: Dinner, Takeaway, Fridge, Cook, History, Recipes, Shopping, More.
+const VIEW_PATHS = ['/', '/takeaway', '/fridge', '/tonight', '/stats', '/recipes', '/shopping', '/more'];
 const viewFromPath = (pathname: string): number | null => {
   const clean = pathname.replace(/\/+$/, '') || '/';
+  if (clean === '/kitchen') return 2; // the old name for the fridge
   const i = VIEW_PATHS.indexOf(clean);
   return i === -1 ? null : i;
 };
@@ -276,6 +285,11 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [rejectedMealIds, setRejectedMealIds] = useState<string[]>(() => loadStored('rejected', []));
   const [shoppingList, setShoppingList] = useState<ShoppingItem[]>(() => loadStored('shopping', []));
   const [shoppingOnline, setShoppingOnline] = useState<boolean | null>(null);
+  const pendingFridgeOps = useRef<FridgeOp[]>(loadStored('fridge_queue', []));
+  const fridgeBusy = useRef(false);
+  const fridgeDirty = useRef(false);
+  const pantryRef = useRef<PantryItem[]>([]);
+  pantryRef.current = pantry;
   const pendingShoppingOps = useRef<ShoppingOp[]>(loadStored('shopping_queue', []));
   const [meId, setMeIdState] = useState<string>(() => loadStored('me', ''));
   const [household, setHousehold] = useState<{ id: string; key: string } | null>(() =>
@@ -302,7 +316,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [mode, setModeState] = useState<MachineMode>(() => {
     if (typeof window !== 'undefined') {
       const m = new URLSearchParams(window.location.search).get('mode');
-      if (m === 'single' || m === '3-reel' || m === 'sunday') return m;
+      if (m === 'single' || m === '3-reel' || m === '4-reel' || m === 'sunday') return m;
     }
     return 'single';
   });
@@ -317,7 +331,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     'Rigatoni Pasta',
     'Free-Range Chicken',
     'Spicy Arrabbiata',
-    'Charred Cabbage & Rich Beef Gravy',
+    'Garlic Green Beans',
   ]);
   const [soundMuted, setSoundMuted] = useState<boolean>(false);
 
@@ -347,7 +361,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     loadStored('reverse_timers', [])
   );
 
-  // Navigation View (0: Machine, 1: Takeaway, 2: Kitchen, 3: Tonight, 4: Stats).
+  // Navigation View (0: Dinner, 1: Takeaway, 2: Fridge, 3: Vote/Cook, 4: History, 5: Recipes, 6: Shopping, 7: More).
   // Each view has a real URL, so the browser Back button and shared links work.
   const [activeView, setActiveViewState] = useState<number>(() => {
     if (typeof window !== 'undefined') {
@@ -359,6 +373,9 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (v === '2' || v === 'pantry' || v === 'kitchen') return 2;
       if (v === '3' || v === 'vote' || v === 'voting' || v === 'tonight') return 3;
       if (v === '4' || v === 'stats' || v === 'scorecard') return 4;
+      if (v === '5' || v === 'recipes') return 5;
+      if (v === '6' || v === 'shopping') return 6;
+      if (v === '7' || v === 'more') return 7;
     }
     return 0;
   });
@@ -540,6 +557,118 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return () => clearInterval(timer);
   }, [syncShopping, household]);
 
+  // ---------- Shared fridge (once the household is set up) ----------
+  // Same pattern as the shopping list: edits apply here at once, queue, and go to the server.
+  const saveFridgeQueue = () => {
+    try {
+      localStorage.setItem(`${STORAGE_KEY}_fridge_queue`, JSON.stringify(pendingFridgeOps.current));
+    } catch {
+      // storage full or blocked; the queue still lives in memory
+    }
+  };
+
+  const postFridgeOps = (ops: FridgeOp[]) =>
+    fetch('/api/fridge/ops', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ ops }),
+    });
+
+  const syncFridge = useCallback(async () => {
+    if (!householdRef.current) return; // without a household the fridge stays on this phone
+    if (fridgeBusy.current) {
+      fridgeDirty.current = true;
+      return;
+    }
+    fridgeBusy.current = true;
+    try {
+      do {
+        fridgeDirty.current = false;
+        const queued = pendingFridgeOps.current;
+        let res = queued.length ? await postFridgeOps(queued) : await fetch('/api/fridge', { headers: authHeaders() });
+        if (!res.ok) throw new Error('fridge sync failed');
+        let json = await res.json();
+        if (queued.length) {
+          pendingFridgeOps.current = pendingFridgeOps.current.slice(queued.length);
+          saveFridgeQueue();
+        }
+        if (!json.seeded) {
+          // First phone in the household shares what it has; the server ignores this if someone beat us to it.
+          res = await postFridgeOps([{ type: 'seed', items: pantryRef.current }]);
+          if (!res.ok) throw new Error('fridge seed failed');
+          json = await res.json();
+        }
+        // Re-apply anything queued meanwhile so local edits never flicker away.
+        const merged = pendingFridgeOps.current.reduce(applyFridgeOp, { version: json.version, seeded: true, items: json.items });
+        setPantry(merged.items);
+      } while (fridgeDirty.current);
+    } catch {
+      // offline: changes stay queued and go out next time
+    } finally {
+      fridgeBusy.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    syncFridge();
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') syncFridge();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [syncFridge, household]);
+
+  const queueFridge = (ops: FridgeOp[]) => {
+    if (ops.length === 0) return;
+    setPantry((prev) => ops.reduce(applyFridgeOp, { version: 0, seeded: true, items: prev }).items);
+    if (!householdRef.current) return;
+    pendingFridgeOps.current = [...pendingFridgeOps.current, ...ops];
+    saveFridgeQueue();
+    syncFridge();
+  };
+
+  // ---------- Shared cooking history ----------
+  const historyBusy = useRef(false);
+  const historyReplace = useRef(false);
+  const cookLogRef = useRef<CookLogEntry[]>([]);
+  cookLogRef.current = cookLog;
+
+  const syncHistory = useCallback(async () => {
+    if (!householdRef.current || historyBusy.current) return;
+    historyBusy.current = true;
+    try {
+      const sent = cookLogRef.current;
+      const replace = historyReplace.current;
+      const res = await fetch('/api/history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ entries: sent, replace }),
+      });
+      if (!res.ok) throw new Error('history sync failed');
+      const { entries } = (await res.json()) as { entries: CookLogEntry[] };
+      historyReplace.current = false;
+      // Only adopt the merged history if nothing changed while we were talking to the server.
+      if (cookLogRef.current === sent && JSON.stringify(entries) !== JSON.stringify(sent)) setCookLog(entries);
+    } catch {
+      // offline: local entries are sent on a later round
+    } finally {
+      historyBusy.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    syncHistory();
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') syncHistory();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [syncHistory, household]);
+
+  // Send a new dinner or review a moment after it happens instead of waiting for the next poll.
+  useEffect(() => {
+    const t = setTimeout(syncHistory, 800);
+    return () => clearTimeout(t);
+  }, [cookLog, syncHistory]);
+
   const queueShopping = (ops: ShoppingOp[]) => {
     if (ops.length === 0) return;
     setShoppingList((prev) => ops.reduce(applyShoppingOp, prev));
@@ -557,24 +686,19 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     localStorage.setItem(`${STORAGE_KEY}_takeaway_override`, JSON.stringify(takeawayOverrideActive));
   }, [consecutiveRejections, takeawayOverrideActive]);
 
+  // Sunday roast is always an all-day, chef-mode job; plates follow the time/effort filters.
+  const comboLimits = (m: MachineMode): [TimeStake, EffortLevel] =>
+    m === 'sunday' ? ['all-day', 'chef-mode'] : [comboTime(timeStake), comboEffort(effort)];
+
   // Mode switcher that also initializes sensible default reels & meal preview
   const setMode = (nextMode: MachineMode) => {
     sound.playHold();
     setModeState(nextMode);
     setHeldReels([false, false, false, false]);
-    if (nextMode === '3-reel') {
-      const initial3 = [REEL_CARBS[0].label, REEL_PROTEINS[0].label, REEL_SAUCES[0].label];
-      setCustomReelResult(initial3);
-      setActiveMealResult(buildComboMeal('3-reel', initial3, comboTime(timeStake), comboEffort(effort)));
-    } else if (nextMode === 'sunday') {
-      const initial4 = [
-        SUNDAY_MEATS[0].label,
-        SUNDAY_POTATOES[0].label,
-        SUNDAY_STAR_SIDES[0].label,
-        SUNDAY_VEG_GRAVY[0].label,
-      ];
-      setCustomReelResult(initial4);
-      setActiveMealResult(buildComboMeal('sunday', initial4, 'all-day', 'chef-mode'));
+    if (nextMode !== 'single') {
+      const initial = COMBO_REELS[nextMode].map((list) => list[0].label);
+      setCustomReelResult(initial);
+      setActiveMealResult(buildComboMeal(nextMode, initial, ...comboLimits(nextMode)));
     } else {
       const { pool } = filterEligibleMeals(meals, timeStake, effort, bannedIngredients, diets);
       if (pool.length > 0) {
@@ -625,26 +749,14 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const nextIndex = (currentIndex + 1) % meals.length;
         setActiveMealResult(meals[nextIndex]);
       }
-    } else if (mode === '3-reel') {
-      const lists = [REEL_CARBS, REEL_PROTEINS, REEL_SAUCES];
-      const list = lists[reelIndex] || REEL_CARBS;
+    } else {
+      const list = COMBO_REELS[mode][reelIndex] || COMBO_REELS[mode][0];
       const currentVal = customReelResult[reelIndex];
       const currentIndex = list.findIndex((i) => i.label === currentVal);
-      const nextIndex = (currentIndex + 1) % list.length;
       const nextReels = [...customReelResult];
-      nextReels[reelIndex] = list[nextIndex].label;
+      nextReels[reelIndex] = list[(currentIndex + 1) % list.length].label;
       setCustomReelResult(nextReels);
-      setActiveMealResult(buildComboMeal('3-reel', nextReels, comboTime(timeStake), comboEffort(effort)));
-    } else if (mode === 'sunday') {
-      const lists = [SUNDAY_MEATS, SUNDAY_POTATOES, SUNDAY_STAR_SIDES, SUNDAY_VEG_GRAVY];
-      const list = lists[reelIndex] || SUNDAY_MEATS;
-      const currentVal = customReelResult[reelIndex];
-      const currentIndex = list.findIndex((i) => i.label === currentVal);
-      const nextIndex = (currentIndex + 1) % list.length;
-      const nextReels = [...customReelResult];
-      nextReels[reelIndex] = list[nextIndex].label;
-      setCustomReelResult(nextReels);
-      setActiveMealResult(buildComboMeal('sunday', nextReels, 'all-day', 'chef-mode'));
+      setActiveMealResult(buildComboMeal(mode, nextReels, ...comboLimits(mode)));
     }
   };
 
@@ -661,7 +773,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const tickInterval = setInterval(() => {
       sound.playReelTick();
-    }, 90);
+    }, 130);
 
     setTimeout(() => {
       clearInterval(tickInterval);
@@ -677,35 +789,13 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           setActiveMealResult(chosen);
           sound.playWin();
         }
-      } else if (mode === '3-reel') {
+      } else {
         const newRes = [...customReelResult];
-        if (!heldReels[0]) {
-          newRes[0] = REEL_CARBS[Math.floor(Math.random() * REEL_CARBS.length)].label;
-        }
-        if (!heldReels[1]) {
-          newRes[1] = REEL_PROTEINS[Math.floor(Math.random() * REEL_PROTEINS.length)].label;
-        }
-        if (!heldReels[2]) {
-          newRes[2] = REEL_SAUCES[Math.floor(Math.random() * REEL_SAUCES.length)].label;
-        }
+        COMBO_REELS[mode].forEach((list, i) => {
+          if (!heldReels[i]) newRes[i] = list[Math.floor(Math.random() * list.length)].label;
+        });
         setCustomReelResult(newRes);
-        const comboMeal = buildComboMeal('3-reel', newRes, comboTime(timeStake), comboEffort(effort));
-        setActiveMealResult(comboMeal);
-        sound.playReelLock();
-        sound.playWin();
-      } else if (mode === 'sunday') {
-        const newRes = [...customReelResult];
-        if (!heldReels[0])
-          newRes[0] = SUNDAY_MEATS[Math.floor(Math.random() * SUNDAY_MEATS.length)].label;
-        if (!heldReels[1])
-          newRes[1] = SUNDAY_POTATOES[Math.floor(Math.random() * SUNDAY_POTATOES.length)].label;
-        if (!heldReels[2])
-          newRes[2] = SUNDAY_STAR_SIDES[Math.floor(Math.random() * SUNDAY_STAR_SIDES.length)].label;
-        if (!heldReels[3])
-          newRes[3] = SUNDAY_VEG_GRAVY[Math.floor(Math.random() * SUNDAY_VEG_GRAVY.length)].label;
-        setCustomReelResult(newRes);
-        const sundayMeal = buildComboMeal('sunday', newRes, 'all-day', 'chef-mode');
-        setActiveMealResult(sundayMeal);
+        setActiveMealResult(buildComboMeal(mode, newRes, ...comboLimits(mode)));
         sound.playReelLock();
         sound.playWin();
       }
@@ -898,6 +988,148 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return { allowed: true };
   };
 
+  // Shared voting room: phones with the same code see one proposed dinner and one ballot.
+  const [roomCode, setRoomCode] = useState<string>(() => loadStored('room', ''));
+  const [roomError, setRoomError] = useState<string | null>(null);
+  const roomVersion = useRef(0);
+  const roomSynced = useRef('');
+
+  const roomPayload = () => ({ members: householdMembers, proposedMeal, agreedMeal, ballot: currentBallot, targetTime: targetEatingTime });
+
+  const rememberRoom = (code: string) => {
+    setRoomCode(code);
+    try {
+      localStorage.setItem(`${STORAGE_KEY}_room`, JSON.stringify(code));
+    } catch {
+      // ignore
+    }
+  };
+
+  const createRoom = async (): Promise<boolean> => {
+    setRoomError(null);
+    try {
+      const payload = roomPayload();
+      const res = await fetch('/api/rooms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ state: payload }) });
+      if (!res.ok) throw new Error('create failed');
+      const data = await res.json();
+      roomVersion.current = data.version;
+      roomSynced.current = JSON.stringify(payload);
+      rememberRoom(data.code);
+      return true;
+    } catch {
+      setRoomError('Could not start a room. Check your connection and try again.');
+      return false;
+    }
+  };
+
+  const joinRoom = async (rawCode: string): Promise<boolean> => {
+    setRoomError(null);
+    const code = rawCode.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+    if (code.length !== 4) {
+      setRoomError('Room codes are 4 characters.');
+      return false;
+    }
+    try {
+      const res = await fetch(`/api/rooms/${code}`);
+      if (res.status === 404) {
+        setRoomError('No room with that code. It may have expired.');
+        return false;
+      }
+      if (!res.ok) throw new Error('join failed');
+      const data = await res.json();
+      roomVersion.current = 0; // force the poll below to apply this state
+      applyRoom(data);
+      rememberRoom(data.code);
+      return true;
+    } catch {
+      setRoomError('Could not reach the room. Check your connection and try again.');
+      return false;
+    }
+  };
+
+  const leaveRoom = () => {
+    roomVersion.current = 0;
+    roomSynced.current = '';
+    setRoomError(null);
+    rememberRoom('');
+  };
+
+  const applyRoom = (data: { version: number; state: any }) => {
+    const st = data.state || {};
+    roomVersion.current = data.version;
+    roomSynced.current = JSON.stringify({
+      members: st.members ?? [],
+      proposedMeal: st.proposedMeal ?? null,
+      agreedMeal: st.agreedMeal ?? null,
+      ballot: st.ballot ?? {},
+      targetTime: st.targetTime,
+    });
+    if (Array.isArray(st.members) && st.members.length > 0) setHouseholdMembers(st.members);
+    const newProposal = st.proposedMeal?.id && st.proposedMeal.id !== proposedMeal?.id;
+    setProposedMeal(st.proposedMeal ?? null);
+    setCurrentBallot(st.ballot ?? {});
+    if (st.targetTime) setTargetEatingTime(st.targetTime);
+    if (st.agreedMeal) {
+      if (agreedMeal?.id !== st.agreedMeal.id) generateReverseTimers(st.targetTime || targetEatingTime, st.agreedMeal);
+      setAgreedMeal(st.agreedMeal);
+    } else {
+      setAgreedMeal(null);
+    }
+    if (newProposal && !st.agreedMeal) setActiveView(3);
+  };
+
+  // Push local changes to the room.
+  useEffect(() => {
+    if (!roomCode) return;
+    const payload = roomPayload();
+    const json = JSON.stringify(payload);
+    if (json === roomSynced.current) return;
+    roomSynced.current = json;
+    fetch(`/api/rooms/${roomCode}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ state: payload }) })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data) roomVersion.current = data.version;
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomCode, householdMembers, proposedMeal, agreedMeal, currentBallot, targetEatingTime]);
+
+  // Pull other phones' changes every couple of seconds.
+  useEffect(() => {
+    if (!roomCode) return;
+    let stopped = false;
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/rooms/${roomCode}`);
+        if (stopped) return;
+        if (res.status === 404) {
+          setRoomError('That room has expired. You are voting on this phone only again.');
+          leaveRoom();
+          return;
+        }
+        if (!res.ok) return;
+        const data = await res.json();
+        // Don't overwrite a change of ours that hasn't been sent yet.
+        if (data.version > roomVersion.current && JSON.stringify(roomPayload()) === roomSynced.current) applyRoom(data);
+      } catch {
+        // offline: try again next tick
+      }
+    };
+    const id = window.setInterval(poll, 2000);
+    return () => {
+      stopped = true;
+      window.clearInterval(id);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomCode, householdMembers, proposedMeal, agreedMeal, currentBallot, targetEatingTime]);
+
+  // In a room everyone votes as themselves on their own phone.
+  useEffect(() => {
+    if (!roomCode || !meId) return;
+    const idx = householdMembers.findIndex((m) => m.id === meId);
+    if (idx !== -1) setActiveVoterIndex(idx);
+  }, [roomCode, meId, householdMembers, currentBallot]);
+
   const meName = () => householdMembers.find((m) => m.id === meId)?.name;
 
   const setMeId = (id: string) => {
@@ -1056,20 +1288,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Pantry freshness toggle
   const togglePantryFreshness = (id: string) => {
     sound.playHold();
-    setPantry((prev) =>
-      prev.map((item) => {
-        if (item.id === id) {
-          const nextFreshness =
-            item.freshness === 'green'
-              ? 'amber'
-              : item.freshness === 'amber'
-              ? 'red'
-              : 'green';
-          return { ...item, freshness: nextFreshness };
-        }
-        return item;
-      })
-    );
+    queueFridge([{ type: 'cycle', id }]);
   };
 
   const addPantryItem = (item: Omit<PantryItem, 'id' | 'addedDate'>) => {
@@ -1078,11 +1297,11 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       id: 'pantry_' + Date.now() + Math.random().toString(36).substring(2, 6),
       addedDate: new Date().toISOString().slice(0, 10),
     };
-    setPantry((prev) => [newItem, ...prev]);
+    queueFridge([{ type: 'add', item: newItem }]);
   };
 
   const removePantryItem = (id: string) => {
-    setPantry((prev) => prev.filter((p) => p.id !== id));
+    queueFridge([{ type: 'remove', id }]);
   };
 
   const addStaple = (name: string) => {
@@ -1154,15 +1373,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (rescuedRedItems.length > 0) {
         setRescuedItemsCount((prev) => prev + rescuedRedItems.length);
         // Remove rescued Red items from fridge since they were cooked!
-        setPantry((prev) =>
-          prev.filter(
-            (p) =>
-              !(
-                p.freshness === 'red' &&
-                rescuedRedItems.some((r) => r.toLowerCase() === p.name.toLowerCase())
-              )
-          )
-        );
+        queueFridge([{ type: 'removeUseNextByNames', names: rescuedRedItems }]);
       }
     }
 
@@ -1287,7 +1498,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setMeals(payload.meals);
       restoredCount += payload.meals.length;
     }
-    if (Array.isArray(payload.pantry)) setPantry(payload.pantry);
+    if (Array.isArray(payload.pantry)) queueFridge([{ type: 'replaceAll', items: payload.pantry }]);
     if (Array.isArray(payload.staples)) setStaples(payload.staples);
     if (Array.isArray(payload.takeaways)) setTakeaways(payload.takeaways);
     if (Array.isArray(payload.members || payload.householdMembers)) {
@@ -1317,7 +1528,10 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
     if (Array.isArray(payload.voteLogs)) setVoteLogs(payload.voteLogs);
     if (typeof payload.rescuedItemsCount === 'number') setRescuedItemsCount(payload.rescuedItemsCount);
-    if (Array.isArray(payload.cookLog)) setCookLog(payload.cookLog);
+    if (Array.isArray(payload.cookLog)) {
+      historyReplace.current = true; // a restore replaces the shared history instead of merging into it
+      setCookLog(payload.cookLog);
+    }
     if (Array.isArray(payload.takeawayLog)) setTakeawayLog(payload.takeawayLog);
     if (Array.isArray(payload.rejectedMealIds)) setRejectedMealIds(payload.rejectedMealIds);
     // Keep this device's own identity; only the display name and last-saved time carry over.
@@ -1532,12 +1746,13 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const resetToFactoryDefaults = () => {
     setMeals(STARTER_MEALS);
-    setPantry([]);
+    queueFridge([{ type: 'replaceAll', items: [] }]);
     setTakeaways(STARTER_TAKEAWAYS);
     setHouseholdMembers(STARTER_MEMBERS);
     setStaples(INITIAL_STAPLES);
     setBannedIngredients([]);
     setVoteLogs([]);
+    historyReplace.current = true;
     setCookLog([]);
     setTakeawayLog([]);
     setRejectedMealIds([]);
@@ -1680,6 +1895,11 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         shoppingOnline,
         meId,
         setMeId,
+        roomCode,
+        roomError,
+        createRoom,
+        joinRoom,
+        leaveRoom,
         addShoppingItems,
         removeShoppingByName,
         toggleShoppingItem,

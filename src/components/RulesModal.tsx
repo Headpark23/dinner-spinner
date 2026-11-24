@@ -19,14 +19,14 @@ const steps = [
   },
   {
     title: 'Use up the fridge',
-    body: 'Mark anything that needs eating as “use next” in the Kitchen. Turn on “use up first” and dishes that need those items become 4.5× likelier. Anything cooked in the last four days rests, so the week stays varied.',
+    body: 'Mark anything that needs eating as “use next” in the Fridge tab. Turn on “use up first” and dishes that need those items become 4.5× likelier. Anything cooked in the last four days rests, so the week stays varied.',
   },
   {
     title: 'Hold, nudge, spin',
     body: 'Hold the reels you like and spin the rest. You get three nudges to step a reel along when it’s nearly right.',
   },
   {
-    title: 'Put it to the household',
+    title: 'Start the vote',
     body: 'Everyone votes on one phone. A majority yes agrees dinner and builds a timeline back from when you want to eat. Each person gets three vetoes a week.',
   },
   {

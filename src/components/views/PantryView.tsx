@@ -26,6 +26,8 @@ import {
 } from 'lucide-react';
 import { FreshnessLevel, Meal, TimeStake, EffortLevel } from '../../types';
 import { RecipeSheet } from '../RecipeSheet';
+import { PageHeader } from '../ui';
+import { itemIcon } from '../../utils/itemIcon';
 import { photoFor } from '../../data/photos';
 import { INITIAL_MEALS } from '../../data/initialData';
 import {
@@ -48,20 +50,14 @@ import {
 type Tab = 'fridge' | 'vault' | 'missing' | 'camera' | 'staples' | 'banned';
 type ScanType = 'snap-fridge' | 'scan-receipt' | 'recipe-photo' | 'recipe-text';
 
-const readInitialTab = (): Tab => {
-  try {
-    const t = sessionStorage.getItem('ds_pantry_tab') as Tab | null;
-    sessionStorage.removeItem('ds_pantry_tab');
-    if (t && ['fridge', 'vault', 'missing', 'camera', 'staples', 'banned'].includes(t)) return t;
-  } catch {
-    // ignore
-  }
-  return 'fridge';
-};
+export type PantryScope = 'fridge' | 'recipes' | 'shop';
+
+const initialTabFor = (scope: PantryScope): Tab =>
+  scope === 'recipes' ? 'vault' : scope === 'shop' ? 'missing' : 'fridge';
 
 const CHIP_LIST_INPUT = 'flex gap-2 border-t border-line pt-3';
 
-export const PantryView: React.FC = () => {
+export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
   const {
     pantry,
     togglePantryFreshness,
@@ -116,7 +112,7 @@ export const PantryView: React.FC = () => {
   const gotIt = shoppingList.filter((i) => i.checked);
   const worldCuisines = Array.from(new Set(worldRecipes.map((r) => r.cuisine))).sort();
 
-  const [activeTab, setActiveTab] = useState<Tab>(readInitialTab);
+  const [activeTab, setActiveTab] = useState<Tab>(() => initialTabFor(scope));
 
   // Scan / AI state
   const [analyzing, setAnalyzing] = useState<ScanType | null>(null);
@@ -197,6 +193,7 @@ export const PantryView: React.FC = () => {
         tags: data.meal.tags || ['Scanned'],
       });
       flash(`Saved “${data.meal.title}” to your recipes${note}.`);
+      setShowAddRecipe(false);
       setActiveTab('vault');
     } else {
       setAnalysisError('Nothing usable came back. Try a clearer photo.');
@@ -300,14 +297,15 @@ export const PantryView: React.FC = () => {
     setShowAddRecipe(false);
   };
 
-  const tabs: { id: Tab; label: string; count?: number }[] = [
-    { id: 'fridge', label: 'Fridge', count: pantry.length },
-    { id: 'vault', label: 'Recipes', count: meals.length },
-    { id: 'missing', label: 'Shopping', count: toBuy.length || undefined },
-    { id: 'camera', label: 'Scan' },
-    { id: 'staples', label: 'Staples' },
-    { id: 'banned', label: 'Avoid' },
-  ];
+  const tabs: { id: Tab; label: string; count?: number }[] =
+    scope === 'fridge'
+      ? [
+          { id: 'fridge', label: 'In the fridge', count: pantry.length },
+          { id: 'camera', label: 'Add by photo' },
+          { id: 'staples', label: 'Always have' },
+          { id: 'banned', label: 'Never use' },
+        ]
+      : [];
 
   // A plain render helper (not a component) so rows keep focus across re-renders.
   const renderFreshnessGroup = (level: FreshnessLevel, title: string) => {
@@ -334,7 +332,7 @@ export const PantryView: React.FC = () => {
                 aria-label={`${item.name}: ${freshnessLabel(item.freshness)}. Tap to change`}
                 title="Tap to change: Fresh → Eat soon → Use next"
                 className={cx(
-                  'h-9 shrink-0 rounded-lg px-2.5 text-[12px] font-semibold',
+                  'h-10 shrink-0 rounded-lg px-2.5 text-[12px] font-semibold',
                   item.freshness === 'red' && 'bg-tomato-soft text-tomato',
                   item.freshness === 'amber' && 'bg-saffron-soft text-saffron',
                   item.freshness === 'green' && 'bg-sage-soft text-sage'
@@ -352,11 +350,78 @@ export const PantryView: React.FC = () => {
     );
   };
 
-  const scanRows: { type: ScanType; icon: React.ReactNode; title: string; body: string }[] = [
+  const allScanRows: { type: ScanType; icon: React.ReactNode; title: string; body: string }[] = [
     { type: 'snap-fridge', icon: <Camera className="h-5 w-5" />, title: 'Photo of the fridge', body: 'Adds what it sees, with a freshness guess.' },
     { type: 'scan-receipt', icon: <Receipt className="h-5 w-5" />, title: 'Supermarket receipt', body: 'Adds the food lines from your shop.' },
     { type: 'recipe-photo', icon: <BookOpen className="h-5 w-5" />, title: 'Recipe page or plate', body: 'Turns it into a recipe with a timeline.' },
   ];
+  const scanRows = allScanRows.filter((r) => (scope === 'recipes' ? r.type === 'recipe-photo' : r.type !== 'recipe-photo'));
+
+  const renderScan = () => (
+    <div className="space-y-4">
+            <ul className="space-y-2">
+              {scanRows.map((row) => (
+                <li key={row.type}>
+                  <Card as="div" className="flex items-center gap-3 p-3">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sunk text-ink-2">
+                      {analyzing === row.type ? <LoaderCircle className="h-5 w-5 animate-spin" /> : row.icon}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[15px] font-semibold">{row.title}</p>
+                      <p className="text-[12px] text-ink-2">{row.body}</p>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <Button size="sm" variant="secondary" disabled={!!analyzing} onClick={() => triggerCameraUpload(row.type)}>
+                        Upload
+                      </Button>
+                      {row.type !== 'recipe-photo' && (
+                        <button
+                          disabled={!!analyzing}
+                          onClick={() => callAnalyze(row.type, { textPrompt: 'Sample', demo: true })}
+                          className="text-[12px] font-semibold text-ink-3 hover:text-ink disabled:opacity-50"
+                        >
+                          Try a sample
+                        </button>
+                      )}
+                    </div>
+                  </Card>
+                </li>
+              ))}
+            </ul>
+
+            {scope === 'recipes' && (
+            <form
+              className="space-y-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!aiRecipePrompt.trim()) return;
+                callAnalyze('recipe-text', { textPrompt: aiRecipePrompt.trim() });
+              }}
+            >
+              <label htmlFor="describe-dish" className="block text-[15px] font-semibold">
+                Or describe a dish
+              </label>
+              <div className="flex gap-2">
+                <TextInput
+                  id="describe-dish"
+                  value={aiRecipePrompt}
+                  onChange={(e) => setAiRecipePrompt(e.target.value)}
+                  placeholder="e.g. Lamb kofta flatbreads"
+                />
+                <Button type="submit" variant="primary" disabled={!!analyzing || !aiRecipePrompt.trim()}>
+                  {analyzing === 'recipe-text' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  Create
+                </Button>
+              </div>
+            </form>
+            )}
+            {analyzing && (
+              <p className="text-[13px] text-ink-2" role="status">
+                Reading it now. This can take up to 20 seconds.
+              </p>
+            )}
+    </div>
+  );
 
   return (
     <div className="space-y-4">
@@ -371,41 +436,63 @@ export const PantryView: React.FC = () => {
         tabIndex={-1}
       />
 
-      <div>
-        <h1 className="font-display text-[28px] leading-tight font-semibold">Kitchen</h1>
-        <p className="mt-1 text-[14px] text-ink-2">
-          {redCount > 0
-            ? `${redCount} ${redCount === 1 ? 'thing needs' : 'things need'} using up. The spinner can favour them.`
-            : 'What you have, what you cook, and what you need.'}
-        </p>
-      </div>
+      {scope === 'fridge' && (
+        <PageHeader
+          title="Fridge"
+          subtitle={
+            redCount > 0
+              ? `${redCount} ${redCount === 1 ? 'thing needs' : 'things need'} using up. Turn on “use up first” on the Dinner tab and the spinner favours them.`
+              : 'Tell the app what you have and it picks dinners that use it.'
+          }
+        />
+      )}
+      {scope === 'shop' && (
+        <PageHeader
+          title="Shopping"
+          subtitle="One list for the whole household. Open a recipe and tick what you have; the rest lands here."
+        />
+      )}
+      {scope === 'recipes' && (
+        <PageHeader
+          title="Recipes"
+          subtitle="Your dishes and 119 world classics. Tap one for the method, then add it to your rotation."
+          action={
+            <Button variant={showAddRecipe ? 'secondary' : 'primary'} size="sm" onClick={() => setShowAddRecipe((v) => !v)} aria-expanded={showAddRecipe}>
+              {showAddRecipe ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+              {showAddRecipe ? 'Close' : 'Add recipe'}
+            </Button>
+          }
+        />
+      )}
 
-      <div role="tablist" aria-label="Kitchen sections" className="-mx-4 flex gap-1 overflow-x-auto px-4 scrollbar-none">
-        {tabs.map((tab) => {
-          const selected = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              role="tab"
-              id={`tab-${tab.id}`}
-              aria-selected={selected}
-              aria-controls={`panel-${tab.id}`}
-              onClick={() => setActiveTab(tab.id)}
-              className={cx(
-                'h-11 shrink-0 rounded-full px-4 text-[14px] font-semibold transition-colors',
-                selected ? 'bg-ink text-paper' : 'text-ink-2 hover:bg-sunk hover:text-ink'
-              )}
-            >
-              {tab.label}
-              {tab.count !== undefined && (
-                <span className={cx('ml-1.5 font-normal tabular-nums', selected ? 'opacity-70' : 'text-ink-3')}>
-                  {tab.count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+      {tabs.length > 0 && (
+        <div role="tablist" aria-label="Fridge sections" className="-mx-4 flex gap-1.5 overflow-x-auto px-4 scrollbar-none">
+          {tabs.map((tab) => {
+            const selected = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                role="tab"
+                id={`tab-${tab.id}`}
+                aria-selected={selected}
+                aria-controls={`panel-${tab.id}`}
+                onClick={() => setActiveTab(tab.id)}
+                className={cx(
+                  'h-10 shrink-0 rounded-full px-4 text-[14px] font-semibold transition-colors',
+                  selected ? 'bg-ink text-paper' : 'bg-sunk text-ink-2 hover:text-ink'
+                )}
+              >
+                {tab.label}
+                {tab.count !== undefined && (
+                  <span className={cx('ml-1.5 font-normal tabular-nums', selected ? 'opacity-70' : 'text-ink-3')}>
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {analysisSuccess && (
         <Notice tone="sage" icon={<CircleCheck className="h-4 w-4" />} onDismiss={() => setAnalysisSuccess(null)}>
@@ -472,6 +559,57 @@ export const PantryView: React.FC = () => {
         {/* RECIPES */}
         {activeTab === 'vault' && (
           <>
+            {showAddRecipe && (
+              <Card as="div" className="fade-up space-y-4 p-4">
+                <p className="text-[15px] font-semibold">Add a recipe</p>
+                {(
+                  <form onSubmit={handleSaveManualRecipe} className="space-y-2">
+                    <TextInput value={customTitle} onChange={(e) => setCustomTitle(e.target.value)} placeholder="Dish name" aria-label="Dish name" required />
+                    <TextInput value={customDesc} onChange={(e) => setCustomDesc(e.target.value)} placeholder="One line about it (optional)" aria-label="Description" />
+                    <div className="grid grid-cols-3 gap-2">
+                      <Select value={customCuisine} onChange={(e) => setCustomCuisine(e.target.value)} aria-label="Cuisine">
+                        {['British', 'Italian', 'Indian', 'Mexican', 'Chinese', 'Thai', 'Greek', 'French', 'Japanese', 'Other'].map((c) => (
+                          <option key={c}>{c}</option>
+                        ))}
+                      </Select>
+                      <Select value={customTime} onChange={(e) => setCustomTime(e.target.value as TimeStake)} aria-label="Time">
+                        <option value="20m">20 min</option>
+                        <option value="30m">30 min</option>
+                        <option value="60m">1 hour</option>
+                        <option value="all-day">All day</option>
+                      </Select>
+                      <Select value={customEffort} onChange={(e) => setCustomEffort(e.target.value as EffortLevel)} aria-label="Effort">
+                        <option value="one-pot">One pot</option>
+                        <option value="standard">Standard</option>
+                        <option value="chef-mode">Chef mode</option>
+                      </Select>
+                    </div>
+                    <TextInput
+                      value={customIngredients}
+                      onChange={(e) => setCustomIngredients(e.target.value)}
+                      placeholder="Ingredients, separated by commas"
+                      aria-label="Ingredients"
+                    />
+                    <textarea
+                      value={customSteps}
+                      onChange={(e) => setCustomSteps(e.target.value)}
+                      rows={3}
+                      placeholder={'Steps, one per line. Add timing like (-15m)'}
+                      aria-label="Steps"
+                      className="w-full rounded-xl border border-line bg-card px-3.5 py-2.5 text-[15px] placeholder:text-ink-3 focus:border-ink-2 focus:outline-none"
+                    />
+                    <Button type="submit" variant="primary" block disabled={!customTitle.trim()}>
+                      Save recipe
+                    </Button>
+                  </form>
+                )}
+                <div className="border-t border-line pt-4">
+                  <p className="mb-2 text-[13px] font-semibold text-ink-2">Or let the app do the typing</p>
+                  {renderScan()}
+                </div>
+              </Card>
+            )}
+
             <Segmented<'ours' | 'world'>
               label="Recipe collection"
               value={recipeScope}
@@ -510,7 +648,7 @@ export const PantryView: React.FC = () => {
                     aria-checked={vaultFilter === id}
                     onClick={() => setVaultFilter(id)}
                     className={cx(
-                      'h-8 shrink-0 rounded-full border px-3 text-[13px] font-medium transition-colors',
+                      'h-10 shrink-0 rounded-full border px-3.5 text-[13px] font-medium transition-colors',
                       vaultFilter === id ? 'border-ink bg-ink text-paper' : 'border-line text-ink-2 hover:border-line-strong'
                     )}
                   >
@@ -566,55 +704,6 @@ export const PantryView: React.FC = () => {
 
             {recipeScope === 'ours' && (
               <div className="space-y-3 border-t border-line pt-3">
-                <button
-                  onClick={() => setShowAddRecipe((v) => !v)}
-                  aria-expanded={showAddRecipe}
-                  className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-ink-2 hover:text-ink"
-                >
-                  <Plus className="h-4 w-4" /> {showAddRecipe ? 'Cancel' : 'Add your own recipe'}
-                </button>
-                {showAddRecipe && (
-                  <form onSubmit={handleSaveManualRecipe} className="fade-up space-y-2">
-                    <TextInput value={customTitle} onChange={(e) => setCustomTitle(e.target.value)} placeholder="Dish name" aria-label="Dish name" required />
-                    <TextInput value={customDesc} onChange={(e) => setCustomDesc(e.target.value)} placeholder="One line about it (optional)" aria-label="Description" />
-                    <div className="grid grid-cols-3 gap-2">
-                      <Select value={customCuisine} onChange={(e) => setCustomCuisine(e.target.value)} aria-label="Cuisine">
-                        {['British', 'Italian', 'Indian', 'Mexican', 'Chinese', 'Thai', 'Greek', 'French', 'Japanese', 'Other'].map((c) => (
-                          <option key={c}>{c}</option>
-                        ))}
-                      </Select>
-                      <Select value={customTime} onChange={(e) => setCustomTime(e.target.value as TimeStake)} aria-label="Time">
-                        <option value="20m">20 min</option>
-                        <option value="30m">30 min</option>
-                        <option value="60m">1 hour</option>
-                        <option value="all-day">All day</option>
-                      </Select>
-                      <Select value={customEffort} onChange={(e) => setCustomEffort(e.target.value as EffortLevel)} aria-label="Effort">
-                        <option value="one-pot">One pot</option>
-                        <option value="standard">Standard</option>
-                        <option value="chef-mode">Chef mode</option>
-                      </Select>
-                    </div>
-                    <TextInput
-                      value={customIngredients}
-                      onChange={(e) => setCustomIngredients(e.target.value)}
-                      placeholder="Ingredients, separated by commas"
-                      aria-label="Ingredients"
-                    />
-                    <textarea
-                      value={customSteps}
-                      onChange={(e) => setCustomSteps(e.target.value)}
-                      rows={3}
-                      placeholder={'Steps, one per line. Add timing like (-15m)'}
-                      aria-label="Steps"
-                      className="w-full rounded-xl border border-line bg-card px-3.5 py-2.5 text-[15px] placeholder:text-ink-3 focus:border-ink-2 focus:outline-none"
-                    />
-                    <Button type="submit" variant="primary" block disabled={!customTitle.trim()}>
-                      Save recipe
-                    </Button>
-                  </form>
-                )}
-
                 {rejectedMealIds.length > 0 && (
                   <details className="text-[14px]">
                     <summary className="cursor-pointer font-semibold text-ink-2">
@@ -696,8 +785,8 @@ export const PantryView: React.FC = () => {
                 <p className="mt-1 text-[14px] text-ink-2">
                   Open a recipe and tick what you have. Whatever’s left lands here for whoever does the shop.
                 </p>
-                <Button variant="secondary" className="mt-4" onClick={() => setActiveTab('vault')}>
-                  Pick a recipe
+                <Button variant="secondary" className="mt-4" onClick={() => setActiveView(5)}>
+                  Browse recipes
                 </Button>
               </Card>
             ) : (
@@ -743,8 +832,17 @@ export const PantryView: React.FC = () => {
                                 >
                                   {item.checked && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
                                 </span>
+                                <span
+                                  aria-hidden="true"
+                                  className={cx(
+                                    'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sunk text-[19px] leading-none',
+                                    item.checked && 'opacity-40 grayscale'
+                                  )}
+                                >
+                                  {itemIcon(item.name)}
+                                </span>
                                 <span className="min-w-0">
-                                  <span className={cx('block truncate text-[15px]', item.checked && 'text-ink-3 line-through')}>
+                                  <span className={cx('block line-clamp-2 text-[15px] leading-snug', item.checked && 'text-ink-3 line-through')}>
                                     {item.name}
                                   </span>
                                   <span className="block truncate text-[12px] text-ink-3">
@@ -814,69 +912,7 @@ export const PantryView: React.FC = () => {
         )}
 
         {/* SCAN */}
-        {activeTab === 'camera' && (
-          <>
-            <ul className="space-y-2">
-              {scanRows.map((row) => (
-                <li key={row.type}>
-                  <Card as="div" className="flex items-center gap-3 p-3">
-                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sunk text-ink-2">
-                      {analyzing === row.type ? <LoaderCircle className="h-5 w-5 animate-spin" /> : row.icon}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[15px] font-semibold">{row.title}</p>
-                      <p className="text-[12px] text-ink-2">{row.body}</p>
-                    </div>
-                    <div className="flex shrink-0 flex-col items-end gap-1">
-                      <Button size="sm" variant="secondary" disabled={!!analyzing} onClick={() => triggerCameraUpload(row.type)}>
-                        Upload
-                      </Button>
-                      {row.type !== 'recipe-photo' && (
-                        <button
-                          disabled={!!analyzing}
-                          onClick={() => callAnalyze(row.type, { textPrompt: 'Sample', demo: true })}
-                          className="text-[12px] font-semibold text-ink-3 hover:text-ink disabled:opacity-50"
-                        >
-                          Try a sample
-                        </button>
-                      )}
-                    </div>
-                  </Card>
-                </li>
-              ))}
-            </ul>
-
-            <form
-              className="space-y-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!aiRecipePrompt.trim()) return;
-                callAnalyze('recipe-text', { textPrompt: aiRecipePrompt.trim() });
-              }}
-            >
-              <label htmlFor="describe-dish" className="block text-[15px] font-semibold">
-                Or describe a dish
-              </label>
-              <div className="flex gap-2">
-                <TextInput
-                  id="describe-dish"
-                  value={aiRecipePrompt}
-                  onChange={(e) => setAiRecipePrompt(e.target.value)}
-                  placeholder="e.g. Lamb kofta flatbreads"
-                />
-                <Button type="submit" variant="primary" disabled={!!analyzing || !aiRecipePrompt.trim()}>
-                  {analyzing === 'recipe-text' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                  Create
-                </Button>
-              </div>
-            </form>
-            {analyzing && (
-              <p className="text-[13px] text-ink-2" role="status">
-                Reading it now. This can take up to 20 seconds.
-              </p>
-            )}
-          </>
-        )}
+        {activeTab === 'camera' && renderScan()}
 
         {/* STAPLES */}
         {activeTab === 'staples' && (

@@ -1,7 +1,7 @@
 export type TimeStake = '20m' | '30m' | '60m' | 'all-day';
 export type EffortLevel = 'one-pot' | 'standard' | 'chef-mode';
 export type FreshnessLevel = 'green' | 'amber' | 'red'; // Red = "Use Next" (priority for clearout)
-export type MachineMode = 'single' | '3-reel' | 'sunday';
+export type MachineMode = 'single' | '3-reel' | '4-reel' | 'sunday';
 
 export interface Meal {
   id: string;
