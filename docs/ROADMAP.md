@@ -11,7 +11,7 @@ Effort: S = under a day, M = 1 to 3 days, L = a week or more.
 | 1 | Week planner | **Mostly built.** `PlannerSheet.tsx`, `utils/planner.ts` (`suggestWeek`, themes per night, `tidyPlan`, `weekShopping`), "shop for the week" in one tap. | Freezer nights, household sharing, cost cap, cuisine variety. |
 | 2 | Installable and offline | **Built.** `public/manifest.webmanifest`, `public/sw.js` (app shell, assets, photos, fonts cached), registered in `main.tsx`, offline shopping queue, install and update prompts. | Build-generated `VERSION`. |
 | 3 | Step alerts | **Mostly built.** Screen wake lock, service-worker notifications and an in-app banner when a step is due. | Real background push (needs a server), install prompt for iPhone. |
-| 4 | Voting from separate phones | **Built, different design.** Household-wide live vote (`LiveVote.tsx`, `/api/tonight`), decided on the server, phones poll. Uses Google-sign-in family groups instead of a 4-digit room code. | Decide whether a code is still wanted. |
+| 4 | Voting from separate phones | **Done, different design.** Household-wide live vote (`LiveVote.tsx`, `/api/tonight`), decided on the server, phones poll. Uses Google-sign-in family groups instead of a 4-digit room code. | Nothing: guests do not need to vote, so no code. |
 | 5 | Dietary needs per person | **Partly built, household-wide.** `utils/diets.ts` (vegetarian, vegan, pescatarian, gluten-free, dairy-free, nut-free), `DietPicker`, avoid list with plural matching. | Per-person diets and a clash warning on the vote. |
 | 6 | Leftovers | **Not built.** (`cupboard.ts` has a "leftover rice bowl" recipe only.) | Everything. |
 | 7 | Supermarket links | **Built.** `utils/delivery.ts` (Tesco, Sainsbury's, Asda, Morrisons, Ocado, Waitrose, plus Uber Eats and Just Eat) and `DeliverySheet.tsx`. `planner.ts` also holds a shorter `STORES` list. | Merge the two shop lists. |
@@ -53,8 +53,8 @@ The Freezer tab is built and, as of PR 31, shared with the household like the fr
 - ~~Service-worker notifications~~ **Done.** `src/utils/stepAlerts.ts` shows alerts through `registration.showNotification` (Android Chrome refuses `new Notification()` on a page), falling back to the page API. `sw.js` handles `notificationclick`. Each due step also shows an in-app "Now:" banner and a chime. The reminder note says plainly that a locked phone may hold alerts back.
 - **Still open.** True background delivery with the phone locked needs a push server and keys (open question 2). On iPhone, notifications need the app installed to the home screen, so this pairs with the install prompt in item 2.
 
-### 4. Voting from separate phones (S, or nothing)
-- The live vote already works across phones inside a signed-in family group. The original idea was a 4-digit code so someone outside the group can vote. Only build that if guests are a real need (open question 3). If so: short-lived rooms on `/api/tonight`, rate-limited joins, vote state only.
+### 4. Voting from separate phones (done)
+- The live vote works across phones inside a signed-in family group, which is all that is needed. Guests outside a group do not need to vote (open question 3, answered), so the 4-digit room code is not being built. Revisit only if that changes: short-lived rooms on `/api/tonight`, rate-limited joins, vote state only.
 
 ### 5. Per-person dietary needs (M)
 - Diets and the avoid list are household-wide (`diets` in the context). Add `diets` and `avoid` to each household member, keep the household list as the baseline.
@@ -108,5 +108,5 @@ The Freezer tab is built and, as of PR 31, shared with the household like the fr
 
 1. Where do new planner features live? The planner is a sheet; freezer nights and a shared plan may justify its own screen.
 2. Alerts: is "works while the app is open or recently backgrounded" enough, or is real push (a push server and keys) wanted?
-3. Guests: do people outside a family group ever need to vote? If not, item 4 is finished.
+3. ~~Guests~~ **Answered: no.** People outside a family group do not need to vote, so item 4 is finished.
 4. Should the freezer be visible on the Dinner home screen ("3 portions of chilli waiting"), or stay inside Fridge?
