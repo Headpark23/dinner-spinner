@@ -42,7 +42,9 @@ export async function fetchPublicPage(
 ): Promise<{ html: string; url: string }> {
   let url: URL;
   try {
-    url = new URL(rawUrl.trim());
+    // People often paste "example.co.uk/menu" without the https://. Add it when there is no scheme at all.
+    const typed = rawUrl.trim();
+    url = new URL(/^[a-z][a-z0-9+.-]*:/i.test(typed) ? typed : `https://${typed}`);
   } catch {
     throw new HttpError(400, { error: 'That doesn’t look like a web address.' });
   }

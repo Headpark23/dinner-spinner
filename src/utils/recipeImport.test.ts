@@ -55,6 +55,11 @@ test('Recipe import: the server never fetches private or internal addresses', as
   await assert.rejects(fetchPublicPage('http://127.0.0.1/admin', never), HttpError);
   await assert.rejects(fetchPublicPage('http://localhost/x', never, async () => ['127.0.0.1']), HttpError);
   await assert.rejects(fetchPublicPage('file:///etc/passwd', never), HttpError);
+  const seen: string[] = [];
+  const page = (async (u: string) => { seen.push(u); return new Response('<html></html>', { headers: { 'content-type': 'text/html' } }); }) as unknown as typeof fetch;
+  const bare = await fetchPublicPage('twofatindians.co.uk/Home', page, async () => ['93.184.216.34']);
+  assert.equal(bare.url, 'https://twofatindians.co.uk/Home', 'a bare address gets https://');
+  assert.deepEqual(seen, ['https://twofatindians.co.uk/Home']);
   await assert.rejects(fetchPublicPage('http://user:pw@example.com/', never, async () => ['93.184.216.34']), HttpError);
   // A public page that redirects somewhere private is stopped at the redirect.
   const redirect = (async (url: string) =>
