@@ -32,7 +32,7 @@ Benchmarked against 12 category leaders (**Sorted Food Sidekick, SuperCook, What
 - [x] **Interactive Meal Vault & Smart Shopping Diff (`PantryView.tsx`)**: Search, multi-filter (`♥ Favourites`, `5★ Gold`, `20m Dash`, `♻️ Uses Red Items`), manual custom recipe creation form, 1-tap "Stock All Missing Items", and AI Text-to-Recipe / Demo Scan modes.
 - [x] **Telemetry & SVG Data Visualisations (`ScorecardView.tsx`)**: Executive Bento KPIs (Estimated £ Takeaway Savings, Red Items Rescued, Gold Reels), interactive SVG Donut Chart for Cuisine Rotation, Pantry Freshness Health bar, Time-Stake Reality distribution, and Household Veto Telemetry.
 - [x] **Real Server Cloud Sync & JSON Import/Restore (`server.ts`, `ProfileSyncModal.tsx`)**: Persistent `POST /api/sync/cloud` & `GET /api/sync/cloud` snapshots plus client-side `.json` file import/export.
-- [x] **Automated Unit & API Integration Test Suite (`src/utils/*.test.ts`)**: 148 deterministic tests covering domain algorithms, the shared fridge, freezer and shopping logic, and Express HTTP endpoints, run with `npm test` (Node test runner through `tsx`). `npm run lint` type-checks with `tsc --noEmit`.
+- [x] **Automated Unit & API Integration Test Suite (`src/utils/*.test.ts`)**: 150 deterministic tests covering domain algorithms, the shared fridge, freezer and shopping logic, and Express HTTP endpoints, run with `npm test` (Node test runner through `tsx`). `npm run lint` type-checks with `tsc --noEmit`.
 
 ### Since v2.0 (see `docs/ROADMAP.md` for detail and file names)
 - [x] **Household sync**: Google-sign-in family groups share the shopping list, fridge, freezer and a live dinner vote decided on the server, so every phone agrees. Fridge, freezer and shopping edits are small operations with ids, applied identically on the server and each phone, so a resend never double-counts.
@@ -55,7 +55,7 @@ The earlier backlog (room-code voting, supermarket links, notifications, cost pe
 2. **Guest voting by room code (P3, only if wanted)**: Voting already works across phones inside a family group, and guests do not need to vote, so the 4-digit code was not built. Revisit only if that changes.
 3. **Nutrition tags (P3 — Experiment)**: Optional macro (protein, fibre) tags on meal cards. Cost per head is done; nutrition is not.
 4. **A shareable recipe link (P3)**: Needs a public recipe route, so only if a public site is planned. The picture card covers sharing today.
-5. **Small follow-ups (done)**: planner nights over the cost cap are flagged; onboarding asks each person's own diet; the fridge takes a use-by date and reads near dates as use next; milestones are announced once when first reached; seasons have a hemisphere setting; and the service worker `VERSION` is stamped by the build. What remains against them is listed per item in `docs/ROADMAP.md` (seasons in the week planner, `makesLeftovers` on recipes).
+5. **Small follow-ups (done)**: planner nights over the cost cap are flagged; onboarding asks each person's own diet; the fridge takes a use-by date and reads near dates as use next; milestones are announced once when first reached; seasons have a hemisphere setting; and the service worker `VERSION` is stamped by the build. What remains against them is listed per item in `docs/ROADMAP.md` (`makesLeftovers` on recipes).
 
 ## 7. Technical Risks & Safeguards
 - **Gemini API Quota / Missing Key**: Mitigated via `hasRealGeminiKey` detection and deterministic `getSimulatedVisionResponse()` fallback in `server.ts`.

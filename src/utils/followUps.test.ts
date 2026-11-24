@@ -58,3 +58,38 @@ test('each person keeps their own diets from onboarding, whichever blank rows ar
   assert.deepEqual(cleanPersonPrefs({ diets: ['vegan', 'vegan', 'nonsense' as never] }).diets, ['vegan']);
   assert.deepEqual(cleanPersonPrefs({ diets: undefined }).diets, []);
 });
+
+import { suggestWeek } from './planner';
+import { seasonOf } from './seasons';
+
+const mk = (id: string, title: string): Meal => ({ id, title, ingredients: ['x'], tags: [], effort: 'any', timeStake: '30m' }) as unknown as Meal;
+const POOL = [mk('a', 'Beef stew'), mk('b', 'Greek salad'), mk('c', 'Plain pasta'), { ...mk('d', 'Fish pie'), ingredients: ['cod fillet'] }];
+
+function share(day: string, seasonal: 'north' | 'south' | false, runs = 400) {
+  let seed = 7;
+  const rng = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  let winter = 0;
+  for (let i = 0; i < runs; i++) {
+    const plan = suggestWeek(POOL, { days: [day], plan: {}, themes: {}, diets: [], banned: [], seasonal, rng, now: 0 });
+    if (seasonOf(POOL.find((m) => m.id === plan[day].mealId)!) === 'winter') winter++;
+  }
+  return winter / runs;
+}
+
+test('the week planner leans to the night\'s own season, and picks evenly when the setting is off', () => {
+  assert.equal(seasonOf(POOL[0]), 'winter');
+  const off = share('2026-01-15', false);
+  const north = share('2026-01-15', 'north');
+  const south = share('2026-01-15', 'south');
+  assert.ok(north > off, `winter dishes likelier in a northern January (${north} vs ${off})`);
+  assert.ok(south < off, `and less likely in a southern January (${south} vs ${off})`);
+  const spring = share('2026-04-15', 'north');
+  assert.ok(Math.abs(spring - off) < 0.08, 'in-between months change nothing');
+});
+
+test('the seasonal week still honours themes and never repeats a dish', () => {
+  const days = ['2026-01-15', '2026-01-16', '2026-01-17'];
+  const plan = suggestWeek(POOL, { days, plan: {}, themes: { [days[0]]: 'fish' }, diets: [], banned: [], seasonal: 'north' });
+  assert.equal(plan[days[0]].mealId, 'd');
+  assert.equal(new Set(Object.values(plan).map((v) => v.mealId)).size, 3);
+});

@@ -18,7 +18,7 @@ Effort: S = under a day, M = 1 to 3 days, L = a week or more.
 | 8 | Cost per serving | **Done.** `utils/cost.ts` estimates what you would have to *buy* tonight and a per-head figure from the same price table. Cost filter (Free, £5, £10, no limit) applies to spins and the week planner. | Show which planner nights went over the cap. |
 | 9 | Share a recipe card | **Built as a picture.** "Share as a picture" on the recipe sheet (share sheet, else copy, else download), with the photo credit printed. | A shareable link, only if a public site is planned. |
 | 10 | Surprise me from the fridge | **Mostly built.** "Cook from what we have" now offers the freezer first and has a one-tap "photo of the fridge, then spin" start. | Check the photo hand-off with a real scan. |
-| 11 | Seasonal dishes | **Built.** `utils/seasons.ts`, a mild 1.25x / 0.85x nudge in the single-dish spin, with a "Favour dishes in season" switch in More. | Use it in the week planner. |
+| 11 | Seasonal dishes | **Built.** `utils/seasons.ts`, a mild 1.25x / 0.85x nudge in the single-dish spin, with a "Favour dishes in season" switch in More. | Nothing left. The week planner leans to each night's season too. |
 | 12 | Streaks and milestones | **Built.** `utils/milestones.ts` (streak, home dinners, takeaway-free days, rescued items, freezer portions eaten) with a Milestones card on History. | Nothing left. A note appears when a step is first reached. |
 
 ## Freezer follow-ups (PR 31)
@@ -96,7 +96,7 @@ The Freezer tab is built and, as of PR 31, shared with the household like the fr
 - ~~Season from titles and tags~~ **Done.** `utils/seasons.ts` `seasonOf` reads winter (stew, roast, soup, pie, chilli, casserole and the like) or summer (salad, barbecue, kebab, gazpacho and the like) from the title and tags; a dish that reads as both, or neither, has no season. Nothing is hand-tagged.
 - ~~Mild nudge~~ **Done.** `selectWeightedMeal` takes a `seasonal` flag and multiplies by 1.25 in season and 0.85 out, far below the 4.5x use-next boost. Winter is November to March, summer June to August (northern hemisphere); April, May, September and October change nothing.
 - ~~Setting~~ **Done.** "Favour dishes in season" in More, on by default, stored as `seasonal` in the context.
-- ~~Hemisphere setting~~ **Done.** "Northern seasons / Southern seasons" under the seasonal switch in More; `seasonForMonth` shifts the months by six for the south. **Still open.** The week planner does not use the season yet. Tests: `utils/seasons.test.ts`, `utils/followUps.test.ts`.
+- ~~Hemisphere setting~~ **Done.** "Northern seasons / Southern seasons" under the seasonal switch in More; `seasonForMonth` shifts the months by six for the south. ~~Season in the week planner~~ **Done.** `suggestWeek` takes `seasonal` (the hemisphere, or false) and picks each night with `seasonWeight` for that night's own date, so a week that crosses into a new season is nudged night by night. It follows the same More switch and hemisphere, and never beats themes, repeats or the cost limit. Tests: `utils/seasons.test.ts`, `utils/followUps.test.ts`.
 
 ### 12. Milestones (done)
 - ~~Streak out of the view~~ **Done.** `utils/milestones.ts` holds `cookingStreak`, `homeCookedThisWeek`, `takeawayFreeDays`, `freezerPortionsEaten`, `statsFrom` and `milestones`, all pure and tested; `ScorecardView.tsx` only draws them.
