@@ -213,6 +213,8 @@ interface DinnerContextType {
   worldRecipes: Meal[];
   addFromLibrary: (id: string) => Meal | null;
   rejectMeal: (id: string) => Meal | null;
+  /** Hide a World Kitchen dish that isn't in our recipes yet. */
+  hideLibraryRecipe: (id: string) => void;
   rejectedMealIds: string[];
   restoreRejected: (id: string) => void;
   updateMealTweaks: (id: string, tweaks: MealTweaks) => void;
@@ -1246,7 +1248,9 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const rejectMeal = (id: string): Meal | null => {
     const gone = meals.find((m) => m.id === id);
     if (!gone) return null;
-    const hidden = new Set([...rejectedMealIds, id]);
+    // Only dishes that can come back (World Kitchen, starters) go on the hidden list; our own recipes are simply removed.
+    const restorable = WORLD_RECIPES.some((r) => r.id === id) || INITIAL_MEALS.some((m) => m.id === id);
+    const hidden = new Set(restorable ? [...rejectedMealIds, id] : rejectedMealIds);
     const inRotation = new Set(meals.map((m) => m.id));
     const candidates = WORLD_RECIPES.filter(
       (r) =>
@@ -1274,6 +1278,11 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (proposedMeal?.id === id) setProposedMeal(null);
     sound.playBuzzer();
     return replacement;
+  };
+
+  const hideLibraryRecipe = (id: string) => {
+    setRejectedMealIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    sound.playBuzzer();
   };
 
   const restoreRejected = (id: string) => {
@@ -2118,6 +2127,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         worldRecipes: WORLD_RECIPES,
         addFromLibrary,
         rejectMeal,
+        hideLibraryRecipe,
         rejectedMealIds,
         restoreRejected,
         updateMealTweaks,
