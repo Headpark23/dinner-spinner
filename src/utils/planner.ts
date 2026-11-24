@@ -59,13 +59,15 @@ export function suggestWeek(
     themes: Record<string, ThemeId>;
     diets: DietId[];
     banned: string[];
+    /** Leave out dishes dearer than this to buy tonight (relaxed if nothing is cheap enough, as in the spin). */
+    cost?: { limit: number; of: (m: Meal) => number };
     rng?: () => number;
     now?: number;
   }
 ): WeekPlan {
   const rng = opts.rng || Math.random;
   const next: WeekPlan = { ...opts.plan };
-  const pool = filterEligibleMeals(meals, 'any', 'any', opts.banned, opts.diets).pool;
+  const pool = filterEligibleMeals(meals, 'any', 'any', opts.banned, opts.diets, opts.cost).pool;
   const used = new Set(Object.values(next).map((v) => v.mealId));
   const shuffle = <T,>(xs: T[]) => xs.map((x) => [rng(), x] as const).sort((a, b) => a[0] - b[0]).map((p) => p[1]);
 

@@ -95,3 +95,26 @@ export const costLabel = (limit: CostLimit): string =>
 
 /** "Free" / "about £4" for showing next to a dish. */
 export const costText = (cost: number): string => (cost <= 0 ? 'Nothing to buy' : `about £${Math.round(cost)} to buy`);
+
+/** The price table is for a dinner for four, so a head is a quarter of it. */
+export const PRICE_TABLE_SERVINGS = 4;
+
+/**
+ * What the dish costs per person, whatever is in the house: every ingredient except the always-have staples,
+ * priced from the same table, divided by the four portions the table assumes. It does not change with the
+ * serving size, because more people means more of everything. Rounded to the nearest 10p.
+ */
+export function costPerHead(meal: Meal, staples: string[]): number {
+  const have = new Set(staples.map((s) => s.trim().toLowerCase()));
+  const total = meal.ingredients
+    .filter((i) => !have.has(i.trim().toLowerCase()))
+    .reduce((sum, i) => sum + ingredientCost(i), 0);
+  return Math.round((total / PRICE_TABLE_SERVINGS) * 10) / 10;
+}
+
+/** "about £2.40 a head" / "about 80p a head". */
+export function costPerHeadText(perHead: number): string {
+  if (perHead <= 0) return "nothing a head";
+  if (perHead < 1) return `about ${Math.round(perHead * 100)}p a head`;
+  return `about £${perHead.toFixed(2)} a head`;
+}

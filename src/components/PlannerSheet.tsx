@@ -8,8 +8,8 @@ import { THEMES, ThemeId, nextDays, suggestWeek, tidyPlan, weekShopping } from '
 export const PlannerSheet: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
   const {
     meals,
-    diets,
-    bannedIngredients,
+    restrictions,
+    costRule,
     weekPlan,
     weekThemes,
     setWeekTheme,
@@ -34,7 +34,7 @@ export const PlannerSheet: React.FC<{ isOpen: boolean; onClose: () => void }> = 
     const wd = new Date(day + 'T12:00:00').getDay();
     const themes = weekThemes[wd] ? { [day]: weekThemes[wd] as ThemeId } : {};
     for (let i = 0; i < 6; i++) {
-      const next = suggestWeek(meals, { days: [day], plan, themes, diets, banned: bannedIngredients });
+      const next = suggestWeek(meals, { days: [day], plan, themes, diets: restrictions.diets, banned: restrictions.avoid, cost: costRule });
       const pick = next[day];
       if (!pick) return;
       if (pick.mealId === avoidId && i < 5 && meals.length > 1) continue;

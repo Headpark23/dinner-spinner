@@ -5,6 +5,7 @@ import { withTweaks } from '../utils/dinnerEngine';
 import { quantityFor, hasQuantities } from '../utils/quantities';
 import { photoFor, PHOTO_CREDITS } from '../data/photos';
 import { Check, Plus, X, Send, Dices, Star, ThumbsDown, Heart, ShoppingBasket } from 'lucide-react';
+import { costPerHeadText } from '../utils/cost';
 import { Button, Chip, IconButton, Segmented, Sheet, TextInput, cx, timeLabel, effortLabel } from './ui';
 
 const stripTiming = (step: string) => step.replace(/\s*\(-\d+m\)/, '');
@@ -31,6 +32,7 @@ export const RecipeSheet: React.FC<{
     cookLog,
     servings,
     setServings,
+    costEach,
   } = useDinner();
 
   // Always show the freshest copy of the dish (tweaks/favourites update live).
@@ -100,7 +102,7 @@ export const RecipeSheet: React.FC<{
 
       <p className="text-[13px] text-ink-2">
         {[current.origin, current.cuisine].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(' · ')} ·{' '}
-        {timeLabel(current.timeStake)} · {effortLabel(current.effort)}
+        {timeLabel(current.timeStake)} · {effortLabel(current.effort)} · {costPerHeadText(costEach(current))}
       </p>
       {current.rating > 0 && (
         <p className="mt-1 flex items-center gap-1 text-[13px] text-saffron">

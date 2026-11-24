@@ -15,7 +15,7 @@ Effort: S = under a day, M = 1 to 3 days, L = a week or more.
 | 5 | Dietary needs per person | **Mostly built.** `utils/diets.ts` (vegetarian, vegan, pescatarian, gluten-free, dairy-free, nut-free), `DietPicker`, avoid list with plural matching. | Ask per-person diets during onboarding. |
 | 6 | Leftovers | **Mostly built.** "Made extra?" after dinner sends the rest to the fridge (use next, eat-by date) or the freezer; fridge rows show the use-by. | Use-by on ordinary items, auto use-next near the date, `makesLeftovers` on recipes. |
 | 7 | Supermarket links | **Done.** `utils/delivery.ts` (Tesco, Sainsbury's, Asda, Morrisons, Ocado, Waitrose, plus Uber Eats and Just Eat) and `DeliverySheet.tsx`. The shopping tab's `STORES` is built from the same list. | Nothing. |
-| 8 | Cost per serving | **Built, differently.** `utils/cost.ts` estimates what you would have to *buy* (ingredient price table minus fridge and staples). Cost filter (Free, £5, £10, no limit) and "about £4 to buy" on the result. `Meal.estimatedCostPerHead` is still unused. | Show cost per head, cost on planner, retire the unused field. |
+| 8 | Cost per serving | **Done.** `utils/cost.ts` estimates what you would have to *buy* tonight and a per-head figure from the same price table. Cost filter (Free, £5, £10, no limit) applies to spins and the week planner. | Show which planner nights went over the cap. |
 | 9 | Share a recipe card | **Not built.** `navigator.share` is used only for the family invite link. | Everything. |
 | 10 | Surprise me from the fridge | **Mostly built.** "Cook from what we have" (`cupboard.ts`, `CupboardSheet.tsx`) plus the fridge photo scan. | Link the photo scan straight into one spin; include the freezer. |
 | 11 | Seasonal dishes | **Not built.** | Everything. |
@@ -74,10 +74,11 @@ The Freezer tab is built and, as of PR 31, shared with the household like the fr
 - ~~One shop list~~ **Done.** `planner.ts` `STORES` is now built from the supermarkets in `DELIVERY_SHOPS`, so the shopping tab's store picker offers all six (Tesco, Sainsbury's, Asda, Morrisons, Ocado, Waitrose) and a changed URL is fixed once. `StoreId` is a plain string; a saved choice that no longer exists falls back to Tesco.
 - ~~Test~~ **Done.** `utils/stores.test.ts` checks every shop builds a valid https search URL, with awkward characters escaped, and that the picker list and the delivery list cannot drift apart.
 
-### 8. Cost per serving (S)
-- Keep what is there (cost to buy tonight). Add a per-head figure on recipe cards, calculated from the same price table and `servings`, so "£2 a head" and "£8 to buy" can both appear.
-- Remove or populate `Meal.estimatedCostPerHead`, which nothing reads or writes. Delete it unless per-head is added.
-- Feed the cost limit into the planner (item 1).
+### 8. Cost per serving (done)
+- ~~Per-head figure~~ **Done.** `utils/cost.ts` `costPerHead`: every ingredient except the always-have staples, priced from the same table, divided by the four portions the table assumes, to the nearest 10p. It does not change with the serving size and ignores the fridge, so "about £3.20 a head" and "about £8 to buy" can both show. Shown on the recipe sheet and under the dish on the reel.
+- ~~`Meal.estimatedCostPerHead`~~ **Removed.** Nothing read or wrote it.
+- ~~Cost limit in the planner~~ **Done.** `suggestWeek` takes the same cost rule as the spin and relaxes it the same way if nothing is cheap enough. It is used when filling the week and when swapping one night. The planner sheet also now uses the effective diet and avoid lists from item 5 (it used the household lists only before).
+- **Still open.** The planner does not yet say which nights were over the cap. Tests: `utils/cost.test.ts`.
 
 ### 9. Share a recipe card (M)
 - Canvas-rendered image (photo, title, time, ingredients) via `navigator.share({ files })`, with a copy-image fallback. Photos carry licence credits (`photoCredit`, `photoCredits.json`); print the credit on the card.
