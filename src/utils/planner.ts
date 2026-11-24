@@ -1,6 +1,7 @@
 import { Meal, PantryItem } from '../types';
 import { calculateMealPantryMatch, filterEligibleMeals, isMealCoolingOff } from './dinnerEngine';
 import { DietId, ingredientBreaks } from './diets';
+import { DELIVERY_SHOPS } from './delivery';
 
 /** A week plan: local date (YYYY-MM-DD) -> the dish for that night. */
 export type WeekPlan = Record<string, { mealId: string; title: string }>;
@@ -104,10 +105,8 @@ export function weekShopping(plan: WeekPlan, meals: Meal[], pantry: PantryItem[]
   return out;
 }
 
-export const STORES = [
-  { id: 'tesco', label: 'Tesco', url: (q: string) => `https://www.tesco.com/groceries/en-GB/search?query=${encodeURIComponent(q)}` },
-  { id: 'sainsburys', label: 'Sainsbury’s', url: (q: string) => `https://www.sainsburys.co.uk/gol-ui/SearchResults/${encodeURIComponent(q)}` },
-  { id: 'asda', label: 'Asda', url: (q: string) => `https://groceries.asda.com/search/${encodeURIComponent(q)}` },
-  { id: 'ocado', label: 'Ocado', url: (q: string) => `https://www.ocado.com/search?entry=${encodeURIComponent(q)}` },
-] as const;
-export type StoreId = (typeof STORES)[number]['id'];
+/** The shops the shopping tab can search. One list, in `delivery.ts`, so a changed address is fixed once. */
+export const STORES = DELIVERY_SHOPS.flatMap((x) =>
+  x.kind === 'supermarket' && x.search ? [{ id: x.id, label: x.name, url: x.search }] : []
+);
+export type StoreId = string;
