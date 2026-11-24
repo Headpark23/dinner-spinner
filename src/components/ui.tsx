@@ -354,7 +354,7 @@ export const Sheet: React.FC<{
 
   // Drawn straight onto the page (not inside the screen that opened it), so the bottom tab bar can never sit on top of it.
   const sheet = (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
+    <div className="fixed inset-x-0 top-0 z-50 flex h-dvh items-end justify-center sm:items-center sm:p-4">
       <div className="absolute inset-0 bg-[rgba(20,16,12,0.55)]" onClick={onClose} aria-hidden="true" />
       <div
         ref={panelRef}
@@ -363,8 +363,8 @@ export const Sheet: React.FC<{
         aria-labelledby={labelledBy}
         tabIndex={-1}
         className={cx(
-          'fade-up relative w-full max-w-md overflow-y-auto rounded-t-3xl bg-paper p-5 pb-8 outline-none sm:rounded-3xl sm:pb-5',
-          tall ? 'max-h-[94dvh] min-h-[88dvh] sm:min-h-0 sm:max-h-[90dvh]' : 'max-h-[90vh]'
+          'fade-up relative w-full max-w-md overflow-y-auto rounded-t-3xl bg-paper p-5 pb-[calc(2rem+env(safe-area-inset-bottom))] outline-none sm:rounded-3xl sm:pb-5',
+          tall ? 'max-h-[94dvh] min-h-[88dvh] sm:min-h-0 sm:max-h-[90dvh]' : 'max-h-[88dvh] sm:max-h-[90dvh]'
         )}
       >
         <div className="mb-4 flex items-start justify-between gap-3">
