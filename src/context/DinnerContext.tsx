@@ -59,6 +59,7 @@ import {
   buildReverseTimerSteps,
 } from '../utils/dinnerEngine';
 import { mentionsAny } from '../utils/avoid';
+import { DietMode, isDietMode, effectiveRestrictions, cleanPersonPrefs } from '../utils/memberDiets';
 import { missingCost, costLimitValue, type CostLimit } from '../utils/cost';
 import { buildReels, reelExtras, jackpotRecipeId, JACKPOT_FILL, type ComboMode } from '../utils/reelParts';
 
@@ -133,6 +134,10 @@ interface DinnerContextType {
   toggleBannedIngredient: (name: string) => string | null;
   diets: DietId[];
   toggleDiet: (id: DietId) => void;
+  /** "skip": leave out dishes someone cannot eat. "warn": keep them and name who they do not suit. */
+  dietMode: DietMode;
+  setDietMode: (m: DietMode) => void;
+  setMemberPrefs: (id: string, prefs: { diets?: DietId[]; avoid?: string[] }) => void;
   servings: number;
   setServings: (n: number) => void;
 
@@ -324,6 +329,14 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [bannedIngredients, setBannedIngredients] = useState<string[]>(() =>
     loadStored<string[]>('banned', [])
   );
+  const [dietMode, setDietModeState] = useState<DietMode>(() => {
+    const v = loadStored<string>('diet_mode', 'skip');
+    return isDietMode(v) ? v : 'skip';
+  });
+  // What spins, reels, the planner and swaps leave out: the household list, plus each person's own when set to skip.
+  const restrictions = effectiveRestrictions(diets, bannedIngredients, householdMembers, dietMode);
+  const effDiets = restrictions.diets;
+  const effBanned = restrictions.avoid;
   const [likedIngredients, setLikedIngredients] = useState<string[]>(() => loadStored<string[]>('liked', []));
   const [shelvedMeals, setShelvedMeals] = useState<Meal[]>(() => loadStored<Meal[]>('shelved', []));
   const [userProfile, setUserProfile] = useState<UserProfile>(() =>
@@ -509,6 +522,9 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     localStorage.setItem(`${STORAGE_KEY}_diets`, JSON.stringify(diets));
   }, [diets]);
   useEffect(() => {
+    localStorage.setItem(`${STORAGE_KEY}_diet_mode`, JSON.stringify(dietMode));
+  }, [dietMode]);
+  useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY}_servings`, JSON.stringify(servings));
   }, [servings]);
   useEffect(() => {
@@ -539,7 +555,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (weekThemes[wd] && THEMES.some((t) => t.id === weekThemes[wd])) themes[d] = weekThemes[wd];
     });
     setWeekPlan((prev) =>
-      suggestWeek(meals, { days, plan: tidyPlan(prev, today, meals), themes, diets, banned: bannedIngredients })
+      suggestWeek(meals, { days, plan: tidyPlan(prev, today, meals), themes, diets: effDiets, banned: effBanned })
     );
   };
   const clearWeekPlan = () => setWeekPlan({});
@@ -882,7 +898,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setCustomReelResult(initial);
       setActiveMealResult(buildComboMeal(nextMode, initial, ...comboLimits(nextMode)));
     } else {
-      const { pool } = filterEligibleMeals(meals, timeStake, effort, bannedIngredients, diets, costRule);
+      const { pool } = filterEligibleMeals(meals, timeStake, effort, effBanned, effDiets, costRule);
       if (pool.length > 0) {
         setActiveMealResult(pool[0]);
       }
@@ -912,13 +928,13 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Eligible pool computation for current filters
   const costToBuy = (m: Meal) => missingCost(m, pantry, staples);
   const costRule = { limit: costLimitValue(costLimit), of: costToBuy };
-  const eligibleInfo = filterEligibleMeals(meals, timeStake, effort, bannedIngredients, diets, costRule);
+  const eligibleInfo = filterEligibleMeals(meals, timeStake, effort, effBanned, effDiets, costRule);
   const eligiblePoolCount = eligibleInfo.pool.length;
 
   // Saved recipes feed the 3 and 4 reel spinner: their parts join the reels, and the whole dish can land on Main.
   const reelAllowed = (label: string) =>
-    mealFitsDiets([label], diets) &&
-    !mentionsAny([label], bannedIngredients);
+    mealFitsDiets([label], effDiets) &&
+    !mentionsAny([label], effBanned);
   const extras = reelExtras(meals, reelAllowed);
   // Nothing on the avoid list (or against the diets) stays on a reel, whether it is built in or from a saved recipe.
   const allowedOnly = (lists: ReelComboItem[][]) =>
@@ -993,7 +1009,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       clearInterval(tickInterval);
 
       if (mode === 'single') {
-        const { pool } = filterEligibleMeals(meals, timeStake, effort, bannedIngredients, diets, costRule);
+        const { pool } = filterEligibleMeals(meals, timeStake, effort, effBanned, effDiets, costRule);
         if (pool.length === 0) {
           // Every dish clashes with the household's diets: show nothing rather than a wrong dish.
           setActiveMealResult(null);
@@ -1412,8 +1428,8 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       (r) =>
         !hidden.has(r.id) &&
         !inRotation.has(r.id) &&
-        mealFitsDiets(r.ingredients, diets) &&
-        !mentionsAny([r.title, ...r.ingredients], bannedIngredients)
+        mealFitsDiets(r.ingredients, effDiets) &&
+        !mentionsAny([r.title, ...r.ingredients], effBanned)
     );
     const score = (r: Meal) =>
       lovedCount(r, likedIngredients) * 3 +
@@ -1620,7 +1636,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       rejectedIds: rejectedMealIds,
       banned: nextBanned,
       loved: likedIngredients,
-      diets,
+      diets: effDiets,
       library: WORLD_RECIPES,
     });
     applyTaste(result);
@@ -1639,7 +1655,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       rejectedIds: rejectedMealIds,
       banned: bannedIngredients,
       loved: nextLiked,
-      diets,
+      diets: effDiets,
       library: WORLD_RECIPES,
       extraSlots: 3,
       mustContain: clean,
@@ -1802,6 +1818,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             liked: likedIngredients,
             shelved: shelvedMeals,
             diets,
+            dietMode,
             weekPlan,
             weekThemes,
             voteLogs,
@@ -1852,6 +1869,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
     if (Array.isArray(payload.shelved)) setShelvedMeals(payload.shelved);
     if (Array.isArray(payload.diets)) setDiets(payload.diets.filter(isDietId));
+    if (isDietMode(payload.dietMode)) setDietModeState(payload.dietMode);
     if (payload.weekPlan && typeof payload.weekPlan === 'object' && !Array.isArray(payload.weekPlan)) {
       setWeekPlan(
         Object.fromEntries(
@@ -2134,6 +2152,13 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     generateReverseTimers(targetEatingTime, meal);
   }, [tonight]);
 
+  const setDietMode = (m: DietMode) => setDietModeState(isDietMode(m) ? m : 'skip');
+
+  const setMemberPrefs = (id: string, prefs: { diets?: DietId[]; avoid?: string[] }) => {
+    const clean = cleanPersonPrefs(prefs);
+    setHouseholdMembers((prev) => prev.map((m) => (m.id === id ? { ...m, diets: clean.diets, avoid: clean.avoid } : m)));
+  };
+
   const toggleDiet = (id: DietId) =>
     setDiets((prev) => (prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id]));
 
@@ -2262,6 +2287,9 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         bannedIngredients,
         diets,
         toggleDiet,
+        dietMode,
+        setDietMode,
+        setMemberPrefs,
         servings,
         setServings,
         weekPlan,

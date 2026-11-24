@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { useDinner } from '../../context/DinnerContext';
 import { DietPicker } from '../DietPicker';
+import { MemberPrefs } from '../MemberPrefs';
 import { ImportRecipe } from '../ImportRecipe';
 import { DeliverySheet } from '../DeliverySheet';
 import type { ImportedRecipe } from '../../utils/recipeImport';
@@ -1250,6 +1251,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
           <Card className="space-y-3 p-4">
             <p className="text-[15px] font-semibold">Diets</p>
             <DietPicker value={diets} onToggle={toggleDiet} />
+            <MemberPrefs />
             <p className="pt-2 text-[15px] font-semibold">Never</p>
             <p className="text-[14px] text-ink-2">
               Dishes with these leave your recipes and are replaced by ones you might like. Take an ingredient off and its

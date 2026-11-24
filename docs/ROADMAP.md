@@ -12,7 +12,7 @@ Effort: S = under a day, M = 1 to 3 days, L = a week or more.
 | 2 | Installable and offline | **Built.** `public/manifest.webmanifest`, `public/sw.js` (app shell, assets, photos, fonts cached), registered in `main.tsx`, offline shopping queue, install and update prompts. | Build-generated `VERSION`. |
 | 3 | Step alerts | **Mostly built.** Screen wake lock, service-worker notifications and an in-app banner when a step is due. | Real background push (needs a server), install prompt for iPhone. |
 | 4 | Voting from separate phones | **Done, different design.** Household-wide live vote (`LiveVote.tsx`, `/api/tonight`), decided on the server, phones poll. Uses Google-sign-in family groups instead of a 4-digit room code. | Nothing: guests do not need to vote, so no code. |
-| 5 | Dietary needs per person | **Partly built, household-wide.** `utils/diets.ts` (vegetarian, vegan, pescatarian, gluten-free, dairy-free, nut-free), `DietPicker`, avoid list with plural matching. | Per-person diets and a clash warning on the vote. |
+| 5 | Dietary needs per person | **Mostly built.** `utils/diets.ts` (vegetarian, vegan, pescatarian, gluten-free, dairy-free, nut-free), `DietPicker`, avoid list with plural matching. | Ask per-person diets during onboarding. |
 | 6 | Leftovers | **Not built.** (`cupboard.ts` has a "leftover rice bowl" recipe only.) | Everything. |
 | 7 | Supermarket links | **Built.** `utils/delivery.ts` (Tesco, Sainsbury's, Asda, Morrisons, Ocado, Waitrose, plus Uber Eats and Just Eat) and `DeliverySheet.tsx`. `planner.ts` also holds a shorter `STORES` list. | Merge the two shop lists. |
 | 8 | Cost per serving | **Built, differently.** `utils/cost.ts` estimates what you would have to *buy* (ingredient price table minus fridge and staples). Cost filter (Free, £5, £10, no limit) and "about £4 to buy" on the result. `Meal.estimatedCostPerHead` is still unused. | Show cost per head, cost on planner, retire the unused field. |
@@ -56,11 +56,12 @@ The Freezer tab is built and, as of PR 31, shared with the household like the fr
 ### 4. Voting from separate phones (done)
 - The live vote works across phones inside a signed-in family group, which is all that is needed. Guests outside a group do not need to vote (open question 3, answered), so the 4-digit room code is not being built. Revisit only if that changes: short-lived rooms on `/api/tonight`, rate-limited joins, vote state only.
 
-### 5. Per-person dietary needs (M)
-- Diets and the avoid list are household-wide (`diets` in the context). Add `diets` and `avoid` to each household member, keep the household list as the baseline.
-- Spin behaviour: a setting for "skip dishes someone can't eat" (default) versus "just warn".
-- Vote screen: a clash chip naming who a dish does not suit, using `mealFitsDiets` per member.
-- Keep the plain-language note that this is preference handling, not an allergy check. The nut-free diet in particular should say to read labels.
+### 5. Per-person dietary needs (mostly done)
+- ~~Per-person diets and avoid~~ **Done.** `HouseholdMember` has optional `diets` and `avoid`; the household lists stay as the baseline. Edited per person under Fridge, Likes and dislikes, "Per person" (`MemberPrefs.tsx`). They travel with the members in backups and room sync.
+- ~~Skip or warn~~ **Done.** `dietMode` ("Skip it", the default, or "Just warn"). `utils/memberDiets.ts` `effectiveRestrictions` feeds the spin pool, reels, week planner and swap suggestions. Recipes are never shelved by one person's list: only the household never list changes the recipe book.
+- ~~Vote clash chip~~ **Done.** The vote screen says "Doesn't suit Sam (vegetarian) and Jo (avoids mushrooms)" using `dishClashes` per member.
+- ~~Plain-language note~~ **Done.** The Per person card says it is a preference, not an allergy check; ticking nut-free adds a "read every label" warning.
+- **Still open.** Per-member diets are not asked during onboarding yet, and the clash chip names members only for whole dishes, not single reel parts. Tests: `utils/memberDiets.test.ts`.
 
 ### 6. Leftovers (M)
 - Add `makesLeftovers?: { portions: number; keepDays: number }` to `Meal` and a "Made extra?" step in `AfterDinnerReview.tsx`.
