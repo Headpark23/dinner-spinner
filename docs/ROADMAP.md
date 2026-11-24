@@ -17,7 +17,7 @@ Effort: S = under a day, M = 1 to 3 days, L = a week or more.
 | 7 | Supermarket links | **Done.** `utils/delivery.ts` (Tesco, Sainsbury's, Asda, Morrisons, Ocado, Waitrose, plus Uber Eats and Just Eat) and `DeliverySheet.tsx`. The shopping tab's `STORES` is built from the same list. | Nothing. |
 | 8 | Cost per serving | **Done.** `utils/cost.ts` estimates what you would have to *buy* tonight and a per-head figure from the same price table. Cost filter (Free, £5, £10, no limit) applies to spins and the week planner. | Show which planner nights went over the cap. |
 | 9 | Share a recipe card | **Built as a picture.** "Share as a picture" on the recipe sheet (share sheet, else copy, else download), with the photo credit printed. | A shareable link, only if a public site is planned. |
-| 10 | Surprise me from the fridge | **Mostly built.** "Cook from what we have" (`cupboard.ts`, `CupboardSheet.tsx`) plus the fridge photo scan. | Link the photo scan straight into one spin; include the freezer. |
+| 10 | Surprise me from the fridge | **Mostly built.** "Cook from what we have" now offers the freezer first and has a one-tap "photo of the fridge, then spin" start. | Check the photo hand-off with a real scan. |
 | 11 | Seasonal dishes | **Not built.** | Everything. |
 | 12 | Streaks and milestones | **Partly built.** Stats shows a "N-night streak" of home-cooked dinners (`ScorecardView.tsx`). | Milestones (rescued items, takeaway-free runs, freezer portions eaten). |
 
@@ -86,8 +86,11 @@ The Freezer tab is built and, as of PR 31, shared with the household like the fr
 - Not done: a link form. It needs a public recipe route, so do it only if a public site is planned.
 - **Still open.** A photo hosted on another site that does not allow cross-origin use will taint the canvas, and that dish gets "Couldn't make the picture". The bundled photos are same-origin so they are fine. Tests: `utils/recipeCard.test.ts`.
 
-### 10. Surprise me from the fridge (S)
-- "Cook from what we have" and the fridge scan both exist but are separate steps. Add one button: scan, add what it sees, then spin from what is in the fridge. Offer the freezer batches first (follow-up 3).
+### 10. Surprise me from the fridge (mostly done)
+- ~~One button~~ **Done.** "Start with a photo of the fridge" in the Cook from what we have sheet takes you to the Fridge with a "Take the photo" card (a real tap, because phones refuse a camera that opens by itself). When the scan adds items it returns to Dinner and opens the spin; "Skip the photo" does the same without it. State is `surpriseStep` in the context.
+- ~~Freezer first~~ **Done.** `utils/cupboard.ts` `freezerCandidates` turns each batch into a dinner that needs nothing from the shop, oldest first (so "eat soon" batches lead), and `pickSurprise` offers them before anything else. The card says "From the freezer, N portions left" and "Eat a portion tonight" ticks one off through the shared freezer. A batch from one of our recipes can also be put to the household. This closes freezer follow-up 3.
+- The sheet now uses the effective diet and avoid lists from item 5 (it used the household lists only).
+- **Still open.** The photo-success hand-off was not exercised against a real scan (it needs a family group and the AI reader). Abandoning the flow on the Fridge leaves the "Take the photo" card until the next spin. Tests: `utils/freezerSurprise.test.ts`.
 
 ### 11. Seasonal dishes (S)
 - Tag recipes with seasons, defaulted from titles and tags (stew, roast, salad, barbecue) so nothing is hand-tagged across the ~120 dishes. Apply a mild multiplier (about 1.25x in season, 0.85x out) in `selectWeightedMeal`, well below the 4.5x use-next boost. Add a setting to turn it off. Test in `dinnerEngine.test.ts`.

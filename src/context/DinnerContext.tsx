@@ -77,6 +77,9 @@ interface DinnerContextType {
   costToBuy: (meal: Meal) => number;
   /** Rough cost per person from the price table, ignoring what is in the house. */
   costEach: (meal: Meal) => number;
+  /** "Surprise me from the fridge" in one go: take the fridge photo first ("scan"), then open the cupboard spin ("spin"). */
+  surpriseStep: 'scan' | 'spin' | null;
+  setSurpriseStep: (s: 'scan' | 'spin' | null) => void;
   /** What spins, the planner and swaps leave out: the household lists plus, in "skip" mode, each person's own. */
   restrictions: { diets: DietId[]; avoid: string[] };
   costRule: { limit: number; of: (m: Meal) => number };
@@ -337,6 +340,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [bannedIngredients, setBannedIngredients] = useState<string[]>(() =>
     loadStored<string[]>('banned', [])
   );
+  const [surpriseStep, setSurpriseStep] = useState<'scan' | 'spin' | null>(null);
   const [dietMode, setDietModeState] = useState<DietMode>(() => {
     const v = loadStored<string>('diet_mode', 'skip');
     return isDietMode(v) ? v : 'skip';
@@ -2279,6 +2283,8 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setCostLimit,
         costToBuy,
         costEach,
+        surpriseStep,
+        setSurpriseStep,
         restrictions,
         costRule,
         costRelaxed,
