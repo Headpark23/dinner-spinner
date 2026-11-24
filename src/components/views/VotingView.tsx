@@ -6,6 +6,9 @@ import { AfterDinnerReview } from '../AfterDinnerReview';
 import { RecipeSheet } from '../RecipeSheet';
 import { LiveVoteCard } from '../LiveVote';
 import { quantityFor } from '../../utils/quantities';
+import { useWakeLock } from '../../utils/useWakeLock';
+import { stepDelays, showStepNotification, notificationsSupported } from '../../utils/stepAlerts';
+import { sound } from '../../utils/audio';
 import { HouseholdMember } from '../../types';
 import { Button, Card, Chip, Notice, Segmented, TextInput, cx, timeLabel, effortLabel } from '../ui';
 
@@ -70,45 +73,48 @@ export const VotingView: React.FC = () => {
   const [recipeOpen, setRecipeOpen] = useState(false);
   const [liveError, setLiveError] = useState<string | null>(null);
 
-  // Cooking reminders: a browser notification when each step is due. They only fire while the page stays open.
+  // Cooking reminders. While a dinner is being cooked the screen is kept awake (so the page and its timers
+  // keep running), and each step raises a system notification through the service worker plus an in-app banner.
+  // True background delivery on a locked phone needs a push server, so the note below says so plainly.
   const [remind, setRemind] = useState(false);
   const [remindNote, setRemindNote] = useState<string | null>(null);
+  const [keepAwake, setKeepAwake] = useState(true);
+  const [dueStep, setDueStep] = useState<{ id: string; text: string } | null>(null);
+
+  const cooking = !!agreedMeal && reverseTimers.some((s) => !s.done);
+  const wakeSupported = useWakeLock(cooking && keepAwake);
 
   useEffect(() => {
     if (!remind || !agreedMeal) return;
-    const timers = reverseTimers
-      .filter((step) => !step.done)
-      .map((step) => {
-        const [h, m] = step.timeString.split(':').map(Number);
-        const at = new Date();
-        at.setHours(h, m, 0, 0);
-        const ms = at.getTime() - Date.now();
-        if (!Number.isFinite(ms) || ms <= 0) return null;
-        return window.setTimeout(() => {
-          try {
-            new Notification(`${step.timeString}: ${step.label}`, { body: agreedMeal.title, tag: step.id });
-          } catch {
-            // Notifications unavailable on this device; the timeline still works.
-          }
-        }, ms);
-      });
-    return () => timers.forEach((t) => t !== null && window.clearTimeout(t));
+    const timers = stepDelays(reverseTimers).map(({ id, ms }) => {
+      const step = reverseTimers.find((s) => s.id === id)!;
+      return window.setTimeout(() => {
+        const text = `${step.timeString}: ${step.label}`;
+        setDueStep({ id, text });
+        sound.playNudge();
+        void showStepNotification(text, agreedMeal.title, id);
+      }, ms);
+    });
+    return () => timers.forEach((t) => window.clearTimeout(t));
   }, [remind, reverseTimers, agreedMeal]);
 
   const toggleReminders = async () => {
     if (remind) {
       setRemind(false);
       setRemindNote(null);
+      setDueStep(null);
       return;
     }
-    if (typeof Notification === 'undefined') {
+    if (!notificationsSupported()) {
       setRemindNote('This browser can’t show reminders. The timeline still works.');
       return;
     }
     const result = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
     if (result === 'granted') {
       setRemind(true);
-      setRemindNote('Reminders are on. Keep this page open while you cook.');
+      setRemindNote(
+        'Reminders are on. They arrive while Dinner Spinner is open or just minimised. A locked phone may hold them back, so keep the screen on while you cook. On iPhone, add the app to your home screen first.'
+      );
     } else {
       setRemindNote('Notifications are blocked for this site. Allow them in your browser settings to get reminders.');
     }
@@ -275,6 +281,20 @@ export const VotingView: React.FC = () => {
                   </span>
                 </span>
               </div>
+              {dueStep && (
+                <div role="status" className="mb-2 flex items-center justify-between gap-3 rounded-xl bg-tomato-soft px-3 py-2 text-[14px] font-semibold text-tomato">
+                  <span>Now: {dueStep.text}</span>
+                  <button onClick={() => setDueStep(null)} className="min-h-10 px-2 text-[13px] underline">
+                    Got it
+                  </button>
+                </div>
+              )}
+              {wakeSupported && (
+                <label className="mb-2 flex min-h-10 items-center gap-2 px-1 text-[13px] text-ink-2">
+                  <input type="checkbox" checked={keepAwake} onChange={(e) => setKeepAwake(e.target.checked)} className="h-4 w-4" />
+                  Keep the screen on while I cook
+                </label>
+              )}
               {remindNote && <p className="mb-2 px-1 text-[12px] text-ink-3">{remindNote}</p>}
               <ol className="overflow-hidden rounded-2xl border border-line bg-card">
                 {reverseTimers.map((step, idx) => {
