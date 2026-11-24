@@ -7,6 +7,8 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { applyShoppingOp } from './src/utils/shopping';
 import { applyFridgeOp, type FridgeState } from './src/utils/fridge';
 import { cleanLog, unionLog } from './src/utils/history';
+import { DEFAULT_RADIUS_M, MAX_RADIUS_M, cleanHub, emptyHub, mergeHub } from './src/utils/takeaways';
+import { createPlaces, type Places } from './src/server/places';
 import { Household, HttpError, Store, UserLink, createFileStore, createStoreFromEnv, mutate } from './src/server/store';
 
 dotenv.config();
@@ -339,6 +341,78 @@ app.post('/api/history', smallJson, requireHousehold, async (req, res) => {
       return merged;
     });
     res.json({ entries });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Local takeaways, family group only. Phones send what they have (spots, scores, notes) and get the
+// merged result back. Merging is by id and newest edit wins, so two phones never lose each other's votes.
+// The town is looked up with Nominatim and the shops with Overpass (OpenStreetMap, free, no key).
+// ---------------------------------------------------------------------------
+let places: Places = createPlaces();
+/** Tests swap in a fake map service. */
+export const usePlaces = (next: Places) => {
+  places = next;
+};
+
+const hubOf = (h: Household) => cleanHub(h.takeaways);
+const saveHub = (h: Household, hub: ReturnType<typeof emptyHub>) => {
+  h.takeaways = { ...hub, version: (h.takeaways?.version || 0) + 1 };
+  return h.takeaways;
+};
+
+app.get('/api/takeaways', requireHousehold, (req, res) => {
+  res.json(hubOf((req as AuthedRequest).household!));
+});
+
+app.post('/api/takeaways', smallJson, requireHousehold, async (req, res) => {
+  try {
+    const hub = await mutate(store, (req as AuthedRequest).householdId!, (h) =>
+      saveHub(h, mergeHub(hubOf(h), { place: req.body?.place, spots: req.body?.spots, ratings: req.body?.ratings }))
+    );
+    res.json(hub);
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+app.post('/api/takeaways/place', smallJson, requireHousehold, rateLimit('place lookup', 20, 10 * 60_000), async (req, res) => {
+  const query = clipText(req.body?.query, 80);
+  if (query.length < 2) return res.status(400).json({ error: 'Type a town or postcode.' });
+  try {
+    const found = await places.geocode(query);
+    const place = { ...found, updatedAt: new Date().toISOString() };
+    const hub = await mutate(store, (req as AuthedRequest).householdId!, (h) => {
+      // A newly chosen town always replaces the old one, even if a clock is a little off.
+      const next = mergeHub(hubOf(h), {});
+      next.place = place;
+      return saveHub(h, next);
+    });
+    res.json(hub);
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+app.post('/api/takeaways/discover', smallJson, requireHousehold, rateLimit('takeaway search', 12, 10 * 60_000), async (req, res) => {
+  const id = (req as AuthedRequest).householdId!;
+  const place = hubOf((req as AuthedRequest).household!).place;
+  if (!place) return res.status(400).json({ error: 'Choose your town first.' });
+  const radius = Math.min(MAX_RADIUS_M, Math.max(500, Number(req.body?.radiusM) || DEFAULT_RADIUS_M));
+  try {
+    const found = await places.takeawaysNear(place.lat, place.lon, radius);
+    let added = 0;
+    const hub = await mutate(store, id, (h) => {
+      const current = hubOf(h);
+      const have = new Set(current.spots.map((s) => s.id));
+      // Keep what the family already did to a spot (hidden, renamed); only add the new ones.
+      const fresh = found.filter((s) => !have.has(s.id));
+      added = fresh.length;
+      return saveHub(h, mergeHub(current, { spots: fresh }));
+    });
+    res.json({ found: found.length, added, hub });
   } catch (err) {
     fail(res, err);
   }

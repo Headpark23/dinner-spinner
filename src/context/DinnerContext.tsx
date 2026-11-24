@@ -41,6 +41,8 @@ import {
   SUNDAY_VEG_GRAVY,
 } from '../data/initialData';
 import { sound } from '../utils/audio';
+import { pickWeighted, spinWeight } from '../utils/takeaways';
+import { useSharedTakeaways, type SharedTakeaways } from './useSharedTakeaways';
 import { checkBackup, BackupCheck } from '../utils/backup';
 import { DietId, isDietId, mealFitsDiets } from '../utils/diets';
 import { WeekPlan, ThemeId, THEMES, StoreId, STORES, nextDays, suggestWeek, tidyPlan, weekShopping } from '../utils/planner';
@@ -92,6 +94,12 @@ interface DinnerContextType {
   updateUsualOrder: (takeawayId: string, memberName: string, orderText: string) => void;
   addTakeawayOption: (name: string, category: string, badge: string) => void;
   recordTakeawayOrdered: (takeawayId: string) => void;
+  /** The family's shared local takeaways, scores and notes (empty and idle outside a family group). */
+  shared: SharedTakeaways;
+  /** True when the reel is drawing from the family's shared takeaways instead of the on-phone list. */
+  usingSharedTakeaways: boolean;
+  /** The name scores and notes are filed under on this phone. */
+  whoAmI: string;
 
   // Pantry & Recipes
   pantry: PantryItem[];
@@ -532,6 +540,27 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return h ? { 'x-household-id': h.id, 'x-household-key': h.key } : {};
   };
 
+  const shared = useSharedTakeaways(household, STORAGE_KEY, authHeaders);
+  const whoAmI =
+    householdMembers.find((m) => m.id === meId)?.name || googleProfile?.name?.split(' ')[0] || householdMembers[0]?.name || 'Someone';
+  // Inside a family group the reel and the spinner draw from the shared list, favourites more often.
+  const usingShared = !!household && shared.league.length > 0;
+  const sharedPool: TakeawayOption[] = shared.league.map((row) => {
+    const local = takeaways.find((t) => t.id === row.spot.id);
+    return {
+      id: row.spot.id,
+      name: row.spot.name,
+      category: row.spot.cuisine,
+      badge: row.votes ? `${row.average.toFixed(1)}★ from ${row.votes}` : row.spot.address || '',
+      color: '#f59e0b',
+      usualOrders: local?.usualOrders ?? [],
+      orderCount: local?.orderCount,
+      lastOrderedDate: local?.lastOrderedDate ?? null,
+    };
+  });
+  const takeawayPool = usingShared ? sharedPool : takeaways;
+  const shownWinner = usingShared ? sharedPool.find((t) => t.id === winningTakeaway?.id) ?? null : winningTakeaway;
+
   const syncShopping = useCallback(async () => {
     // Without a household the list stays on this phone; changes queue until one is set up.
     if (!householdRef.current) {
@@ -831,7 +860,9 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setTimeout(() => {
       clearInterval(interval);
       sound.playReelLock();
-      const randomTakeaway = takeaways[Math.floor(Math.random() * takeaways.length)];
+      const randomTakeaway = usingShared
+        ? pickWeighted(sharedPool, (o) => spinWeight(shared.league.find((r) => r.spot.id === o.id) || { average: 0, votes: 0 }), Math.random())!
+        : takeaways[Math.floor(Math.random() * takeaways.length)];
       const randomDoorPerson =
         householdMembers[Math.floor(Math.random() * householdMembers.length)];
 
@@ -844,6 +875,12 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const addTakeawayOption = (name: string, category: string, badge: string) => {
     if (!name.trim()) return;
+    if (household) {
+      // Family groups share the list, so a new spot goes to everyone.
+      const id = shared.addSpot(name, category || 'Takeaway', whoAmI);
+      if (id) setWinningTakeaway({ id, name: name.trim(), category: category || 'Takeaway', badge: '', color: '#f59e0b', usualOrders: [], orderCount: 0, lastOrderedDate: null });
+      return;
+    }
     const newOption: TakeawayOption = {
       id: 'takeaway_' + Date.now(),
       name: name.trim(),
@@ -863,7 +900,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const recordTakeawayOrdered = (takeawayId: string) => {
     sound.playWin();
-    const spot = takeaways.find((t) => t.id === takeawayId);
+    const spot = takeawayPool.find((t) => t.id === takeawayId);
     setTakeawayLog((prev) => [
       {
         id: 'tlog_' + Date.now(),
@@ -873,8 +910,9 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       },
       ...prev,
     ]);
-    setTakeaways((prev) =>
-      prev.map((t) =>
+    setTakeaways((prevRaw) => {
+      const prev = !prevRaw.some((t) => t.id === takeawayId) && spot ? [spot, ...prevRaw] : prevRaw;
+      return prev.map((t) =>
         t.id === takeawayId
           ? {
               ...t,
@@ -882,8 +920,8 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               lastOrderedDate: new Date().toISOString(),
             }
           : t
-      )
-    );
+      );
+    });
   };
 
   // Voting Actions
@@ -1434,8 +1472,10 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateUsualOrder = (takeawayId: string, memberName: string, orderText: string) => {
-    setTakeaways((prev) =>
-      prev.map((t) => {
+    const known = takeawayPool.find((t) => t.id === takeawayId);
+    setTakeaways((prevRaw) => {
+      const prev = !prevRaw.some((t) => t.id === takeawayId) && known ? [known, ...prevRaw] : prevRaw;
+      return prev.map((t) => {
         if (t.id === takeawayId) {
           const updatedOrders = t.usualOrders.map((uo) =>
             uo.memberName === memberName ? { ...uo, order: orderText } : uo
@@ -1450,8 +1490,8 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           return updated;
         }
         return t;
-      })
-    );
+      });
+    });
   };
 
   const updateUserProfile = (updates: Partial<UserProfile>) => {
@@ -1878,8 +1918,11 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         consecutiveRejections,
         takeawayOverrideActive,
         setTakeawayOverrideActive,
-        takeaways,
-        winningTakeaway,
+        takeaways: takeawayPool,
+        winningTakeaway: shownWinner,
+        shared,
+        usingSharedTakeaways: usingShared,
+        whoAmI,
         doorDutyPerson,
         isTakeawaySpinning,
         spinTakeaway,

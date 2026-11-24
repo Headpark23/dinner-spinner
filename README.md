@@ -32,6 +32,7 @@ Five tabs, each named for what you'll find there:
 - **Shared fridge and history**: once a household exists, the fridge and cooking history sync between phones within seconds. Without one the app stays on-device. The recipe book (your recipes, hidden dishes, favourites, ratings) is not live-shared; use backup and restore to move it.
 - **Family group**: the first screen leads with it. Sign in with Google (or start one without) and everyone shares the shopping list, the fridge and the live vote across phones. Invite people with a link; they sign in and they're in. A new phone just signs in again.
 - **Cook from what we have**: a card on the Dinner tab spins for a dinner that needs nothing from the shop. It mixes your saved recipes that are fully covered by the fridge and staples with "cupboard ideas" (pasta and tinned tomatoes, eggs and rice, lentils, beans...), and favours things that rescue "use next" fridge items. Matching is by ingredient name, so it is a good guess, not a guarantee.
+- **Family takeaway league** (family groups only): More, then Order takeaway. Type your town or postcode (never your phone's location) and the app finds the takeaways nearby from OpenStreetMap. Everyone scores them with stars and a note of what they like and don't, from their own phone, and the scores combine into a league table of favourites with each person's notes. The takeaway spinner then draws from the same list, favouring the high scorers. Scores merge by person and place, so two phones scoring at once never lose each other's votes.
 - **Stats**: built only from what you've actually logged.
 
 ## Run locally
@@ -61,6 +62,12 @@ Without it, "Start a family group" creates a group with a code and invite link. 
 2. Set `GOOGLE_CLIENT_ID` to that client id on the server (Vercel: Project Settings, Environment Variables).
 
 The server checks each sign-in with Google and only keeps a hash of the Google account id, the name and the email.
+
+### Local takeaways (no setup, no key)
+
+The finder uses OpenStreetMap's free services, called from the server: Nominatim turns a town or postcode into a place, and Overpass lists named `amenity=fast_food` (unless `takeaway=no`) and `amenity=restaurant` with `takeaway=yes|only` within 1 to 5 miles. Google Places would need a paid key, so it isn't used. Coverage depends on what mappers have added, so some shops will be missing; add them by hand (they are shared with the family too). The public Overpass servers are sometimes busy; the app tries two mirrors and then asks you to try again in a minute. Please keep to OpenStreetMap's usage policies (the server sends a `DinnerSpinner` user agent and rate-limits lookups). Map data is © OpenStreetMap contributors (ODbL).
+
+API (all require the family code headers): `GET/POST /api/takeaways` (merge spots, scores and notes), `POST /api/takeaways/place` (`{query}`), `POST /api/takeaways/discover` (`{radiusM}`).
 
 ## Recipes and photos
 

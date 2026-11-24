@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useDinner } from '../../context/DinnerContext';
-import { Copy, Check, Plus, Pencil, Dices, DoorOpen } from 'lucide-react';
+import { Copy, Check, Plus, Pencil, Dices, DoorOpen, Star } from 'lucide-react';
 import { Button, Card, Notice, Select, TextInput, cx, cuisineColor } from '../ui';
+import { LocalTakeaways, RatePanel } from '../TakeawayLeague';
 
-export const TakeawayView: React.FC = () => {
+export const TakeawayView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFamily }) => {
   const {
     takeaways,
     winningTakeaway,
@@ -17,6 +18,7 @@ export const TakeawayView: React.FC = () => {
     addTakeawayOption,
     recordTakeawayOrdered,
     takeawayLog,
+    usingSharedTakeaways,
   } = useDinner();
 
   const [copied, setCopied] = useState(false);
@@ -27,6 +29,7 @@ export const TakeawayView: React.FC = () => {
   const [newSpotCategory, setNewSpotCategory] = useState('Indian');
   const [newSpotBadge, setNewSpotBadge] = useState('');
   const [tick, setTick] = useState(0);
+  const [scoring, setScoring] = useState(false);
 
   useEffect(() => {
     if (!isTakeawaySpinning) return;
@@ -211,8 +214,27 @@ export const TakeawayView: React.FC = () => {
               {orderedToday ? 'Logged' : 'We ordered'}
             </Button>
           </div>
+
+          {usingSharedTakeaways && (
+            <div className="mt-3">
+              <button
+                onClick={() => setScoring((v) => !v)}
+                aria-expanded={scoring}
+                className="inline-flex min-h-11 items-center gap-1.5 text-[14px] font-semibold text-ink-2 hover:text-ink"
+              >
+                <Star className="h-4 w-4" /> {scoring ? 'Close' : 'Score it, with what we liked'}
+              </button>
+              {scoring && (
+                <div className="fade-up mt-1">
+                  <RatePanel key={winningTakeaway.id} spotId={winningTakeaway.id} spotName={winningTakeaway.name} onDone={() => setScoring(false)} />
+                </div>
+              )}
+            </div>
+          )}
         </Card>
       )}
+
+      <LocalTakeaways onOpenFamily={onOpenFamily} />
 
       <div className="border-t border-line pt-3">
         <button

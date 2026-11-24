@@ -187,7 +187,7 @@ const MainCabinet: React.FC = () => {
             {activeView === 1 && (
               <>
                 <BackToMore />
-                <TakeawayView />
+                <TakeawayView onOpenFamily={() => setIsFamilyOpen(true)} />
               </>
             )}
             {activeView === 2 && <PantryView scope="fridge" />}
