@@ -387,13 +387,14 @@ test('Takeaways: with a Google key, places come from Google (closed and non-take
     throw new Error('should not reach the map service');
   }) as unknown as typeof fetch;
   const near = await createPlaces(fake, async () => {}, 'test-key').takeawaysNear(53.99, -1.54, 3000);
-  assert.deepEqual(near.spots.map((s) => s.name), ['Golden Wok'], 'one entry even though eight searches all returned it');
+  assert.deepEqual(near.spots.map((s) => s.name), ['Golden Wok'], 'one entry even though every search returned it');
   assert.equal(near.spots[0].source, 'google');
   assert.equal(near.spots[0].cuisine, 'Chinese');
   assert.equal(near.spots[0].address, '1 High St, Harrogate HG1 1AA');
   assert.equal(near.spots[0].phone, '01423 111111');
   assert.equal(near.complete, false);
-  assert.equal(calls.length, 8);
+  const { GOOGLE_QUERIES } = await import('./takeaways');
+  assert.equal(calls.length, GOOGLE_QUERIES.length, 'one request per search when there is no second page');
   assert.equal(calls[0].headers['X-Goog-Api-Key'], 'test-key');
   assert.ok(calls[0].headers['X-Goog-FieldMask'].includes('websiteUri'));
   assert.ok(!calls[0].headers['X-Goog-FieldMask'].includes('reviews'), 'asks only for cheap fields');
@@ -411,4 +412,44 @@ test('Takeaways: with a Google key, places come from Google (closed and non-take
 
   assert.ok(sameSpot({ name: 'The Golden Wok', lat: 53.991, lon: -1.541 }, { name: 'Golden Wok', lat: 53.9911, lon: -1.5411 }));
   assert.ok(!sameSpot({ name: 'Golden Wok', lat: 53.991, lon: -1.541 }, { name: 'Golden Wok', lat: 54.1, lon: -1.541 }), 'same name far apart is a different shop');
+});
+
+test('Takeaways: Google results are followed across pages and joined with the map data, without doubles', async () => {
+  const { createPlaces } = await import('../server/places');
+  const { GOOGLE_QUERIES, GOOGLE_PAGES } = await import('./takeaways');
+  const g = (id: string, name: string, lat: number) => ({ id, displayName: { text: name }, location: { latitude: lat, longitude: -1.54 }, types: ['meal_takeaway'], businessStatus: 'OPERATIONAL' });
+  const tokens: (string | undefined)[] = [];
+  const fake = (async (url: string, init: any) => {
+    if (String(url).includes('places.googleapis.com')) {
+      const body = JSON.parse(init.body);
+      if (body.textQuery !== GOOGLE_QUERIES[0]) return new Response(JSON.stringify({ places: [] }));
+      tokens.push(body.pageToken);
+      if (!body.pageToken) return new Response(JSON.stringify({ places: [g('p1', 'Golden Wok', 53.991)], nextPageToken: 't2' }));
+      if (body.pageToken === 't2') return new Response(JSON.stringify({ places: [g('p2', 'Bombay Nights', 53.992)], nextPageToken: 't3' }));
+      return new Response(JSON.stringify({ places: [g('p3', 'Chippy Lane', 53.993)], nextPageToken: 't4' }));
+    }
+    // The map data knows Golden Wok too (a double), plus a small place Google lacks.
+    return new Response(
+      JSON.stringify({
+        elements: [
+          { type: 'node', id: 1, lat: 53.9911, lon: -1.5401, tags: { name: 'The Golden Wok', amenity: 'fast_food', cuisine: 'chinese' } },
+          { type: 'node', id: 2, lat: 53.994, lon: -1.54, tags: { name: 'Mama Rosa Pizza', amenity: 'fast_food', cuisine: 'pizza' } },
+        ],
+      })
+    );
+  }) as unknown as typeof fetch;
+  const near = await createPlaces(fake, async () => {}, 'k').takeawaysNear(53.99, -1.54, 3000);
+  assert.deepEqual(tokens, [undefined, 't2', 't3'], 'follows the pages in order and stops at the page limit');
+  assert.equal(tokens.length, GOOGLE_PAGES);
+  assert.deepEqual(near.spots.map((s) => s.name), ['Golden Wok', 'Bombay Nights', 'Chippy Lane', 'Mama Rosa Pizza'], 'nearest first; the map double is dropped, the map-only place is kept');
+  assert.equal(near.spots.find((s) => s.name === 'Mama Rosa Pizza')!.source, 'osm');
+  assert.equal(near.complete, false);
+
+  // The map data being down does not spoil the Google results.
+  const mapDown = (async (url: string, init: any) => {
+    if (String(url).includes('places.googleapis.com')) return new Response(JSON.stringify({ places: [g('p1', 'Golden Wok', 53.991)] }));
+    return new Response('busy', { status: 503 });
+  }) as unknown as typeof fetch;
+  const only = await createPlaces(mapDown, async () => {}, 'k').takeawaysNear(53.99, -1.54, 3000);
+  assert.deepEqual(only.spots.map((s) => s.name), ['Golden Wok']);
 });

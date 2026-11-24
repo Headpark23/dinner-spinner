@@ -574,7 +574,24 @@ export function placeFromHtml(html: string): PlaceDetails | null {
 // ---------------------------------------------------------------------------
 
 /** Searches sent to Google for one area. Each is one request, so this list is also the cost of a search. */
-export const GOOGLE_QUERIES = ['takeaway', 'pizza takeaway', 'chinese takeaway', 'indian takeaway', 'fish and chips', 'kebab', 'burger', 'fried chicken'];
+export const GOOGLE_QUERIES = [
+  'takeaway',
+  'pizza takeaway',
+  'chinese takeaway',
+  'indian takeaway',
+  'curry house',
+  'fish and chips',
+  'kebab',
+  'turkish grill',
+  'burger',
+  'fried chicken',
+  'wings',
+  'thai takeaway',
+  'sushi takeaway',
+  'sandwich shop',
+];
+/** Google gives at most 20 places a page; each search is followed for up to this many pages. */
+export const GOOGLE_PAGES = 3;
 
 const GOOGLE_TYPES = new Set(['meal_takeaway', 'meal_delivery', 'fast_food_restaurant', 'pizza_restaurant', 'hamburger_restaurant', 'sandwich_shop', 'chicken_restaurant']);
 
@@ -586,6 +603,16 @@ export function sameSpot(a: { name: string; lat?: number; lon?: number }, b: { n
   if (!plainName(a.name) || plainName(a.name) !== plainName(b.name)) return false;
   if (a.lat === undefined || a.lon === undefined || b.lat === undefined || b.lon === undefined) return true;
   return distanceM({ lat: a.lat, lon: a.lon }, { lat: b.lat, lon: b.lon }) < 250;
+}
+
+/** Joins two lists of places: everything in the first, plus anything in the second that isn't the same shop. Nearest first, one branch per big chain. */
+export function mergeSpotLists(primary: SharedSpot[], extra: SharedSpot[], here?: { lat: number; lon: number }): SharedSpot[] {
+  const all = [...primary];
+  for (const e of extra) if (!all.some((p) => sameSpot(p, e))) all.push(e);
+  const far = (s: SharedSpot) => (here && s.lat !== undefined && s.lon !== undefined ? distanceM(here, { lat: s.lat, lon: s.lon }) : Infinity);
+  const withD = all.map((s) => ({ s, d: far(s) }));
+  withD.sort((a, b) => (a.d === b.d ? 0 : a.d < b.d ? -1 : 1));
+  return oneOfEachChain(withD.map((x) => x.s));
 }
 
 const googleCuisine = (p: any): string => {
