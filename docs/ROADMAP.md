@@ -23,9 +23,9 @@ Effort: S = under a day, M = 1 to 3 days, L = a week or more.
 
 ## Freezer follow-ups (PR 31)
 
-The Freezer tab works, but it was built before main's household sync, so it is behind the other stores. This is the most useful next step because of that gap.
+The Freezer tab is built and, as of PR 31, shared with the household like the fridge. The items below are what would make it more useful.
 
-1. **Share it with the household (M).** The fridge and shopping list sync through small operations (`utils/fridge.ts`, `/api/fridge/ops`, `requireHousehold`). Today the freezer lives only in this phone's `localStorage`, so a partner would not see what is in it or ticking a portion off. Add `utils/freezerOps.ts` (add, tick, put back, remove, clear) applied identically on the server and the phone, a `/api/freezer` pair of routes next to the fridge ones, and a `freezer` field in `src/server/store.ts`. Copy the fridge's "seed from the first phone" and queue-when-offline behaviour. Add tests next to the fridge ones.
+1. ~~Share it with the household~~ **Done.** `applyFreezerOp` in `utils/freezer.ts` (seed, add, tick, put back, remove, clear finished, replace all) runs on both the server and the phone. `GET /api/freezer` and `POST /api/freezer/ops` sit beside the fridge routes, the household store has a `freezer` field, and edits queue while offline. Two phones ticking portions both count. One known gap, shared with the fridge: if the server applies a tick but the reply is lost, the phone resends it and a portion can be ticked twice. Undo covers it; a per-operation id would fix it properly for both stores.
 2. **Use it when planning (M).** Let a planner night be "from the freezer": offer batches oldest first, tick a portion when that night is cooked, and skip that night in `weekShopping`. `WeekPlan` entries are `{ mealId, title }` today, so add an optional `freezerId`.
 3. **Count it in "Cook from what we have" (S).** A batch in the freezer is a dinner that needs nothing from the shop. Offer it first in `CupboardSheet`, with the "Eat soon" ones at the front.
 4. **Leftovers (item 6) goes into it.** After dinner, "made extra?" can either add a fridge item with a use-by or send the rest to the freezer in one tap. See item 6 below.
@@ -90,7 +90,7 @@ The Freezer tab works, but it was built before main's household sync, so it is b
 
 ## Suggested order
 
-1. **Freezer household sync** (follow-up 1) and the backup check (follow-up 6). Closes the gap in the work already in review.
+1. ~~Freezer household sync~~ (done). Next, the small **backup check** for the freezer (follow-up 6), and the per-operation id that stops a lost reply double-ticking a portion (fridge and freezer).
 2. **Quick wins that finish half-built features:** wake lock and locked-screen alerts (3), update and install prompts (2), merge the shop lists (7), cost per head (8).
 3. **Planner upgrades** (1) together with freezer nights and "Cook from what we have" (follow-ups 2 and 3, item 10), since all touch the same plan and spin code.
 4. **Engine pass** for per-person diets (5), leftovers (6) and seasons (11), so `filterEligibleMeals` and `selectWeightedMeal` change once with shared tests.
