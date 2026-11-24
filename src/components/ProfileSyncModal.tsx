@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { useDinner } from '../context/DinnerContext';
 import { RefreshCw, Download, FileUp, CloudDownload, RotateCcw, CircleCheck, CircleAlert } from 'lucide-react';
 import { Button, Notice, Sheet, TextInput } from './ui';
+import { NotificationsCard } from './NotificationsCard';
 
 interface ProfileSyncModalProps {
   isOpen: boolean;
@@ -109,6 +110,8 @@ export const ProfileSyncModal: React.FC<ProfileSyncModalProps> = ({ isOpen, onCl
         aria-hidden="true"
         tabIndex={-1}
       />
+
+      <NotificationsCard />
 
       <form
         className="space-y-1.5"

@@ -191,8 +191,10 @@ export function selectWeightedMeal(
   clearoutActive: boolean,
   effort: EffortLevel,
   nowMs: number = Date.now(),
-  randomFn: () => number = Math.random
+  randomFn: () => number = Math.random,
+  likedIngredients: string[] = []
 ): Meal {
+  const liked = likedIngredients.map((l) => l.trim().toLowerCase()).filter(Boolean);
   const redPantryItems = pantry
     .filter((p) => p.freshness === 'red')
     .map((p) => p.name.toLowerCase());
@@ -223,6 +225,17 @@ export function selectWeightedMeal(
 
     if (meal.isFavorite) {
       weight *= 1.3;
+    }
+
+    // Household likes: dishes with something you love come up more often.
+    if (
+      liked.length > 0 &&
+      meal.ingredients.some((ing) => {
+        const i = ing.toLowerCase();
+        return liked.some((l) => i.includes(l) || l.includes(i));
+      })
+    ) {
+      weight *= 1.8;
     }
 
     return { meal, weight };

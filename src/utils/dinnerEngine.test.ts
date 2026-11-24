@@ -274,3 +274,165 @@ test('Server: shared shopping list round trip', async () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
+
+test('Cupboard ops: add dedupes and restocks, low flag records who, remove', async () => {
+  const { applyCupboardOp, guessCupboardCategory } = await import('./household');
+  let items = applyCupboardOp([], { type: 'add', item: { id: 'a', name: 'Coconut Milk', category: 'Tins & jars' } });
+  items = applyCupboardOp(items, { type: 'setLow', id: 'a', low: true, by: 'Mum' });
+  assert.equal(items[0].low, true);
+  assert.equal(items[0].lowBy, 'Mum');
+  items = applyCupboardOp(items, { type: 'add', item: { name: 'coconut milk' } });
+  assert.equal(items.length, 1, 'adding an existing item restocks it rather than duplicating');
+  assert.equal(items[0].low, false);
+  items = applyCupboardOp(items, { type: 'remove', id: 'a' });
+  assert.equal(items.length, 0);
+  assert.equal(guessCupboardCategory('Chopped Tomatoes 400g tin'), 'Tins & jars');
+  assert.equal(guessCupboardCategory('Soy sauce'), 'Sauces & condiments');
+});
+
+test('Tastes ops: like and avoid are exclusive, seed only fills once', async () => {
+  const { applyTastesOp } = await import('./household');
+  let t = applyTastesOp({ likes: [], avoid: [] }, { type: 'seed', likes: ['Garlic'], avoid: ['Olives'] });
+  assert.deepEqual(t, { likes: ['Garlic'], avoid: ['Olives'], seeded: true });
+  t = applyTastesOp(t, { type: 'seed', likes: [], avoid: [] });
+  assert.deepEqual(t.likes, ['Garlic'], 'a second seed never wipes the household list');
+  t = applyTastesOp(t, { type: 'like', name: 'olives' });
+  assert.deepEqual(t.avoid, []);
+  assert.ok(t.likes.includes('olives'));
+  t = applyTastesOp(t, { type: 'clear', name: 'GARLIC' });
+  assert.deepEqual(t.likes, ['olives']);
+});
+
+test('Spinner favours liked ingredients', () => {
+  const make = (id: string, ingredients: string[]) => ({
+    ...INITIAL_MEALS[0],
+    id,
+    ingredients,
+    effort: 'standard' as const,
+    isFavorite: false,
+    lastCookedDate: null,
+  });
+  const pool = [make('a', ['Rice']), make('b', ['Halloumi', 'Peppers'])];
+  // Equal weights: a draw at 45% lands on the first dish. Liking halloumi tips it to the second.
+  assert.equal(selectWeightedMeal(pool, [], false, 'standard', Date.now(), () => 0.45).id, 'a');
+  assert.equal(selectWeightedMeal(pool, [], false, 'standard', Date.now(), () => 0.45, ['halloumi']).id, 'b');
+});
+
+test('Shared vote: majority agrees, a veto closes it, decided votes ignore late ballots', async () => {
+  const { castVote } = await import('./household');
+  const base = {
+    id: 'v1',
+    meal: INITIAL_MEALS[0],
+    proposedBy: { id: 'm1', name: 'Dad' },
+    members: [
+      { id: 'm1', name: 'Dad' },
+      { id: 'm2', name: 'Mum' },
+      { id: 'm3', name: 'Alex' },
+    ],
+    ballot: {},
+    status: 'open' as const,
+    createdAt: new Date().toISOString(),
+  };
+  let v = castVote(base, 'm2', 'yes');
+  assert.equal(v.status, 'open');
+  v = castVote(v, 'm1', 'yes');
+  assert.equal(v.status, 'agreed');
+  assert.equal(v.decidedBy?.name, 'Dad');
+  assert.equal(castVote(v, 'm3', 'no'), v);
+  const vetoed = castVote(base, 'm3', 'no');
+  assert.equal(vetoed.status, 'vetoed');
+  assert.equal(vetoed.decidedBy?.name, 'Alex');
+});
+
+test('Server: shared vote, cupboard, tastes, push key, and honest photo errors', async () => {
+  const { app } = await import('../../server');
+  const server = http.createServer(app);
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  const post = (url: string, body: unknown) =>
+    fetch(base + url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  try {
+    const proposed = await (
+      await post('/api/vote/propose', {
+        meal: INITIAL_MEALS[0],
+        proposedBy: { id: 'm1', name: 'Dad' },
+        members: [
+          { id: 'm1', name: 'Dad' },
+          { id: 'm2', name: 'Mum' },
+        ],
+      })
+    ).json();
+    assert.equal(proposed.vote.status, 'open');
+    assert.equal(proposed.notified, 0);
+
+    const cast = await (await post('/api/vote/cast', { voteId: proposed.vote.id, memberId: 'm2', decision: 'yes' })).json();
+    assert.equal(cast.vote.status, 'agreed', 'one of two is a majority');
+    const seen = await (await fetch(base + '/api/vote')).json();
+    assert.equal(seen.vote.ballot.m2, 'yes');
+    const late = await post('/api/vote/cast', { voteId: proposed.vote.id, memberId: 'm1', decision: 'no' });
+    assert.equal(late.status, 409);
+
+    const cupboard = await (
+      await post('/api/cupboard/ops', { ops: [{ type: 'add', item: { name: 'Passata', category: 'Tins & jars' } }] })
+    ).json();
+    assert.equal(cupboard.data[0].name, 'Passata');
+    assert.equal((await (await fetch(base + '/api/cupboard')).json()).version, cupboard.version);
+
+    const tastes = await (await post('/api/tastes/ops', { ops: [{ type: 'avoid', name: 'Olives' }] })).json();
+    assert.deepEqual(tastes.data.avoid, ['Olives']);
+
+    const key = await (await fetch(base + '/api/push/key')).json();
+    assert.ok(key.publicKey.length > 40);
+    assert.equal((await post('/api/push/subscribe', { memberId: 'm1' })).status, 400);
+
+    // A real photo with no AI key configured must fail plainly, never return sample food.
+    const photo = await post('/api/pantry/analyze', { type: 'snap-fridge', imageBase64: 'data:image/jpeg;base64,AAAA' });
+    assert.equal(photo.status, 503);
+    assert.ok((await photo.json()).error);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test('Recipe ops: diff round-trips edits, hide/unhide, seed only once, big changes replace', async () => {
+  const { applyRecipesOp, diffRecipes } = await import('./household');
+  const start = { meals: INITIAL_MEALS.slice(0, 3), hidden: [] as string[] };
+  const seeded = applyRecipesOp({ meals: [], hidden: [] }, { type: 'seed', ...start });
+  assert.equal(seeded.meals.length, 3);
+  assert.equal(applyRecipesOp(seeded, { type: 'seed', meals: [], hidden: [] }), seeded);
+
+  const added = { ...INITIAL_MEALS[4], id: 'meal_new' };
+  const next = [added, { ...seeded.meals[0], rating: 2 }, seeded.meals[2]];
+  const ops = diffRecipes(seeded.meals, next);
+  const after = ops.reduce(applyRecipesOp, seeded);
+  assert.deepEqual(after.meals.map((m) => m.id), next.map((m) => m.id), 'new dish lands where it was added');
+  assert.equal(after.meals[1].rating, 2);
+
+  const hidden = applyRecipesOp(applyRecipesOp(after, { type: 'hide', id: 'x' }), { type: 'hide', id: 'x' });
+  assert.deepEqual(hidden.hidden, ['x']);
+  assert.deepEqual(applyRecipesOp(hidden, { type: 'unhide', id: 'x' }).hidden, []);
+
+  const many = INITIAL_MEALS.slice(0, 12).flatMap((m) => [0, 1, 2, 3].map((i) => ({ ...m, id: `${m.id}_${i}` })));
+  const bigOps = diffRecipes([], many);
+  assert.equal(bigOps.length, 1);
+  assert.equal(bigOps[0].type, 'replace');
+});
+
+test('Server: recipes shared between phones', async () => {
+  const { app } = await import('../../server');
+  const server = http.createServer(app);
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  try {
+    const post = (ops: unknown[]) =>
+      fetch(base + '/api/recipes/ops', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ops }) }).then((r) => r.json());
+    await post([{ type: 'seed', meals: INITIAL_MEALS.slice(0, 2), hidden: [] }]);
+    await post([{ type: 'upsert', meal: { ...INITIAL_MEALS[0], rating: 1 } }, { type: 'hide', id: 'w_x' }]);
+    const other = await (await fetch(base + '/api/recipes')).json();
+    assert.equal(other.data.meals[0].rating, 1);
+    assert.deepEqual(other.data.hidden, ['w_x']);
+    assert.equal(other.data.seeded, true);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});

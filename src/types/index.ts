@@ -137,3 +137,35 @@ export interface TakeawayLogEntry {
   name: string;
   date: string;
 }
+
+/** Tins, jars, sauces and dry goods. Shared by everyone in the household. */
+export interface CupboardItem {
+  id: string;
+  name: string;
+  category: string;
+  quantity?: string;
+  low: boolean; // running low, needs buying
+  lowBy?: string;
+  addedBy?: string;
+  updatedAt: string;
+}
+
+/** What the household likes (favoured when spinning) and avoids (never spun). */
+export interface HouseholdTastes {
+  likes: string[];
+  avoid: string[];
+  seeded?: boolean;
+}
+
+/** Tonight's vote, held on the server so every phone sees it. */
+export interface SharedVote {
+  id: string;
+  meal: Meal;
+  proposedBy: { id: string; name: string };
+  members: { id: string; name: string }[];
+  ballot: Record<string, 'yes' | 'no'>;
+  status: 'open' | 'agreed' | 'vetoed';
+  decidedBy?: { id: string; name: string };
+  decidedAt?: string;
+  createdAt: string;
+}

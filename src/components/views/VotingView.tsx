@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useDinner } from '../../context/DinnerContext';
-import { Check, X, Copy, UserPlus, Trash2, CircleAlert, RotateCcw, Dices, Clock } from 'lucide-react';
+import { Check, X, Copy, UserPlus, Trash2, CircleAlert, RotateCcw, Dices, Clock, Send, WifiOff } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { AfterDinnerReview } from '../AfterDinnerReview';
 import { RecipeSheet } from '../RecipeSheet';
 import { HouseholdMember } from '../../types';
 import { Button, Card, Chip, Notice, Segmented, TextInput, cx, timeLabel, effortLabel } from '../ui';
+import { NotificationsCard } from '../NotificationsCard';
+import { majorityFor } from '../../utils/household';
 
 const avatarTints = ['#6d5a44', '#3d6a4c', '#3f6a86', '#9a6510', '#8a4a6b', '#b4652a'];
 
@@ -54,6 +56,11 @@ export const VotingView: React.FC = () => {
     setActiveView,
     resetEvening,
     cookLog,
+    voters,
+    meId,
+    sharedVote,
+    lastNotified,
+    voteOnline,
   } = useDinner();
 
   const [copied, setCopied] = useState(false);
@@ -63,9 +70,16 @@ export const VotingView: React.FC = () => {
   const [newMemberName, setNewMemberName] = useState('');
   const [recipeOpen, setRecipeOpen] = useState(false);
 
-  const currentVoter = householdMembers[activeVoterIndex] || householdMembers[0];
+  const currentVoter = voters[activeVoterIndex] || voters[0];
   const yesVotesCount = Object.values(currentBallot).filter((v) => v === 'yes').length;
-  const majorityNeeded = Math.max(1, Math.ceil(householdMembers.length / 2));
+  const majorityNeeded = majorityFor(voters.length);
+  const voterKey = voters.map((v) => v.id).join(',');
+
+  // Each phone votes as its owner by default.
+  useEffect(() => {
+    const mine = voters.findIndex((v) => v.id === meId);
+    if (mine >= 0) setActiveVoterIndex(mine);
+  }, [meId, voterKey]);
 
   // A cook is "already logged" if this agreed dish was logged in the last 12 hours.
   const loggedEntry =
@@ -81,11 +95,21 @@ export const VotingView: React.FC = () => {
 
   const handleCopy = async () => {
     if (!proposedMeal) return;
+    const url = `${window.location.origin}/?view=vote`;
     const text = `Dinner tonight? ${proposedMeal.title}\n${timeLabel(proposedMeal.timeStake)}, ${effortLabel(
       proposedMeal.effort
     ).toLowerCase()}.\nYes, or use a veto?`;
+    // On phones, open the share sheet (WhatsApp, Messages…) with a link straight to the vote.
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'Dinner Spinner', text, url });
+        return;
+      } catch (err: any) {
+        if (err?.name === 'AbortError') return;
+      }
+    }
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(`${text}\n${url}`);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -128,6 +152,9 @@ export const VotingView: React.FC = () => {
         <Button variant="primary" className="mt-6" onClick={() => setActiveView(0)}>
           <Dices className="h-4 w-4" /> Go to the spinner
         </Button>
+        <div className="mt-8 w-full text-left">
+          <NotificationsCard compact />
+        </div>
       </div>
     );
   }
@@ -293,7 +320,24 @@ export const VotingView: React.FC = () => {
           {timeLabel(meal.timeStake)} · {effortLabel(meal.effort)} · {meal.cuisine}
         </p>
         <p className="mt-2 text-[14px] text-ink-2">{meal.description}</p>
+        {sharedVote && sharedVote.meal.id === meal.id && sharedVote.proposedBy.id !== meId && (
+          <p className="mt-2 text-[13px] text-ink-2">Suggested by {sharedVote.proposedBy.name}</p>
+        )}
       </div>
+
+      {voteOnline === false ? (
+        <Notice tone="neutral" icon={<WifiOff className="h-4 w-4" />}>
+          Can’t reach the server, so only this phone can vote right now. Pass it round, or share the link below.
+        </Notice>
+      ) : lastNotified !== null && sharedVote?.proposedBy.id === meId ? (
+        <Notice tone={lastNotified > 0 ? 'sage' : 'neutral'} icon={<Send className="h-4 w-4" />}>
+          {lastNotified > 0
+            ? `Sent to ${lastNotified} other ${lastNotified === 1 ? 'phone' : 'phones'}. You’ll be told when they vote.`
+            : 'No other phone has notifications on yet, so nobody was buzzed. Share the link below, or ask them to turn notifications on.'}
+        </Notice>
+      ) : null}
+
+      <NotificationsCard compact />
 
       <Card className="p-4">
         <div className="flex items-baseline justify-between">
@@ -303,7 +347,7 @@ export const VotingView: React.FC = () => {
           </span>
         </div>
         <div className="mt-3 grid auto-cols-[minmax(72px,1fr)] grid-flow-col gap-2 overflow-x-auto pb-1 scrollbar-none" role="radiogroup" aria-label="Voter">
-          {householdMembers.map((member, idx) => {
+          {voters.map((member, idx) => {
             const selected = activeVoterIndex === idx;
             const voted = currentBallot[member.id] === 'yes';
             return (
@@ -328,7 +372,10 @@ export const VotingView: React.FC = () => {
                     </span>
                   )}
                 </span>
-                <span className="text-[13px] font-semibold">{member.name}</span>
+                <span className="text-[13px] font-semibold">
+                  {member.name}
+                  {member.id === meId && <span className="font-normal text-ink-3"> (me)</span>}
+                </span>
                 <TokenDots left={member.vetoTokensRemaining} className={cx(member.vetoTokensRemaining === 0 ? 'text-tomato' : 'text-ink-3')} />
               </button>
             );
@@ -380,7 +427,7 @@ export const VotingView: React.FC = () => {
           className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-ink-2 hover:text-ink"
         >
           {copied ? <Check className="h-4 w-4 text-sage" /> : <Copy className="h-4 w-4" />}
-          {copied ? 'Copied' : 'Copy for group chat'}
+          {copied ? 'Copied' : 'Share the vote'}
         </button>
       </div>
 

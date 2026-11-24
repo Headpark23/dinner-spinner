@@ -19,7 +19,13 @@ import {
   Sparkles,
   Copy,
   LoaderCircle,
+  Package,
+  Refrigerator,
 } from 'lucide-react';
+import { TastesPanel } from '../TastesPanel';
+import { CupboardPanel } from '../CupboardPanel';
+import { prepareImageForScan } from '../../utils/image';
+import { guessCupboardCategory } from '../../utils/household';
 import { FreshnessLevel, Meal, TimeStake, EffortLevel } from '../../types';
 import { RecipeSheet } from '../RecipeSheet';
 import { photoFor } from '../../data/photos';
@@ -41,14 +47,16 @@ import {
   effortLabel,
 } from '../ui';
 
-type Tab = 'fridge' | 'vault' | 'missing' | 'camera' | 'staples' | 'banned';
-type ScanType = 'snap-fridge' | 'scan-receipt' | 'recipe-photo' | 'recipe-text';
+type Tab = 'fridge' | 'cupboard' | 'vault' | 'missing' | 'tastes' | 'camera' | 'staples';
+type ScanType = 'snap-fridge' | 'snap-cupboard' | 'scan-receipt' | 'recipe-photo' | 'recipe-text';
+const TABS: Tab[] = ['fridge', 'cupboard', 'missing', 'vault', 'tastes', 'camera', 'staples'];
 
 const readInitialTab = (): Tab => {
   try {
-    const t = sessionStorage.getItem('ds_pantry_tab') as Tab | null;
+    const raw = sessionStorage.getItem('ds_pantry_tab');
     sessionStorage.removeItem('ds_pantry_tab');
-    if (t && ['fridge', 'vault', 'missing', 'camera', 'staples', 'banned'].includes(t)) return t;
+    const t = (raw === 'banned' ? 'tastes' : raw) as Tab | null;
+    if (t && TABS.includes(t)) return t;
   } catch {
     // ignore
   }
@@ -89,6 +97,10 @@ export const PantryView: React.FC = () => {
     toggleShoppingItem,
     removeShoppingItem,
     clearCheckedShopping,
+    cupboard,
+    addCupboardItems,
+    likedIngredients,
+    recipesOnline,
   } = useDinner();
 
   const [recipeScope, setRecipeScope] = useState<'ours' | 'world'>('ours');
@@ -146,7 +158,25 @@ export const PantryView: React.FC = () => {
 
   const processApiResult = (type: ScanType, data: any) => {
     const note = data.demoMode ? ' (sample data)' : '';
-    if (type === 'snap-fridge' && data.detectedItems) {
+    if (type === 'snap-cupboard' && data.detectedItems) {
+      addCupboardItems(
+        data.detectedItems.map((item: any) => ({
+          name: item.name,
+          category: item.category,
+          quantity: item.estimatedQuantity,
+        }))
+      );
+      flash(
+        data.detectedItems.length
+          ? `Added ${data.detectedItems.length} items to the cupboard${note}.`
+          : 'Couldn’t make out anything on that shelf. Try a closer, brighter photo.'
+      );
+      setActiveTab('cupboard');
+    } else if (type === 'snap-fridge' && data.detectedItems) {
+      if (data.detectedItems.length === 0) {
+        setAnalysisError('Couldn’t make out any food in that photo. Try a closer, brighter one with the door wide open.');
+        return;
+      }
       data.detectedItems.forEach((item: any) =>
         addPantryItem({
           name: item.name,
@@ -158,16 +188,25 @@ export const PantryView: React.FC = () => {
       flash(`Added ${data.detectedItems.length} items to your fridge${note}.`);
       setActiveTab('fridge');
     } else if (type === 'scan-receipt' && data.items) {
-      data.items.forEach((item: any) =>
+      // Tins, jars and dry goods go in the cupboard; fresh food goes in the fridge.
+      const isCupboard = (item: any) => /cupboard|grain|sauce|condiment|tin|jar/i.test(item.category || '');
+      const toCupboard = data.items.filter(isCupboard);
+      const toFridge = data.items.filter((i: any) => !isCupboard(i));
+      toFridge.forEach((item: any) =>
         addPantryItem({
           name: item.name,
-          category: item.category || 'Cupboard & Grains',
+          category: item.category || 'Fridge',
           freshness: 'green',
           quantity: item.quantity || '1',
         })
       );
-      flash(`Added ${data.items.length} items from ${data.storeName || 'your receipt'}${note}.`);
-      setActiveTab('fridge');
+      addCupboardItems(
+        toCupboard.map((item: any) => ({ name: item.name, quantity: item.quantity, category: guessCupboardCategory(item.name) }))
+      );
+      flash(
+        `From ${data.storeName || 'your receipt'}: ${toFridge.length} to the fridge, ${toCupboard.length} to the cupboard${note}.`
+      );
+      setActiveTab(toFridge.length ? 'fridge' : 'cupboard');
     } else if ((type === 'recipe-photo' || type === 'recipe-text') && data.meal) {
       addMeal({
         title: data.meal.title || 'New recipe',
@@ -191,7 +230,8 @@ export const PantryView: React.FC = () => {
     setAnalysisError(null);
     setAnalysisSuccess(null);
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 35000);
+    // The server tries two models (up to ~25s each), so allow a little over that.
+    const timeout = setTimeout(() => controller.abort(), 65000);
     try {
       const res = await fetch('/api/pantry/analyze', {
         method: 'POST',
@@ -199,7 +239,7 @@ export const PantryView: React.FC = () => {
         body: JSON.stringify({ type, ...body }),
         signal: controller.signal,
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'The scanner couldn’t read that.');
       processApiResult(type, data);
       if (type === 'recipe-text') setAiRecipePrompt('');
@@ -215,14 +255,18 @@ export const PantryView: React.FC = () => {
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () =>
-      callAnalyze(currentUploadType, { imageBase64: reader.result as string, mimeType: file.type || 'image/jpeg' });
-    reader.onerror = () => setAnalysisError('Couldn’t read that image file.');
-    reader.readAsDataURL(file);
+    const type = currentUploadType;
+    setAnalyzing(type);
+    try {
+      const { dataUrl, mimeType } = await prepareImageForScan(file);
+      await callAnalyze(type, { imageBase64: dataUrl, mimeType });
+    } catch (err: any) {
+      setAnalyzing(null);
+      setAnalysisError(err?.message || 'Couldn’t read that image file.');
+    }
   };
 
   const redCount = pantry.filter((p) => p.freshness === 'red').length;
@@ -284,11 +328,12 @@ export const PantryView: React.FC = () => {
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: 'fridge', label: 'Fridge', count: pantry.length },
-    { id: 'vault', label: 'Recipes', count: meals.length },
+    { id: 'cupboard', label: 'Cupboard', count: cupboard.length },
     { id: 'missing', label: 'Shopping', count: toBuy.length || undefined },
+    { id: 'vault', label: 'Recipes', count: meals.length },
+    { id: 'tastes', label: 'Likes & dislikes', count: likedIngredients.length + bannedIngredients.length },
     { id: 'camera', label: 'Scan' },
     { id: 'staples', label: 'Staples' },
-    { id: 'banned', label: 'Avoid' },
   ];
 
   // A plain render helper (not a component) so rows keep focus across re-renders.
@@ -335,8 +380,9 @@ export const PantryView: React.FC = () => {
   };
 
   const scanRows: { type: ScanType; icon: React.ReactNode; title: string; body: string }[] = [
-    { type: 'snap-fridge', icon: <Camera className="h-5 w-5" />, title: 'Photo of the fridge', body: 'Adds what it sees, with a freshness guess.' },
-    { type: 'scan-receipt', icon: <Receipt className="h-5 w-5" />, title: 'Supermarket receipt', body: 'Adds the food lines from your shop.' },
+    { type: 'snap-fridge', icon: <Refrigerator className="h-5 w-5" />, title: 'Photo of the fridge', body: 'Adds what it sees, with a freshness guess.' },
+    { type: 'snap-cupboard', icon: <Package className="h-5 w-5" />, title: 'Photo of the cupboard', body: 'Lists your tins, jars, sauces and spices.' },
+    { type: 'scan-receipt', icon: <Receipt className="h-5 w-5" />, title: 'Supermarket receipt', body: 'Fresh food to the fridge, tins and jars to the cupboard.' },
     { type: 'recipe-photo', icon: <BookOpen className="h-5 w-5" />, title: 'Recipe page or plate', body: 'Turns it into a recipe with a timeline.' },
   ];
 
@@ -347,7 +393,6 @@ export const PantryView: React.FC = () => {
         ref={fileInputRef}
         onChange={handleFileChange}
         accept="image/*"
-        capture="environment"
         className="hidden"
         aria-hidden="true"
         tabIndex={-1}
@@ -362,7 +407,7 @@ export const PantryView: React.FC = () => {
         </p>
       </div>
 
-      <div role="tablist" aria-label="Pantry sections" className="-mx-4 flex gap-1 overflow-x-auto px-4 scrollbar-none">
+      <div role="tablist" aria-label="Pantry sections" className="flex flex-wrap gap-1">
         {tabs.map((tab) => {
           const selected = activeTab === tab.id;
           return (
@@ -451,6 +496,12 @@ export const PantryView: React.FC = () => {
           </>
         )}
 
+        {/* CUPBOARD */}
+        {activeTab === 'cupboard' && <CupboardPanel onScan={() => triggerCameraUpload('snap-cupboard')} />}
+
+        {/* LIKES & DISLIKES */}
+        {activeTab === 'tastes' && <TastesPanel />}
+
         {/* RECIPES */}
         {activeTab === 'vault' && (
           <>
@@ -463,6 +514,21 @@ export const PantryView: React.FC = () => {
                 { value: 'world', label: `World kitchen · ${worldRecipes.length}` },
               ]}
             />
+            {recipeScope === 'ours' && (
+              <p className="flex items-center gap-2 px-1 text-[12px] text-ink-3">
+                <span
+                  className={cx(
+                    'h-2 w-2 shrink-0 rounded-full',
+                    recipesOnline ? 'bg-sage' : recipesOnline === false ? 'bg-saffron' : 'bg-line-strong'
+                  )}
+                />
+                {recipesOnline
+                  ? 'Shared with everyone in the household, including tweaks, ratings and hidden dishes.'
+                  : recipesOnline === false
+                  ? 'Offline. Recipe changes sync when you’re back.'
+                  : 'Connecting…'}
+              </p>
+            )}
             <div className="relative">
               <Search className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-ink-3" />
               <TextInput
@@ -733,7 +799,7 @@ export const PantryView: React.FC = () => {
                       </section>
                     )
                 )}
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <Button
                     variant="secondary"
                     onClick={async () => {
@@ -748,7 +814,7 @@ export const PantryView: React.FC = () => {
                     }}
                   >
                     {copiedShopping ? <Check className="h-4 w-4 text-sage" /> : <Copy className="h-4 w-4" />}
-                    {copiedShopping ? 'Copied' : 'Copy list'}
+                    {copiedShopping ? 'Copied' : 'Copy'}
                   </Button>
                   <Button
                     variant="success"
@@ -759,11 +825,22 @@ export const PantryView: React.FC = () => {
                       flash(`Put ${gotIt.length} ${gotIt.length === 1 ? 'item' : 'items'} away in the fridge.`);
                     }}
                   >
-                    <ShoppingBasket className="h-4 w-4" /> Put away
+                    <Refrigerator className="h-4 w-4" /> Fridge
+                  </Button>
+                  <Button
+                    variant="success"
+                    disabled={gotIt.length === 0}
+                    onClick={() => {
+                      addCupboardItems(gotIt.map((i) => ({ name: i.name })));
+                      clearCheckedShopping();
+                      flash(`Put ${gotIt.length} ${gotIt.length === 1 ? 'item' : 'items'} away in the cupboard.`);
+                    }}
+                  >
+                    <Package className="h-4 w-4" /> Cupboard
                   </Button>
                 </div>
                 <p className="text-center text-[12px] text-ink-3">
-                  “Put away” moves ticked items into the fridge and clears them from the list.
+                  Put ticked items away in the fridge or the cupboard. They come off the list.
                 </p>
               </>
             )}
@@ -829,7 +906,7 @@ export const PantryView: React.FC = () => {
             </form>
             {analyzing && (
               <p className="text-[13px] text-ink-2" role="status">
-                Reading it now. This can take up to 20 seconds.
+                Reading it now. This can take up to a minute when the scanner is busy.
               </p>
             )}
           </>
@@ -865,40 +942,6 @@ export const PantryView: React.FC = () => {
           </Card>
         )}
 
-        {/* AVOID */}
-        {activeTab === 'banned' && (
-          <Card className="space-y-3 p-4">
-            <p className="text-[14px] text-ink-2">The spinner will never land on a dish containing these.</p>
-            {bannedIngredients.length === 0 ? (
-              <p className="text-[14px] text-ink-3">Nothing on the list.</p>
-            ) : (
-              <ul className="flex flex-wrap gap-1.5">
-                {bannedIngredients.map((ing) => (
-                  <li key={ing} className="inline-flex items-center gap-1 rounded-full bg-tomato-soft py-1 pr-1 pl-3 text-[13px] text-tomato">
-                    {ing}
-                    <button onClick={() => toggleBannedIngredient(ing)} aria-label={`Allow ${ing} again`} className="rounded-full p-1 opacity-70 hover:opacity-100">
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <form
-              className={CHIP_LIST_INPUT}
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!newBannedName.trim()) return;
-                toggleBannedIngredient(newBannedName.trim());
-                setNewBannedName('');
-              }}
-            >
-              <TextInput value={newBannedName} onChange={(e) => setNewBannedName(e.target.value)} placeholder="e.g. Olives" aria-label="Ingredient to avoid" />
-              <Button type="submit" variant="secondary" disabled={!newBannedName.trim()}>
-                Avoid
-              </Button>
-            </form>
-          </Card>
-        )}
       </div>
       {sheetMeal && (
         <RecipeSheet

@@ -12,10 +12,13 @@ Built with React 19, TypeScript, Tailwind CSS v4 and Vite, served by a small Exp
 - **Make it yours**: add your own ingredients, steps (with timing) and a note to any recipe. The original is kept, and your additions show up in the cooking timeline.
 - **Not for us**: hide a dish for good, and a similar one from the World Kitchen replaces it automatically. Hidden dishes can be brought back.
 - **Your own recipes**: add them by hand, or scan a recipe page or plate photo.
-- **Tonight**: the household votes on one phone, with vetoes. Three vetoes in a row closes the kitchen and sends you to the takeaway spinner. A majority yes builds a timeline back from when you want to eat.
+- **Tonight**: put a dish to the vote and everyone else's phone gets a notification; you hear back as each person votes (or pass one phone round). Vetoes included. Three vetoes in a row closes the kitchen and sends you to the takeaway spinner. A majority yes builds a timeline back from when you want to eat.
 - **After dinner**: everyone gives the dish stars and a quick comment. The average becomes the dish's rating.
 - **Shared shopping list**: one list for the whole household. Whoever's at the shop ticks items off ("Got it · Mum") and everyone else sees it within seconds. "Put away" moves ticked items into the fridge.
 - **Stats**: built only from what you've actually logged.
+- **Shared recipes**: your recipes, tweaks, ratings and hidden dishes sync between everyone's phones. The first phone to connect brings its recipes; a phone joining later keeps the household's list and adds any of its own recipes and scans.
+- **Store cupboard**: tins, jars, sauces and spices, shared by the household like the shopping list. Mark something running low and it goes on the list. Cupboard items count as in stock for recipes.
+- **Likes & dislikes**: shared by the household. Liked ingredients come up more often; disliked ones are never spun. Shown on the spinner and in Pantry → Likes & dislikes.
 
 ## Run locally
 
@@ -28,7 +31,11 @@ npm run dev
 
 To share the shopping list across the household, open the app from each phone using the computer's local network address (for example `http://192.168.1.20:3000`) or a hosted copy. Everyone using the same server shares one list.
 
-Optional: set `GEMINI_API_KEY` in `.env` for live fridge, receipt and recipe scanning. Without it, the "Try a sample" buttons and the fallback still work.
+### Vote notifications
+
+Phones only allow notifications on a secure **https** address, so they won't work over a plain `http://192.168…` address (votes still appear while the app is open). Host the app on https, then on each phone open it, choose who the phone belongs to and tap **Turn on** under *Tonight*. On iPhone, first use Share → **Add to Home Screen** and open the app from there (iOS 16.4+). Push keys are created on first run in `.push-keys.json`, or set `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`.
+
+Optional: set `GEMINI_API_KEY` in `.env` for live fridge, receipt and recipe scanning. Without it, the "Try a sample" buttons still work but real photos are refused with a clear message. `GEMINI_MODEL` overrides the first model tried (default `gemini-3.5-flash`, falling back to `gemini-3.1-flash-lite`).
 
 ```bash
 npm test        # engine, server and UI render tests

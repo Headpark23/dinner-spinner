@@ -15,7 +15,7 @@ import { ScorecardView } from './components/views/ScorecardView';
 import { ProfileSyncModal } from './components/ProfileSyncModal';
 import { RulesModal } from './components/RulesModal';
 import { Card, FreshDot, Switch, cx } from './components/ui';
-import { ArrowRight, Check } from 'lucide-react';
+import { ArrowRight, BellRing, Check, X } from 'lucide-react';
 
 /** Desktop-only companion column: what matters for tonight at a glance. */
 const TonightPanel: React.FC = () => {
@@ -137,6 +137,48 @@ const TonightPanel: React.FC = () => {
   );
 };
 
+/** Shows what another phone just did (a dish put to the vote, a yes, a veto). */
+const HouseholdAlertBanner: React.FC = () => {
+  const { householdAlert, dismissHouseholdAlert, setActiveView, spin } = useDinner();
+  if (!householdAlert) return null;
+  const go = () => {
+    dismissHouseholdAlert();
+    if (householdAlert.action === 'vote') setActiveView(3);
+    else if (householdAlert.action === 'takeaway') setActiveView(1);
+    else if (householdAlert.action === 'spin') {
+      setActiveView(0);
+      setTimeout(spin, 250);
+    }
+  };
+  const actionLabel =
+    householdAlert.action === 'vote' ? 'Open' : householdAlert.action === 'spin' ? 'Spin again' : householdAlert.action === 'takeaway' ? 'Takeaway' : null;
+  return (
+    <div className="sticky top-14 z-20 px-4 pt-3">
+      <div
+        role="status"
+        aria-live="polite"
+        className={cx(
+          'fade-up flex items-center gap-3 rounded-2xl px-4 py-3 text-[14px] shadow-lg',
+          householdAlert.tone === 'sage' && 'bg-sage text-white',
+          householdAlert.tone === 'tomato' && 'bg-tomato text-white',
+          householdAlert.tone === 'neutral' && 'bg-ink text-paper'
+        )}
+      >
+        <BellRing className="h-5 w-5 shrink-0" />
+        <p className="min-w-0 flex-1 leading-snug">{householdAlert.text}</p>
+        {actionLabel && (
+          <button onClick={go} className="shrink-0 rounded-lg bg-white/20 px-3 py-1.5 text-[13px] font-semibold hover:bg-white/30">
+            {actionLabel}
+          </button>
+        )}
+        <button onClick={dismissHouseholdAlert} aria-label="Dismiss" className="-mr-1 shrink-0 rounded-md p-1 opacity-80 hover:opacity-100">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const MainCabinet: React.FC = () => {
   const { activeView } = useDinner();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -149,6 +191,8 @@ const MainCabinet: React.FC = () => {
           onOpenProfile={() => setIsProfileOpen(true)}
           onOpenRules={() => setIsRulesOpen(true)}
         />
+
+        <HouseholdAlertBanner />
 
         <main id="main" className="flex-1 px-4 pt-4 pb-8">
           <div key={activeView} className="fade-up">

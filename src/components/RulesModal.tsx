@@ -27,7 +27,7 @@ const steps = [
   },
   {
     title: 'Put it to the household',
-    body: 'Everyone votes on one phone. A majority yes agrees dinner and builds a timeline back from when you want to eat. Each person gets three vetoes a week.',
+    body: 'Put a dish to the vote and everyone else gets a notification on their own phone (or pass one phone round). You hear back as each person votes. A majority yes agrees dinner and builds a timeline back from when you want to eat. Each person gets three vetoes a week.',
   },
   {
     title: 'Three vetoes, then takeaway',

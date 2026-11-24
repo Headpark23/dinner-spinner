@@ -45,7 +45,20 @@ export const MachineView: React.FC = () => {
     setActiveView,
     isCoolingOff,
     getCoolingOffDays,
+    likedIngredients,
+    bannedIngredients,
   } = useDinner();
+
+  const openTastes = () => {
+    try {
+      sessionStorage.setItem('ds_pantry_tab', 'tastes');
+    } catch {
+      // ignore
+    }
+    setActiveView(2);
+  };
+  const preview = (list: string[]) =>
+    list.length === 0 ? 'none yet' : list.slice(0, 3).join(', ') + (list.length > 3 ? ` +${list.length - 3}` : '');
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [swapNote, setSwapNote] = useState<string | null>(null);
@@ -111,6 +124,25 @@ export const MachineView: React.FC = () => {
           />
           {poolNote && <p className="px-1 text-[12px] text-ink-3">{poolNote}</p>}
         </div>
+      )}
+
+      {mode === 'single' && (
+        <button
+          onClick={openTastes}
+          className="flex w-full items-center gap-3 rounded-xl border border-line bg-card px-3.5 py-2.5 text-left transition-colors hover:border-line-strong"
+        >
+          <span className="min-w-0 flex-1 text-[13px] leading-snug">
+            <span className="block truncate">
+              <span className="font-semibold text-sage">Likes</span>{' '}
+              <span className="text-ink-2">{preview(likedIngredients)}</span>
+            </span>
+            <span className="block truncate">
+              <span className="font-semibold text-tomato">Never</span>{' '}
+              <span className="text-ink-2">{preview(bannedIngredients)}</span>
+            </span>
+          </span>
+          <span className="shrink-0 text-[13px] font-semibold text-ink-2">Likes &amp; dislikes ›</span>
+        </button>
       )}
 
       {redItems.length > 0 && mode === 'single' && (

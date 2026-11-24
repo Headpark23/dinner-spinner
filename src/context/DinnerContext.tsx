@@ -16,7 +16,24 @@ import {
   MealTweaks,
   MealReview,
   ShoppingItem,
+  CupboardItem,
+  HouseholdTastes,
+  SharedVote,
 } from '../types';
+import {
+  applyCupboardOp,
+  applyTastesOp,
+  CupboardOp,
+  TastesOp,
+  applyRecipesOp,
+  diffRecipes,
+  HouseholdRecipes,
+  RecipesOp,
+  guessCupboardCategory,
+  majorityFor,
+} from '../utils/household';
+import { useSharedStore } from '../utils/useSharedStore';
+import { registerServiceWorker, refreshPushOwner } from '../utils/push';
 import { WORLD_RECIPES } from '../data/worldRecipes';
 import { applyShoppingOp, newShoppingId, ShoppingOp } from '../utils/shopping';
 import {
@@ -97,6 +114,18 @@ interface DinnerContextType {
   likedIngredients: string[];
   bannedIngredients: string[];
   toggleBannedIngredient: (name: string) => void;
+  likeIngredient: (name: string) => void;
+  avoidIngredient: (name: string) => void;
+  clearTaste: (name: string) => void;
+  tastesOnline: boolean | null;
+  recipesOnline: boolean | null;
+
+  // Store cupboard (shared between phones)
+  cupboard: CupboardItem[];
+  cupboardOnline: boolean | null;
+  addCupboardItems: (items: { name: string; category?: string; quantity?: string }[]) => void;
+  setCupboardLow: (id: string, low: boolean) => void;
+  removeCupboardItem: (id: string) => void;
   meals: Meal[];
   addMeal: (meal: Omit<Meal, 'id' | 'rating' | 'cookCount' | 'lastCookedDate' | 'isFavorite'>) => Meal;
   deleteMeal: (id: string) => void;
@@ -111,6 +140,15 @@ interface DinnerContextType {
   // Voting Booth & Household Members
   proposedMeal: Meal | null;
   sendToVote: (meal: Meal) => void;
+  /** Tonight's vote as the server sees it (shared by every phone). */
+  sharedVote: SharedVote | null;
+  voteOnline: boolean | null;
+  /** How many other phones were notified when the dish was put to the vote (null until known). */
+  lastNotified: number | null;
+  /** The people voting tonight: the proposer's household when a shared vote is open. */
+  voters: HouseholdMember[];
+  householdAlert: HouseholdAlert | null;
+  dismissHouseholdAlert: () => void;
   householdMembers: HouseholdMember[];
   addHouseholdMember: (name: string, avatar: string) => void;
   removeHouseholdMember: (id: string) => void;
@@ -172,6 +210,13 @@ interface DinnerContextType {
   getCoolingOffDays: (meal: Meal) => number | null;
 }
 
+export interface HouseholdAlert {
+  id: string;
+  text: string;
+  tone: 'neutral' | 'sage' | 'tomato';
+  action?: 'vote' | 'spin' | 'takeaway';
+}
+
 const DinnerContext = createContext<DinnerContextType | null>(null);
 
 const STORAGE_KEY = 'dinner_spinner_state_v1';
@@ -186,7 +231,33 @@ function loadStored<T>(suffix: string, fallback: T): T {
 }
 
 export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [meals, setMeals] = useState<Meal[]>(() => loadStored('meals', INITIAL_MEALS));
+  // Our recipes (and dishes hidden with "not for us") are shared with every phone in the household.
+  const localRecipesSeed = useRef<HouseholdRecipes>({
+    meals: loadStored('meals', INITIAL_MEALS),
+    hidden: loadStored('rejected', []),
+  });
+  const recipesStore = useSharedStore<HouseholdRecipes, RecipesOp>({
+    endpoint: '/api/recipes',
+    storageKey: `${STORAGE_KEY}_recipes`,
+    initial: localRecipesSeed.current,
+    apply: applyRecipesOp,
+  });
+  const meals = recipesStore.state.meals;
+  const rejectedMealIds = recipesStore.state.hidden;
+  /** Works like a state setter, but every change is sent to the household as ops. */
+  const setMeals = (update: Meal[] | ((prev: Meal[]) => Meal[])) => {
+    const prev = recipesStore.getLatest().meals;
+    const next = typeof update === 'function' ? update(prev) : update;
+    recipesStore.send(diffRecipes(prev, next));
+  };
+  const setRejectedMealIds = (update: string[] | ((prev: string[]) => string[])) => {
+    const prev = recipesStore.getLatest().hidden;
+    const next = typeof update === 'function' ? update(prev) : update;
+    recipesStore.send([
+      ...prev.filter((id) => !next.includes(id)).map((id) => ({ type: 'unhide' as const, id })),
+      ...next.filter((id) => !prev.includes(id)).map((id) => ({ type: 'hide' as const, id })),
+    ]);
+  };
   const [pantry, setPantry] = useState<PantryItem[]>(() => loadStored('pantry', INITIAL_PANTRY));
   const [takeaways, setTakeaways] = useState<TakeawayOption[]>(() =>
     loadStored('takeaways', INITIAL_TAKEAWAYS)
@@ -195,10 +266,26 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     loadStored('members', INITIAL_MEMBERS)
   );
   const [staples, setStaples] = useState<string[]>(() => loadStored('staples', INITIAL_STAPLES));
-  const [bannedIngredients, setBannedIngredients] = useState<string[]>(() =>
-    loadStored('banned', INITIAL_BANNED_INGREDIENTS)
-  );
-  const [likedIngredients] = useState<string[]>(INITIAL_LIKED_INGREDIENTS);
+  // Likes & dislikes and the store cupboard are shared with every phone in the household.
+  const localTastesSeed = useRef<HouseholdTastes>({
+    likes: INITIAL_LIKED_INGREDIENTS,
+    avoid: loadStored('banned', INITIAL_BANNED_INGREDIENTS),
+  });
+  const tastesStore = useSharedStore<HouseholdTastes, TastesOp>({
+    endpoint: '/api/tastes',
+    storageKey: `${STORAGE_KEY}_tastes`,
+    initial: localTastesSeed.current,
+    apply: applyTastesOp,
+  });
+  const likedIngredients = tastesStore.state.likes;
+  const bannedIngredients = tastesStore.state.avoid;
+  const cupboardStore = useSharedStore<CupboardItem[], CupboardOp>({
+    endpoint: '/api/cupboard',
+    storageKey: `${STORAGE_KEY}_cupboard`,
+    initial: [],
+    apply: applyCupboardOp,
+  });
+  const cupboard = cupboardStore.state;
   const [userProfile, setUserProfile] = useState<UserProfile>(() =>
     loadStored('profile', INITIAL_USER_PROFILE)
   );
@@ -206,7 +293,6 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     loadStored('rescued_count', 7)
   );
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
-  const [rejectedMealIds, setRejectedMealIds] = useState<string[]>(() => loadStored('rejected', []));
   const [shoppingList, setShoppingList] = useState<ShoppingItem[]>(() => loadStored('shopping', []));
   const [shoppingOnline, setShoppingOnline] = useState<boolean | null>(null);
   const pendingShoppingOps = useRef<ShoppingOp[]>(loadStored('shopping_queue', []));
@@ -256,6 +342,13 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [currentBallot, setCurrentBallot] = useState<Record<string, 'yes' | 'no'>>({});
   const [voteLogs, setVoteLogs] = useState<VoteLog[]>(() => loadStored('vote_logs', []));
   const [agreedMeal, setAgreedMeal] = useState<Meal | null>(() => loadStored('agreed_meal', null));
+  const [sharedVote, setSharedVote] = useState<SharedVote | null>(null);
+  const [voteOnline, setVoteOnline] = useState<boolean | null>(null);
+  const [lastNotified, setLastNotified] = useState<number | null>(null);
+  const [householdAlert, setHouseholdAlert] = useState<HouseholdAlert | null>(null);
+  // Which events of the shared vote this phone has already acted on (kept across reloads).
+  const seenVote = useRef<{ voteId: string; events: string[] }>(loadStored('vote_seen', { voteId: '', events: [] }));
+  const proposing = useRef(false);
 
   // Reverse Timers
   const [targetEatingTime, setTargetEatingTime] = useState<string>(() =>
@@ -279,9 +372,6 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   });
 
   // Sync to localStorage
-  useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_meals`, JSON.stringify(meals));
-  }, [meals]);
 
   useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY}_pantry`, JSON.stringify(pantry));
@@ -299,9 +389,12 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     localStorage.setItem(`${STORAGE_KEY}_staples`, JSON.stringify(staples));
   }, [staples]);
 
+  // The first phone to reach a fresh server brings its own likes & dislikes.
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_banned`, JSON.stringify(bannedIngredients));
-  }, [bannedIngredients]);
+    if (tastesStore.version !== null && !tastesStore.state.seeded) {
+      tastesStore.send([{ type: 'seed', ...localTastesSeed.current }]);
+    }
+  }, [tastesStore.version, tastesStore.state.seeded]);
 
   useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY}_profile`, JSON.stringify(userProfile));
@@ -331,9 +424,34 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     localStorage.setItem(`${STORAGE_KEY}_cook_log`, JSON.stringify(cookLog));
   }, [cookLog]);
 
+  // Joining the household's recipes. The first phone to reach a fresh server brings its own;
+  // a phone joining later keeps the household list but adds the dishes only it had (its own
+  // recipes, scans and anything it has cooked) and its hidden dishes.
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_rejected`, JSON.stringify(rejectedMealIds));
-  }, [rejectedMealIds]);
+    if (recipesStore.version === null || loadStored('recipes_joined', false)) return;
+    const local = localRecipesSeed.current;
+    const server = recipesStore.getLatest();
+    if (!server.seeded) {
+      recipesStore.send([{ type: 'seed', meals: local.meals, hidden: local.hidden }]);
+    } else {
+      const have = new Set(server.meals.map((m) => m.id));
+      const onlyMine = local.meals.filter(
+        (m) =>
+          !have.has(m.id) &&
+          !server.hidden.includes(m.id) &&
+          (m.source === 'own' || m.source === 'scanned' || m.id.startsWith('meal_') || m.cookCount > 0)
+      );
+      recipesStore.send([
+        ...onlyMine.map((meal) => ({ type: 'upsert' as const, meal })),
+        ...local.hidden.filter((id) => !server.hidden.includes(id)).map((id) => ({ type: 'hide' as const, id })),
+      ]);
+    }
+    try {
+      localStorage.setItem(`${STORAGE_KEY}_recipes_joined`, 'true');
+    } catch {
+      // ignore
+    }
+  }, [recipesStore.version]);
 
   useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY}_shopping`, JSON.stringify(shoppingList));
@@ -428,8 +546,10 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const isCoolingOff = (meal: Meal): boolean => isMealCoolingOff(meal);
   const getCoolingOffDays = (meal: Meal): number | null => getMealCoolingOffDays(meal);
+  // Cupboard items count as in stock, just like staples.
+  const stockedStaples = [...staples, ...cupboard.map((c) => c.name)];
   const getMealPantryMatch = (meal: Meal): PantryMatchInfo =>
-    calculateMealPantryMatch(meal, pantry, staples);
+    calculateMealPantryMatch(meal, pantry, stockedStaples);
 
   const toggleSound = () => {
     const isNowMuted = sound.toggleMute();
@@ -511,7 +631,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       if (mode === 'single') {
         const { pool } = filterEligibleMeals(meals, timeStake, effort, bannedIngredients);
-        const chosen = selectWeightedMeal(pool, pantry, clearoutActive, effort);
+        const chosen = selectWeightedMeal(pool, pantry, clearoutActive, effort, Date.now(), Math.random, likedIngredients);
         sound.playReelLock();
         setActiveMealResult(chosen);
         sound.playWin();
@@ -622,12 +742,83 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   // Voting Actions
+  const markVoteSeen = (voteId: string, ...keys: string[]) => {
+    if (seenVote.current.voteId !== voteId) seenVote.current = { voteId, events: [] };
+    seenVote.current = { voteId, events: Array.from(new Set([...seenVote.current.events, ...keys])) };
+    try {
+      localStorage.setItem(`${STORAGE_KEY}_vote_seen`, JSON.stringify(seenVote.current));
+    } catch {
+      // ignore
+    }
+  };
+
   const sendToVote = (meal: Meal) => {
     setProposedMeal(meal);
     setAgreedMeal(null);
     setCurrentBallot({});
-    setActiveVoterIndex(0);
+    const meIdx = householdMembers.findIndex((m) => m.id === meId);
+    setActiveVoterIndex(meIdx >= 0 ? meIdx : 0);
     setActiveView(3);
+    setLastNotified(null);
+
+    // Put it to every phone in the household; the server sends the notifications.
+    const me = householdMembers.find((m) => m.id === meId);
+    proposing.current = true;
+    fetch('/api/vote/propose', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        meal,
+        proposedBy: me ? { id: me.id, name: me.name } : { id: meId || 'someone', name: 'Someone' },
+        members: householdMembers.map(({ id, name }) => ({ id, name })),
+      }),
+    })
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error('propose failed'))))
+      .then((json) => {
+        if (json?.vote) {
+          markVoteSeen(json.vote.id, 'proposed');
+          setSharedVote(json.vote);
+        }
+        setLastNotified(typeof json?.notified === 'number' ? json.notified : 0);
+        setVoteOnline(true);
+      })
+      .catch(() => setVoteOnline(false))
+      .finally(() => {
+        proposing.current = false;
+      });
+  };
+
+  // The people voting tonight. When another phone put the dish to the vote, its household list wins.
+  const sharedVoteLive =
+    !!sharedVote && sharedVote.status === 'open' && !!proposedMeal && sharedVote.meal.id === proposedMeal.id;
+  const voters: HouseholdMember[] = sharedVoteLive
+    ? sharedVote!.members.map((m) => {
+        const local = householdMembers.find((h) => h.id === m.id);
+        return local ? { ...local, name: m.name } : { id: m.id, name: m.name, avatar: '🧑', vetoTokensRemaining: 3 };
+      })
+    : householdMembers;
+
+  /** Send this phone's vote to the shared vote (if there is one for this dish). */
+  const castShared = (memberId: string, decision: 'yes' | 'no', instant: boolean, localEvents: string[]) => {
+    const v = sharedVote;
+    if (!v || v.status !== 'open' || !proposedMeal || v.meal.id !== proposedMeal.id) return;
+    markVoteSeen(v.id, `${decision}:${memberId}`, ...localEvents);
+    fetch('/api/vote/cast', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        voteId: v.id,
+        memberId,
+        memberName: voters.find((m) => m.id === memberId)?.name,
+        decision,
+        instant,
+      }),
+    })
+      .then((res) => res.json())
+      .then((json) => {
+        if (json && 'vote' in json) handleRemoteVoteRef.current(json.vote);
+      })
+      .catch(() => setVoteOnline(false));
   };
 
   const generateReverseTimers = (targetTime: string, meal: Meal) => {
@@ -636,7 +827,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const voteYes = (memberId: string, instantLock: boolean = false) => {
-    const voter = householdMembers.find((m) => m.id === memberId) || householdMembers[0];
+    const voter = voters.find((m) => m.id === memberId) || voters[0];
     if (!proposedMeal || !voter) return;
 
     const updatedBallot: Record<string, 'yes' | 'no'> = {
@@ -659,9 +850,11 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     ]);
 
     const yesCount = Object.values(updatedBallot).filter((v) => v === 'yes').length;
-    const majorityThreshold = Math.max(1, Math.ceil(householdMembers.length / 2));
+    const majorityThreshold = majorityFor(voters.length);
+    const agreesNow = instantLock || yesCount >= majorityThreshold;
+    castShared(voter.id, 'yes', instantLock, agreesNow ? ['agreed'] : []);
 
-    if (instantLock || yesCount >= majorityThreshold) {
+    if (agreesNow) {
       sound.playWin();
       setAgreedMeal(proposedMeal);
       setConsecutiveRejections(0);
@@ -670,7 +863,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } else {
       sound.playHold();
       // Auto-advance to next unvoted member
-      const nextUnvotedIdx = householdMembers.findIndex((m) => !updatedBallot[m.id]);
+      const nextUnvotedIdx = voters.findIndex((m) => !updatedBallot[m.id]);
       if (nextUnvotedIdx !== -1) {
         setActiveVoterIndex(nextUnvotedIdx);
       }
@@ -681,7 +874,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     memberId: string,
     reason?: string
   ): { allowed: boolean; message?: string } => {
-    const voter = householdMembers.find((m) => m.id === memberId) || householdMembers[0];
+    const voter = voters.find((m) => m.id === memberId) || voters[0];
     if (!voter) return { allowed: false, message: 'No active voter selected' };
 
     if (voter.vetoTokensRemaining <= 0) {
@@ -693,6 +886,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     sound.playBuzzer();
+    castShared(voter.id, 'no', false, ['vetoed']);
 
     setHouseholdMembers((prev) =>
       prev.map((m) =>
@@ -736,10 +930,140 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return { allowed: true };
   };
 
+  // ---------- Shared vote: react to what other phones did ----------
+  const handleRemoteVote = (v: SharedVote | null) => {
+    setSharedVote(v);
+    if (!v) return;
+    const firstLook = seenVote.current.voteId !== v.id;
+    const already = new Set(firstLook ? [] : seenVote.current.events);
+    // Anything older than 12 hours is history: record it quietly.
+    const quiet = Date.now() - new Date(v.createdAt).getTime() > 12 * 3600 * 1000;
+    const who = (id?: string) => v.members.find((m) => m.id === id)?.name || 'Someone';
+    const fresh: string[] = [];
+    let alert: Omit<HouseholdAlert, 'id'> | null = null;
+    let adopted = proposedMeal?.id === v.meal.id;
+
+    if (!already.has('proposed')) {
+      fresh.push('proposed');
+      if (!quiet && v.status === 'open' && v.proposedBy.id !== meId) {
+        setProposedMeal(v.meal);
+        setAgreedMeal(null);
+        adopted = true;
+        const meIdx = v.members.findIndex((m) => m.id === meId);
+        setActiveVoterIndex(meIdx >= 0 ? meIdx : 0);
+        alert = { text: `${v.proposedBy.name} suggests ${v.meal.title} for dinner. Yes, or veto?`, tone: 'neutral', action: 'vote' };
+      }
+    }
+
+    for (const [memberId, decision] of Object.entries(v.ballot)) {
+      const key = `${decision}:${memberId}`;
+      if (already.has(key)) continue;
+      fresh.push(key);
+      if (!quiet && decision === 'yes' && v.status === 'open' && memberId !== meId) {
+        alert = { text: `${who(memberId)} said yes to ${v.meal.title}.`, tone: 'sage', action: 'vote' };
+      }
+    }
+    if (v.status === 'open' && adopted) setCurrentBallot(v.ballot);
+
+    if (v.status === 'agreed' && !already.has('agreed')) {
+      fresh.push('agreed');
+      if (!quiet) {
+        setProposedMeal(v.meal);
+        setAgreedMeal(v.meal);
+        setCurrentBallot(v.ballot);
+        setConsecutiveRejections(0);
+        setTakeawayOverrideActive(false);
+        generateReverseTimers(targetEatingTime, v.meal);
+        sound.playWin();
+        alert = { text: `Dinner’s agreed: ${v.meal.title}. ${who(v.decidedBy?.id)} said yes.`, tone: 'sage', action: 'vote' };
+      }
+    }
+
+    if (v.status === 'vetoed' && !already.has('vetoed')) {
+      fresh.push('vetoed');
+      if (!quiet) {
+        const by = v.decidedBy;
+        if (by) {
+          setHouseholdMembers((prev) =>
+            prev.map((m) => (m.id === by.id ? { ...m, vetoTokensRemaining: Math.max(0, m.vetoTokensRemaining - 1) } : m))
+          );
+        }
+        const next = consecutiveRejections + 1;
+        setConsecutiveRejections(next);
+        setCurrentBallot({});
+        setProposedMeal(null);
+        sound.playBuzzer();
+        if (next >= 3) {
+          setTakeawayOverrideActive(true);
+          alert = { text: `${who(by?.id)} vetoed ${v.meal.title}. That’s three in a row: takeaway night.`, tone: 'tomato', action: 'takeaway' };
+        } else {
+          alert = { text: `${who(by?.id)} vetoed ${v.meal.title}. Spin again for something else.`, tone: 'tomato', action: 'spin' };
+        }
+      }
+    }
+
+    if (fresh.length) markVoteSeen(v.id, ...fresh);
+    if (alert) {
+      setHouseholdAlert({ ...alert, id: `${v.id}_${fresh.join('_')}` });
+      try {
+        // Browsers only allow a buzz once the person has tapped the page.
+        if ((navigator as any).userActivation?.hasBeenActive) navigator.vibrate?.(180);
+      } catch {
+        // not supported
+      }
+    }
+  };
+  const handleRemoteVoteRef = useRef(handleRemoteVote);
+  handleRemoteVoteRef.current = handleRemoteVote;
+
+  const pollVote = useCallback(async () => {
+    if (proposing.current) return;
+    try {
+      const res = await fetch('/api/vote');
+      if (!res.ok) throw new Error('vote poll failed');
+      const json = await res.json();
+      setVoteOnline(true);
+      if (!proposing.current) handleRemoteVoteRef.current(json.vote ?? null);
+    } catch {
+      setVoteOnline(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    pollVote();
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') pollVote();
+    }, 4000);
+    const onVisible = () => document.visibilityState === 'visible' && pollVote();
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
+  }, [pollVote]);
+
+  // Service worker for push notifications; tapping a notification opens the vote.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+    registerServiceWorker();
+    const onMessage = (e: MessageEvent) => {
+      if (e.data?.type === 'open-vote') {
+        setActiveView(3);
+        pollVote();
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
+  }, [pollVote]);
+
   const meName = () => householdMembers.find((m) => m.id === meId)?.name;
 
   const setMeId = (id: string) => {
     setMeIdState(id);
+    if (id) refreshPushOwner(id, householdMembers.find((m) => m.id === id)?.name);
     try {
       localStorage.setItem(`${STORAGE_KEY}_me`, JSON.stringify(id));
     } catch {
@@ -839,6 +1163,8 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Clears tonight's decision so the household can start a fresh evening.
   const resetEvening = () => {
+    fetch('/api/vote/clear', { method: 'POST' }).catch(() => undefined);
+    setSharedVote(null);
     setAgreedMeal(null);
     setReverseTimers([]);
     setCurrentBallot({});
@@ -920,12 +1246,52 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setStaples((prev) => prev.filter((s) => s !== name));
   };
 
+  const hasTaste = (list: string[], name: string) =>
+    list.some((x) => x.toLowerCase() === name.trim().toLowerCase());
   const toggleBannedIngredient = (name: string) => {
     sound.playHold();
-    setBannedIngredients((prev) =>
-      prev.includes(name) ? prev.filter((i) => i !== name) : [...prev, name]
-    );
+    tastesStore.send([{ type: hasTaste(bannedIngredients, name) ? 'clear' : 'avoid', name }]);
   };
+  const likeIngredient = (name: string) => {
+    if (!name.trim()) return;
+    sound.playHold();
+    tastesStore.send([{ type: 'like', name: name.trim() }]);
+  };
+  const avoidIngredient = (name: string) => {
+    if (!name.trim()) return;
+    sound.playHold();
+    tastesStore.send([{ type: 'avoid', name: name.trim() }]);
+  };
+  const clearTaste = (name: string) => tastesStore.send([{ type: 'clear', name }]);
+  const replaceTastes = (likes: string[], avoid: string[]) =>
+    tastesStore.send([
+      ...[...likedIngredients, ...bannedIngredients].map((name) => ({ type: 'clear' as const, name })),
+      ...likes.map((name) => ({ type: 'like' as const, name })),
+      ...avoid.map((name) => ({ type: 'avoid' as const, name })),
+    ]);
+
+  // ---------- Store cupboard ----------
+  const addCupboardItems = (items: { name: string; category?: string; quantity?: string }[]) =>
+    cupboardStore.send(
+      items
+        .filter((i) => i.name?.trim())
+        .map((i) => ({
+          type: 'add' as const,
+          item: {
+            name: i.name.trim(),
+            category: i.category || guessCupboardCategory(i.name),
+            quantity: i.quantity,
+            addedBy: meName(),
+          },
+        }))
+    );
+  const setCupboardLow = (id: string, low: boolean) => {
+    const item = cupboard.find((c) => c.id === id);
+    cupboardStore.send([{ type: 'setLow', id, low, by: meName() }]);
+    // Running low puts it straight on the shared shopping list.
+    if (low && item) addShoppingItems([item.name], 'the cupboard');
+  };
+  const removeCupboardItem = (id: string) => cupboardStore.send([{ type: 'remove', id }]);
 
   const addMeal = (
     newMealData: Omit<Meal, 'id' | 'rating' | 'cookCount' | 'lastCookedDate' | 'isFavorite'>
@@ -974,7 +1340,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const rescuedRedItems: string[] = [];
 
     if (targetMeal) {
-      const matchInfo = calculateMealPantryMatch(targetMeal, pantry, staples);
+      const matchInfo = calculateMealPantryMatch(targetMeal, pantry, stockedStaples);
       rescuedRedItems.push(...matchInfo.redMatchedItems);
 
       if (rescuedRedItems.length > 0) {
@@ -1076,6 +1442,8 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             takeaways,
             members: householdMembers,
             banned: bannedIngredients,
+            liked: likedIngredients,
+            cupboard,
             voteLogs,
             rescuedItemsCount,
             cookLog,
@@ -1124,7 +1492,10 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setHouseholdMembers(payload.members || payload.householdMembers);
       }
       if (Array.isArray(payload.banned || payload.bannedIngredients)) {
-        setBannedIngredients(payload.banned || payload.bannedIngredients);
+        replaceTastes(
+          Array.isArray(payload.liked) ? payload.liked : likedIngredients,
+          payload.banned || payload.bannedIngredients
+        );
       }
       if (Array.isArray(payload.voteLogs)) {
         setVoteLogs(payload.voteLogs);
@@ -1184,7 +1555,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setTakeaways(INITIAL_TAKEAWAYS);
     setHouseholdMembers(INITIAL_MEMBERS);
     setStaples(INITIAL_STAPLES);
-    setBannedIngredients(INITIAL_BANNED_INGREDIENTS);
+    replaceTastes(INITIAL_LIKED_INGREDIENTS, INITIAL_BANNED_INGREDIENTS);
     setVoteLogs([]);
     setCookLog([]);
     setTakeawayLog([]);
@@ -1246,6 +1617,16 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         likedIngredients,
         bannedIngredients,
         toggleBannedIngredient,
+        likeIngredient,
+        avoidIngredient,
+        clearTaste,
+        tastesOnline: tastesStore.online,
+        recipesOnline: recipesStore.online,
+        cupboard,
+        cupboardOnline: cupboardStore.online,
+        addCupboardItems,
+        setCupboardLow,
+        removeCupboardItem,
         meals,
         addMeal,
         deleteMeal,
@@ -1259,6 +1640,12 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         proposedMeal,
         sendToVote,
+        sharedVote,
+        voteOnline,
+        lastNotified,
+        voters,
+        householdAlert,
+        dismissHouseholdAlert: () => setHouseholdAlert(null),
         householdMembers,
         addHouseholdMember,
         removeHouseholdMember,
