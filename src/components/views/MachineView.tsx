@@ -6,8 +6,10 @@ import { ReelWindow } from '../ReelWindow';
 import { TimeFilter, EffortFilter, MachineMode } from '../../types';
 import { Heart, Check, ShoppingBasket, Star, Snowflake, BookOpen, SlidersHorizontal, Dices, Bike, ChevronRight, ThumbsUp, Globe2, CalendarDays, ChevronDown, Refrigerator, Trophy } from 'lucide-react';
 import { PlannerSheet } from '../PlannerSheet';
+import { DinnerSteps } from '../DinnerSteps';
+import { FamilyPrompt } from '../FamilyPrompt';
 import { CupboardSheet } from '../CupboardSheet';
-import { Card, Chip, Notice, DishTile, Segmented, Switch, Button, IconButton, Sheet, PageHeader, cx, timeLabel, effortLabel } from '../ui';
+import { Card, Chip, Notice, DishTile, Segmented, Switch, Button, IconButton, Sheet, cx, timeLabel, effortLabel } from '../ui';
 
 const dayPart = () => {
   const now = new Date();
@@ -35,7 +37,7 @@ export const openWorldKitchen = () => {
   }
 };
 
-export const MachineView: React.FC = () => {
+export const MachineView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFamily }) => {
   const {
     mode,
     setMode,
@@ -93,47 +95,12 @@ export const MachineView: React.FC = () => {
   const useUpOn = clearoutActive && redItems.length > 0 && mode === 'single';
 
   return (
-    <div className="space-y-3.5">
-      <PageHeader title="What’s for dinner?" subtitle={dayPart()} />
-
-      <button
-        onClick={() => setCupboardOpen(true)}
-        className="flex w-full items-center gap-3.5 rounded-2xl border border-line bg-card p-3.5 text-left transition-colors hover:border-line-strong"
-      >
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-saffron-soft text-saffron">
-          <Refrigerator className="h-5 w-5" strokeWidth={1.75} />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-[16px] font-semibold">Cook from what we have</span>
-          <span className="mt-0.5 block text-[13px] leading-snug text-ink-2">
-            {redItems.length > 0
-              ? `Surprise dinners from the fridge and cupboard. Rescues ${redItems.length} ${redItems.length === 1 ? 'item' : 'items'} that need using up.`
-              : 'Surprise dinners from the fridge, tins and staples. No shopping trip.'}
-          </span>
-        </span>
-        <ChevronRight className="h-5 w-5 shrink-0 text-ink-3" />
-      </button>
-      <CupboardSheet isOpen={cupboardOpen} onClose={() => setCupboardOpen(false)} />
-
-      <button
-        onClick={() => setActiveView(1)}
-        className="flex w-full items-center gap-3.5 rounded-2xl border border-line bg-card p-3.5 text-left transition-colors hover:border-line-strong"
-      >
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brass/15 text-brass">
-          <Trophy className="h-5 w-5" strokeWidth={1.75} />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-[16px] font-semibold">Family takeaway league</span>
-          <span className="mt-0.5 block text-[13px] leading-snug text-ink-2">
-            {leagueTop
-              ? `Top of the table: ${leagueTop.spot.name}, ${leagueTop.average.toFixed(1)} ★ from ${leagueTop.votes} ${leagueTop.votes === 1 ? 'vote' : 'votes'}.`
-              : householdCode
-                ? 'Find the takeaways in your town and score them together.'
-                : 'Find local takeaways and rank them as a family.'}
-          </span>
-        </span>
-        <ChevronRight className="h-5 w-5 shrink-0 text-ink-3" />
-      </button>
+    <div className="space-y-2.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <h1 className="font-display text-[23px] leading-tight font-semibold">What’s for dinner?</h1>
+        <span className="shrink-0 text-[12px] text-ink-3">{dayPart()}</span>
+      </div>
+      <DinnerSteps />
 
       <Segmented<MachineMode>
         label="What to spin"
@@ -146,37 +113,15 @@ export const MachineView: React.FC = () => {
           { value: 'sunday', label: 'Roast', hint: 'Sunday roast builder' },
         ]}
       />
-      <p className="-mt-1.5 px-1 text-[12px] text-ink-3">
-        {mode === 'single'
-          ? 'Spins your saved dishes.'
-          : mode === '3-reel'
-          ? 'Base, main and sauce. Hold a reel to keep it; the arrow nudges it on.'
-          : mode === '4-reel'
-          ? 'Base, main, sauce and veg. Hold a reel to keep it; the arrow nudges it on.'
-          : 'A Sunday roast takes the afternoon. Hold the reels you like and spin the rest.'}
-      </p>
-
-      {showFilters ? (
-        <button
-          onClick={() => setFiltersOpen(true)}
-          className="flex w-full items-center gap-3 rounded-2xl border border-line bg-card px-3.5 py-2.5 text-left transition-colors hover:border-line-strong"
-        >
-          <SlidersHorizontal className="h-5 w-5 shrink-0 text-ink-2" strokeWidth={1.75} />
-          <span className="min-w-0 flex-1">
-            <span className="block text-[14px] font-semibold">
-              {timeStake === 'any' || timeStake === 'all-day' ? 'Any time' : `Up to ${timeLabel(timeStake)}`} ·{' '}
-              {effort === 'any' || effort === 'chef-mode' ? 'Any effort' : effort === 'one-pot' ? 'One pot' : 'Standard or easier'}
-            </span>
-            <span className="block truncate text-[12px] text-ink-2">
-              {useUpOn
-                ? `Favouring ${redItems.length} fridge ${redItems.length === 1 ? 'item' : 'items'} to use up`
-                : 'Time and effort'}
-            </span>
-          </span>
-          <span className="shrink-0 text-[13px] font-semibold text-tomato">Change</span>
-        </button>
-      ) : null}
-      {poolNote && showFilters && <p className="-mt-2 px-1 text-[12px] text-ink-3">{poolNote}</p>}
+      {mode !== 'single' && (
+        <p className="-mt-1 px-1 text-[12px] text-ink-3">
+          {mode === '3-reel'
+            ? 'Base, main and sauce. Hold a reel to keep it; the arrow nudges it on.'
+            : mode === '4-reel'
+            ? 'Base, main, sauce and veg. Hold a reel to keep it; the arrow nudges it on.'
+            : 'A Sunday roast takes the afternoon. Hold the reels you like and spin the rest.'}
+        </p>
+      )}
 
       {mode === 'single' && eligiblePoolCount === 0 && diets.length > 0 && (
         <Notice tone="tomato">
@@ -186,6 +131,29 @@ export const MachineView: React.FC = () => {
       )}
 
       <ReelWindow onSpin={spin} />
+
+      {showFilters ? (
+        <button
+          onClick={() => setFiltersOpen(true)}
+          className="flex w-full items-center gap-3 rounded-2xl border border-line bg-card px-3 py-2 text-left transition-colors hover:border-line-strong"
+        >
+          <SlidersHorizontal className="h-4 w-4 shrink-0 text-ink-2" strokeWidth={1.75} />
+          <span className="min-w-0 flex-1">
+            <span className="block text-[14px] font-semibold">
+              {timeStake === 'any' || timeStake === 'all-day' ? 'Any time' : `Up to ${timeLabel(timeStake)}`} ·{' '}
+              {effort === 'any' || effort === 'chef-mode' ? 'Any effort' : effort === 'one-pot' ? 'One pot' : 'Standard or easier'}
+            </span>
+            {useUpOn && (
+              <span className="block truncate text-[12px] text-ink-2">
+                Favouring {redItems.length} fridge {redItems.length === 1 ? 'item' : 'items'} to use up
+              </span>
+            )}
+          </span>
+          <span className="shrink-0 text-[13px] font-semibold text-tomato">Change</span>
+        </button>
+      ) : null}
+      {poolNote && showFilters && <p className="-mt-2 px-1 text-[12px] text-ink-3">{poolNote}</p>}
+
 
       {activeMealResult && !isSpinning && (
         <button
@@ -309,6 +277,40 @@ export const MachineView: React.FC = () => {
         </Card>
         </div>
       )}
+
+      {/* Two shortcuts, small and side by side, under the spinner */}
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          onClick={() => setCupboardOpen(true)}
+          className="flex items-center gap-2 rounded-xl border border-line bg-card p-2.5 text-left transition-colors hover:border-line-strong"
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-saffron-soft text-saffron">
+            <Refrigerator className="h-[18px] w-[18px]" strokeWidth={1.75} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[13px] leading-tight font-semibold">Cook from what we have</span>
+            <span className="mt-0.5 block truncate text-[11.5px] text-ink-2">
+              {redItems.length > 0 ? `Rescues ${redItems.length} ${redItems.length === 1 ? 'item' : 'items'}` : 'No shopping trip'}
+            </span>
+          </span>
+        </button>
+        <button
+          onClick={() => setActiveView(1)}
+          className="flex items-center gap-2 rounded-xl border border-line bg-card p-2.5 text-left transition-colors hover:border-line-strong"
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brass/15 text-brass">
+            <Trophy className="h-[18px] w-[18px]" strokeWidth={1.75} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[13px] leading-tight font-semibold">Family takeaway league</span>
+            <span className="mt-0.5 block truncate text-[11.5px] text-ink-2">
+              {leagueTop ? `Top: ${leagueTop.spot.name}` : 'Rank the places'}
+            </span>
+          </span>
+        </button>
+      </div>
+      <CupboardSheet isOpen={cupboardOpen} onClose={() => setCupboardOpen(false)} />
+      {onOpenFamily && <FamilyPrompt onOpen={onOpenFamily} />}
 
       <button
         type="button"

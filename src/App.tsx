@@ -19,7 +19,6 @@ import { RulesModal } from './components/RulesModal';
 import { WelcomeSheet } from './components/WelcomeSheet';
 import { JoinSheet, LiveVoteBanner } from './components/LiveVote';
 import { FamilySheet } from './components/FamilySheet';
-import { FamilyPrompt } from './components/FamilyPrompt';
 import { Card, FreshDot, Switch, cx } from './components/ui';
 import { ArrowRight, Check, ChevronLeft } from 'lucide-react';
 
@@ -178,10 +177,9 @@ const MainCabinet: React.FC = () => {
           <div key={activeView} className="fade-up">
             {(activeView === 0 || activeView === 3) && (
               <div className="space-y-4">
-                {activeView === 0 && <FamilyPrompt onOpen={() => setIsFamilyOpen(true)} />}
-                <DinnerSteps />
+                {activeView === 3 && <DinnerSteps />}
                 <InProgressBanner />
-                {activeView === 0 ? <MachineView /> : <VotingView />}
+                {activeView === 0 ? <MachineView onOpenFamily={() => setIsFamilyOpen(true)} /> : <VotingView />}
               </div>
             )}
             {activeView === 1 && (
