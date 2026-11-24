@@ -6,6 +6,8 @@ import { DeliverySheet } from '../DeliverySheet';
 import type { ImportedRecipe } from '../../utils/recipeImport';
 import { mealFitsDiets } from '../../utils/diets';
 import { lovedCount } from '../../utils/taste';
+import { POPULAR_CUISINES } from '../../data/popularCuisines';
+import { CuisineFlag } from '../CuisineFlag';
 import { STORES, StoreId } from '../../utils/planner';
 import {
   Camera,
@@ -28,6 +30,7 @@ import {
   Copy,
   LoaderCircle,
   ExternalLink,
+  ChevronLeft,
 } from 'lucide-react';
 import { FreshnessLevel, Meal, TimeStake, EffortLevel } from '../../types';
 import { RecipeSheet } from '../RecipeSheet';
@@ -273,7 +276,9 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
   const redCount = pantry.filter((p) => p.freshness === 'red').length;
 
   const filteredWorld = worldRecipes.filter((r) => {
-    if (worldCuisine !== 'all' && r.cuisine !== worldCuisine) return false;
+    if (worldCuisine === 'other') {
+      if (POPULAR_CUISINES.some((c) => c.id === r.cuisine)) return false;
+    } else if (worldCuisine !== 'all' && r.cuisine !== worldCuisine) return false;
     if (rejectedMealIds.includes(r.id)) return false;
     if (!mealFitsDiets(r.ingredients, diets)) return false;
     const q = vaultSearch.trim().toLowerCase();
@@ -719,12 +724,33 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
                 ))}
               </div>
             ) : (
-              <Select value={worldCuisine} onChange={(e) => setWorldCuisine(e.target.value)} aria-label="Cuisine" className="w-full">
-                <option value="all">Every cuisine</option>
-                {worldCuisines.map((c) => (
-                  <option key={c}>{c}</option>
-                ))}
-              </Select>
+              <div className="space-y-2">
+                <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 scrollbar-none" role="radiogroup" aria-label="Cuisine">
+                  {[{ id: 'all', label: 'All', symbol: '🌍' }, ...POPULAR_CUISINES, { id: 'other', label: 'Other', symbol: '🍽️' }].map((c) => (
+                    <button
+                      key={c.id}
+                      role="radio"
+                      aria-checked={worldCuisine === c.id}
+                      onClick={() => setWorldCuisine(c.id)}
+                      className={cx(
+                        'flex h-10 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium transition-colors',
+                        worldCuisine === c.id ? 'border-ink bg-ink text-paper' : 'border-line text-ink-2 hover:border-line-strong'
+                      )}
+                    >
+                      <CuisineFlag code={(c as { code?: string }).code} symbol={(c as { symbol?: string }).symbol} />
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+                {worldCuisine !== 'all' && (
+                  <button
+                    onClick={() => setWorldCuisine('all')}
+                    className="inline-flex min-h-11 items-center gap-1 px-1 text-[14px] font-semibold text-ink-2 hover:text-ink"
+                  >
+                    <ChevronLeft className="h-4 w-4" /> Back to all cuisines
+                  </button>
+                )}
+              </div>
             )}
 
             {(recipeScope === 'ours' ? filteredVaultMeals : browsingPicks ? worldPicks : filteredWorld).length === 0 ? (
