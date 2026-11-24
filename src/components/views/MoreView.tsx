@@ -2,6 +2,7 @@ import React from 'react';
 import { Bike, BarChart3, Users, UsersRound, HardDriveDownload, CircleHelp, Volume2, VolumeX, ChevronRight } from 'lucide-react';
 import { useDinner } from '../../context/DinnerContext';
 import { Card, PageHeader, cx } from '../ui';
+import { InstallCard } from '../InstallUpdate';
 
 interface Row {
   key: string;
@@ -67,6 +68,8 @@ export const MoreView: React.FC<{ onOpenProfile: () => void; onOpenRules: () => 
   return (
     <div className="space-y-5">
       <PageHeader title="More" />
+
+      <InstallCard />
 
       <ul className="space-y-2.5">
         {rows.map((row) => (

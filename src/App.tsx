@@ -13,6 +13,7 @@ import { PantryView } from './components/views/PantryView';
 import { VotingView } from './components/views/VotingView';
 import { ScorecardView } from './components/views/ScorecardView';
 import { MoreView } from './components/views/MoreView';
+import { UpdateNotice } from './components/InstallUpdate';
 import { DinnerSteps, InProgressBanner, useDinnerStage } from './components/DinnerSteps';
 import { ProfileSyncModal } from './components/ProfileSyncModal';
 import { RulesModal } from './components/RulesModal';
@@ -173,6 +174,7 @@ const MainCabinet: React.FC = () => {
         <CabinetHeader onOpenRules={() => setIsRulesOpen(true)} />
 
         <main id="main" className="flex-1 px-4 pt-5 pb-10">
+          <UpdateNotice />
           <LiveVoteBanner />
           <div key={activeView} className="fade-up">
             {(activeView === 0 || activeView === 3) && (
