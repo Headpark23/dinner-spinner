@@ -117,7 +117,7 @@ The Freezer tab is built and, as of PR 31, shared with the household like the fr
 - Every new store goes through the same four places as the Freezer did: sync payload, backup import and check, factory reset, sanitise on load. Anything that should be shared between phones also needs a server store and operations, as the fridge and shopping list have.
 - Engine changes get unit tests before the UI.
 - Keep the design constraints in `PRODUCT_EVOLUTION.md`: mobile-first width, reduced motion, 44px touch targets, works without a Gemini key.
-- `PRODUCT_EVOLUTION.md` itself is also stale. Its backlog still lists room-code voting, supermarket links, notifications and cost as future work. Update it alongside this file.
+- `PRODUCT_EVOLUTION.md` was brought up to date after items 1 to 12 landed (its backlog is now the short list of what is still open). Keep the two in step when an item ships.
 
 ## Open questions
 
