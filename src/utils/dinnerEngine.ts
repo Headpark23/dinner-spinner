@@ -9,6 +9,7 @@ import {
 } from '../types';
 import { mentionsAny } from './avoid';
 import { DietId, mealFitsDiets } from './diets';
+import { seasonWeight } from './seasons';
 
 /**
  * Returns the meal as the household actually cooks it: the original recipe plus
@@ -231,7 +232,9 @@ export function selectWeightedMeal(
   clearoutActive: boolean,
   effort: EffortLevel | 'any',
   nowMs: number = Date.now(),
-  randomFn: () => number = Math.random
+  randomFn: () => number = Math.random,
+  /** Nudge winter dishes up in winter and down in summer (and the reverse). Off unless asked for. */
+  seasonal: boolean = false
 ): Meal {
   const redPantryItems = pantry
     .filter((p) => p.freshness === 'red')
@@ -263,6 +266,10 @@ export function selectWeightedMeal(
 
     if (meal.isFavorite) {
       weight *= 1.3;
+    }
+
+    if (seasonal) {
+      weight *= seasonWeight(meal, new Date(nowMs));
     }
 
     return { meal, weight };

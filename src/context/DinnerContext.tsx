@@ -99,6 +99,9 @@ interface DinnerContextType {
   setActiveMealResult: (meal: Meal | null) => void;
   customReelResult: string[];
   soundMuted: boolean;
+  /** Nudge in-season dishes up and out-of-season ones down when spinning. On by default. */
+  seasonal: boolean;
+  setSeasonal: (on: boolean) => void;
   toggleSound: () => void;
   eligiblePoolCount: number;
   eligiblePool: Meal[];
@@ -431,6 +434,10 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     'Garlic Green Beans',
   ]);
   const [soundMuted, setSoundMuted] = useState<boolean>(false);
+  const [seasonal, setSeasonal] = useState<boolean>(() => loadStored<boolean>('seasonal', true) !== false);
+  useEffect(() => {
+    localStorage.setItem(`${STORAGE_KEY}_seasonal`, JSON.stringify(seasonal));
+  }, [seasonal]);
 
   // Takeaway override
   const [consecutiveRejections, setConsecutiveRejections] = useState<number>(() =>
@@ -1027,7 +1034,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           // Every dish clashes with the household's diets: show nothing rather than a wrong dish.
           setActiveMealResult(null);
         } else {
-          const chosen = selectWeightedMeal(pool, pantry, clearoutActive, effort);
+          const chosen = selectWeightedMeal(pool, pantry, clearoutActive, effort, Date.now(), Math.random, seasonal);
           sound.playReelLock();
           setActiveMealResult(chosen);
           sound.playWin();
@@ -2274,6 +2281,8 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setActiveMealResult,
         customReelResult,
         soundMuted,
+        seasonal,
+        setSeasonal,
         toggleSound,
         eligiblePoolCount,
         eligiblePool: eligibleInfo.pool,

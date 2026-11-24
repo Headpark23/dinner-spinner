@@ -18,7 +18,7 @@ Effort: S = under a day, M = 1 to 3 days, L = a week or more.
 | 8 | Cost per serving | **Done.** `utils/cost.ts` estimates what you would have to *buy* tonight and a per-head figure from the same price table. Cost filter (Free, £5, £10, no limit) applies to spins and the week planner. | Show which planner nights went over the cap. |
 | 9 | Share a recipe card | **Built as a picture.** "Share as a picture" on the recipe sheet (share sheet, else copy, else download), with the photo credit printed. | A shareable link, only if a public site is planned. |
 | 10 | Surprise me from the fridge | **Mostly built.** "Cook from what we have" now offers the freezer first and has a one-tap "photo of the fridge, then spin" start. | Check the photo hand-off with a real scan. |
-| 11 | Seasonal dishes | **Not built.** | Everything. |
+| 11 | Seasonal dishes | **Built.** `utils/seasons.ts`, a mild 1.25x / 0.85x nudge in the single-dish spin, with a "Favour dishes in season" switch in More. | Use it in the week planner; a hemisphere setting. |
 | 12 | Streaks and milestones | **Partly built.** Stats shows a "N-night streak" of home-cooked dinners (`ScorecardView.tsx`). | Milestones (rescued items, takeaway-free runs, freezer portions eaten). |
 
 ## Freezer follow-ups (PR 31)
@@ -92,8 +92,11 @@ The Freezer tab is built and, as of PR 31, shared with the household like the fr
 - The sheet now uses the effective diet and avoid lists from item 5 (it used the household lists only).
 - **Still open.** The photo-success hand-off was not exercised against a real scan (it needs a family group and the AI reader). Abandoning the flow on the Fridge leaves the "Take the photo" card until the next spin. Tests: `utils/freezerSurprise.test.ts`.
 
-### 11. Seasonal dishes (S)
-- Tag recipes with seasons, defaulted from titles and tags (stew, roast, salad, barbecue) so nothing is hand-tagged across the ~120 dishes. Apply a mild multiplier (about 1.25x in season, 0.85x out) in `selectWeightedMeal`, well below the 4.5x use-next boost. Add a setting to turn it off. Test in `dinnerEngine.test.ts`.
+### 11. Seasonal dishes (done)
+- ~~Season from titles and tags~~ **Done.** `utils/seasons.ts` `seasonOf` reads winter (stew, roast, soup, pie, chilli, casserole and the like) or summer (salad, barbecue, kebab, gazpacho and the like) from the title and tags; a dish that reads as both, or neither, has no season. Nothing is hand-tagged.
+- ~~Mild nudge~~ **Done.** `selectWeightedMeal` takes a `seasonal` flag and multiplies by 1.25 in season and 0.85 out, far below the 4.5x use-next boost. Winter is November to March, summer June to August (northern hemisphere); April, May, September and October change nothing.
+- ~~Setting~~ **Done.** "Favour dishes in season" in More, on by default, stored as `seasonal` in the context.
+- **Still open.** The week planner does not use the season yet. Southern-hemisphere users get the wrong months. Tests: `utils/seasons.test.ts` (including a sweep that shows the 1.25 to 0.85 split, and that the setting off gives an even one).
 
 ### 12. Milestones (S)
 - The streak is computed inside `ScorecardView.tsx`. Move it to `utils/milestones.ts` as pure, tested functions, then add: takeaway-free runs, items rescued (already counted), freezer portions eaten. Celebrate; avoid shaming a takeaway night.
