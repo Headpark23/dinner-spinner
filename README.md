@@ -30,6 +30,8 @@ Five tabs, each named for what you'll find there:
 - **Shopping icons**: each shopping item gets a small picture, and ticked items are struck through.
 - **Cooking reminders**: on the Cook step, "Remind me" sends a notification when each step is due.
 - **Shared fridge and history**: once a household exists, the fridge and cooking history sync between phones within seconds. Without one the app stays on-device. The recipe book (your recipes, hidden dishes, favourites, ratings) is not live-shared; use backup and restore to move it.
+- **Family group**: the first screen leads with it. Sign in with Google (or start one without) and everyone shares the shopping list, the fridge and the live vote across phones. Invite people with a link; they sign in and they're in. A new phone just signs in again.
+- **Cook from what we have**: a card on the Dinner tab spins for a dinner that needs nothing from the shop. It mixes your saved recipes that are fully covered by the fridge and staples with "cupboard ideas" (pasta and tinned tomatoes, eggs and rice, lentils, beans...), and favours things that rescue "use next" fridge items. Matching is by ingredient name, so it is a good guess, not a guarantee.
 - **Stats**: built only from what you've actually logged.
 
 ## Run locally
@@ -50,6 +52,15 @@ npm test        # engine, server and UI render tests
 npm run lint    # type-check
 npm run build
 ```
+
+### Google sign-in (optional)
+
+Without it, "Start a family group" creates a group with a code and invite link. To add the Google button:
+
+1. In Google Cloud Console create an OAuth client of type *Web application* and add your site's address (and `http://localhost:3000`) as an authorised JavaScript origin.
+2. Set `GOOGLE_CLIENT_ID` to that client id on the server (Vercel: Project Settings, Environment Variables).
+
+The server checks each sign-in with Google and only keeps a hash of the Google account id, the name and the email.
 
 ## Recipes and photos
 

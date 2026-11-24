@@ -875,3 +875,56 @@ test('Hosted storage: a failing store gives a calm error, not a crash', async ()
   });
   await assert.rejects(mutate(broken, 'h_aaaaaaaaaaaa', () => 1));
 });
+
+test('Cook from what we have: ideas come only from stock, rescue use-next items, respect bans and diets', async () => {
+  const { cupboardCandidates, pickSurprise } = await import('./cupboard');
+  const item = (name: string, freshness: 'green' | 'amber' | 'red' = 'green') => ({
+    id: name, name, category: 'Fridge', freshness, addedDate: '2026-01-01',
+  });
+  const base = { meals: [], banned: [], diets: [] as any[] };
+
+  // Default staples: pasta, tinned tomatoes, garlic, oil, rice, onions, butter.
+  const ids = (c: { meal: { id: string } }[]) => c.map((x) => x.meal.id);
+  const plain = cupboardCandidates({ ...base, pantry: [], staples: INITIAL_STAPLES });
+  assert.ok(ids(plain).includes('idea_aglio'));
+  assert.ok(ids(plain).includes('idea_tomato-pasta'));
+  assert.ok(!ids(plain).includes('idea_frittata'), 'no eggs, no frittata');
+
+  // Eggs and a wilting spinach unlock a frittata that rescues the spinach.
+  const withEggs = cupboardCandidates({ ...base, pantry: [item('Eggs'), item('Spinach', 'red')], staples: INITIAL_STAPLES });
+  const frittata = withEggs.find((c) => c.meal.id === 'idea_frittata');
+  assert.ok(frittata);
+  assert.deepEqual(frittata!.rescues, ['Spinach']);
+  assert.ok(frittata!.meal.ingredients.includes('Eggs'));
+
+  // Nothing is invented: every ingredient is something the household has.
+  const have = new Set([...INITIAL_STAPLES, 'Eggs', 'Spinach']);
+  for (const c of withEggs.filter((x) => x.kind === 'idea')) {
+    for (const ing of c.meal.ingredients) assert.ok(have.has(ing), `${c.meal.id} invented ${ing}`);
+  }
+
+  // A banned ingredient removes dishes that need it; a vegan household gets no egg dishes.
+  const noGarlic = cupboardCandidates({ ...base, banned: ['garlic'], pantry: [], staples: INITIAL_STAPLES });
+  assert.ok(!ids(noGarlic).includes('idea_aglio'));
+  const vegan = cupboardCandidates({ ...base, diets: ['vegan'], pantry: [item('Eggs')], staples: INITIAL_STAPLES });
+  assert.ok(!vegan.some((c) => c.meal.ingredients.some((i) => /egg/i.test(i))));
+
+  // A saved recipe only appears when everything in it is in the house.
+  const recipe = { ...INITIAL_MEALS[0], ingredients: ['Basmati Rice', 'Butter'], lastCookedDate: null };
+  const saved = cupboardCandidates({ ...base, meals: [recipe, { ...INITIAL_MEALS[1], ingredients: ['Unobtainium', 'Butter'], lastCookedDate: null }], pantry: [], staples: INITIAL_STAPLES });
+  assert.ok(saved.some((c) => c.kind === 'saved' && c.meal.id === recipe.id));
+  assert.ok(!saved.some((c) => c.meal.id === INITIAL_MEALS[1].id));
+
+  // The surprise skips recent picks when it can, and handles an empty cupboard.
+  assert.equal(pickSurprise([]), null);
+  const first = pickSurprise(plain, [], () => 0)!;
+  const second = pickSurprise(plain, [first.meal.id], () => 0)!;
+  assert.notEqual(second.meal.id, first.meal.id);
+});
+
+test('Cook from what we have: peppercorns are not a vegetable', async () => {
+  const { cupboardCandidates } = await import('./cupboard');
+  const c = cupboardCandidates({ meals: [], pantry: [], staples: INITIAL_STAPLES, banned: [], diets: [] });
+  assert.ok(!c.some((x) => x.meal.ingredients.some((i) => /peppercorn/i.test(i))), 'spices are never the vegetable');
+  assert.ok(!c.some((x) => x.meal.id === 'idea_rice-bowl'), 'stock cubes are not leftover chicken');
+});
