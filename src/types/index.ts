@@ -182,3 +182,14 @@ export interface LiveVote {
   vetoedBy: string;
   openedAt: string;
 }
+
+/** A tin, jar, sauce, spice or dry good in the store cupboard. Shared by the family group. */
+export interface CupboardItem {
+  id: string;
+  name: string;
+  shelf: string;
+  quantity?: string;
+  /** Running low: it has gone on the shopping list. */
+  low?: boolean;
+  addedBy?: string;
+}

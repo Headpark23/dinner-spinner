@@ -1,4 +1,5 @@
 import React, { useRef, useState } from 'react';
+import { shrinkImage } from '../utils/shrinkImage';
 import { Camera, FileText, Image as ImageIcon, Link2, LoaderCircle, ClipboardPaste, Sparkles } from 'lucide-react';
 import { useDinner } from '../context/DinnerContext';
 import { textFromDocument, textFromLegacyDoc, previewFromPages } from '../utils/docText';
@@ -31,25 +32,6 @@ const readAsText = (file: File) =>
     r.readAsText(file);
   });
 
-/** Scale a photo down to at most 1800px and re-encode as JPEG. Returns null if the browser can't do it. */
-const shrinkImage = (dataUrl: string) =>
-  new Promise<string | null>((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      try {
-        const scale = Math.min(1, 1800 / Math.max(img.width, img.height));
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.round(img.width * scale);
-        canvas.height = Math.round(img.height * scale);
-        canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL('image/jpeg', 0.85));
-      } catch {
-        resolve(null);
-      }
-    };
-    img.onerror = () => resolve(null);
-    img.src = dataUrl;
-  });
 
 /**
  * Several ways to bring in a recipe you already have. Whatever the way, the result is a draft the person

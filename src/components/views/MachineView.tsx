@@ -4,7 +4,7 @@ import { photoFor } from '../../data/photos';
 import { useDinner } from '../../context/DinnerContext';
 import { ReelWindow } from '../ReelWindow';
 import { TimeFilter, EffortFilter, MachineMode } from '../../types';
-import { Heart, Check, ShoppingBasket, Star, Snowflake, BookOpen, SlidersHorizontal, Dices, Bike, ChevronRight, ThumbsUp, Globe2, CalendarDays, ChevronDown, Refrigerator, Trophy } from 'lucide-react';
+import { Heart, Check, ShoppingBasket, Star, Snowflake, BookOpen, SlidersHorizontal, Dices, Bike, ChevronRight, ThumbsUp, Globe2, CalendarDays, ChevronDown, Refrigerator, Trophy, Package } from 'lucide-react';
 import { PlannerSheet } from '../PlannerSheet';
 import { DinnerSteps } from '../DinnerSteps';
 import { FamilyPrompt } from '../FamilyPrompt';
@@ -67,6 +67,9 @@ export const MachineView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFam
     costLimit,
     setCostLimit,
     costRelaxed,
+    cupboard,
+    likedIngredients: likesForRow,
+    bannedIngredients: dislikesForRow,
   } = useDinner();
   const leagueTop = householdCode ? shared.league.find((r) => r.votes > 0) : undefined;
 
@@ -330,6 +333,48 @@ export const MachineView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFam
           setActiveView(2);
         }}
       />
+
+      {/* The cupboard and the family's likes & dislikes, one tap away */}
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          onClick={() => {
+            openPantryTab('cupboard');
+            setActiveView(2);
+          }}
+          className="flex items-center gap-2 rounded-xl border border-line bg-card p-2.5 text-left transition-colors hover:border-line-strong"
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sunk text-ink-2">
+            <Package className="h-[18px] w-[18px]" strokeWidth={1.75} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[13px] leading-tight font-semibold">Cupboard</span>
+            <span className="mt-0.5 block truncate text-[11.5px] text-ink-2">
+              {cupboard.length === 0
+                ? 'Tins, jars and sauces'
+                : `${cupboard.length} things${cupboard.some((c) => c.low) ? `, ${cupboard.filter((c) => c.low).length} low` : ''}`}
+            </span>
+          </span>
+        </button>
+        <button
+          onClick={() => {
+            openPantryTab('banned');
+            setActiveView(2);
+          }}
+          className="flex items-center gap-2 rounded-xl border border-line bg-card p-2.5 text-left transition-colors hover:border-line-strong"
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sage-soft text-sage">
+            <Heart className="h-[18px] w-[18px]" strokeWidth={1.75} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[13px] leading-tight font-semibold">Likes &amp; dislikes</span>
+            <span className="mt-0.5 block truncate text-[11.5px] text-ink-2">
+              {likesForRow.length + dislikesForRow.length === 0
+                ? 'Tell the spinner'
+                : `${likesForRow.length} liked · ${dislikesForRow.length} never`}
+            </span>
+          </span>
+        </button>
+      </div>
       <CupboardSheet isOpen={cupboardOpen} onClose={() => setCupboardOpen(false)} />
       {onOpenFamily && <FamilyPrompt onOpen={onOpenFamily} />}
 
