@@ -142,6 +142,9 @@ const LeagueItem: React.FC<{ row: LeagueRow; rank: number | null; open: boolean;
             {spot.cuisine}
             {spot.address ? ` · ${spot.address}` : ''}
           </span>
+          {row.scores.length > 0 && (
+            <span className="block truncate text-[12px] text-ink-3">Scored by {row.scores.map((r) => r.who).join(', ')}</span>
+          )}
         </span>
         <span className="shrink-0 text-right">
           {row.votes > 0 ? (
