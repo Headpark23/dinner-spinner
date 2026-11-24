@@ -88,6 +88,9 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
     toggleFavoriteMeal,
     activeMealResult,
     setActiveMealResult,
+    mode,
+    proposedMeal,
+    agreedMeal,
     sendToVote,
     setActiveView,
     getMealPantryMatch,
@@ -329,7 +332,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
     if (!customTitle.trim()) return;
     const ingList = customIngredients.split(/\n|,(?!\s*\d)/).map((s) => s.trim()).filter(Boolean);
     const stepList = customSteps.split('\n').map((s) => s.trim()).filter(Boolean);
-    addMeal({
+    const saved = addMeal({
       title: customTitle.trim(),
       description: customDesc.trim() || `A ${customCuisine} favourite, ready in ${timeLabel(customTime).toLowerCase()}.`,
       cuisine: customCuisine,
@@ -343,7 +346,10 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
       tags: ['Family recipe', customCuisine],
       source: 'own',
     });
-    flash(`Saved “${customTitle.trim()}” to your recipes.`);
+    // A new recipe goes straight onto the spinner (unless tonight's dinner is already being voted on or cooked).
+    const onSpinner = mode === 'single' && !proposedMeal && !agreedMeal && mealFitsDiets(saved.ingredients, diets);
+    if (onSpinner) setActiveMealResult(saved);
+    flash(onSpinner ? `Saved “${customTitle.trim()}” to your recipes. It's on the spinner now.` : `Saved “${customTitle.trim()}” to your recipes. It's in the spinner's mix.`);
     setCustomTitle('');
     setCustomDesc('');
     setCustomIngredients('');
