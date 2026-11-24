@@ -57,7 +57,7 @@ self.addEventListener('notificationclick', (event) => {
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
       const open = wins.find((w) => new URL(w.url).origin === self.location.origin);
       if (open) {
-        open.postMessage({ type: 'open-tonight' });
+        open.postMessage({ type: 'open-tonight', url: target });
         return open.focus();
       }
       return self.clients.openWindow(target);

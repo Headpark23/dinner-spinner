@@ -26,8 +26,10 @@ export function checkBackup(raw: unknown): BackupCheck {
 
   const members = payload.members ?? payload.householdMembers;
   const banned = payload.banned ?? payload.bannedIngredients;
-  const known = ['meals', 'pantry', 'staples', 'takeaways', 'voteLogs', 'cookLog', 'takeawayLog', 'rejectedMealIds', 'freezer'];
-  if (!known.some((k) => payload[k] !== undefined) && members === undefined) {
+  const liked = payload.liked ?? payload.likedIngredients;
+  const shelved = payload.shelved ?? payload.shelvedMeals;
+  const known = ['meals', 'pantry', 'staples', 'cupboard', 'takeaways', 'voteLogs', 'cookLog', 'takeawayLog', 'rejectedMealIds', 'freezer'];
+  if (!known.some((k) => payload[k] !== undefined) && members === undefined && liked === undefined) {
     return { ok: false, error: 'That isn’t a Dinner Spinner backup.' };
   }
 
@@ -89,6 +91,21 @@ export function checkBackup(raw: unknown): BackupCheck {
     }
   }
   if (banned !== undefined && !strArr(banned)) {
+    return { ok: false, error: 'This backup looks damaged, so nothing was changed.' };
+  }
+  if (liked !== undefined && !strArr(liked)) {
+    return { ok: false, error: 'This backup looks damaged, so nothing was changed.' };
+  }
+  if (payload.cupboard !== undefined) {
+    if (
+      !Array.isArray(payload.cupboard) ||
+      payload.cupboard.length > 1000 ||
+      !payload.cupboard.every((c: any) => isObj(c) && str(c.id) && str(c.name))
+    ) {
+      return { ok: false, error: 'The cupboard in this backup looks damaged, so nothing was changed.' };
+    }
+  }
+  if (shelved !== undefined && !Array.isArray(shelved)) {
     return { ok: false, error: 'This backup looks damaged, so nothing was changed.' };
   }
   for (const k of ['takeaways', 'voteLogs', 'cookLog', 'takeawayLog']) {

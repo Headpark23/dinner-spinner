@@ -53,6 +53,7 @@ export async function getPushStatus(): Promise<PushStatus> {
   if (!('serviceWorker' in navigator) || !('PushManager' in window) || typeof Notification === 'undefined') return 'unsupported';
   if (Notification.permission === 'denied') return 'denied';
   if (Notification.permission === 'default') return 'default';
+  if (!pushIsOn()) return 'default';
   const reg = await registration();
   const sub = await reg?.pushManager.getSubscription();
   return sub ? 'on' : 'default';
@@ -99,6 +100,25 @@ export async function syncPush(
     return { ok: true };
   } catch (err: any) {
     return { ok: false, message: err?.message || 'Couldn’t turn on notifications.' };
+  }
+}
+
+export async function unsubscribePush(headers: Record<string, string>): Promise<boolean> {
+  setPushOn(false);
+  try {
+    const reg = await registration();
+    const sub = await reg?.pushManager.getSubscription();
+    if (sub) {
+      await fetch('/api/push/unsubscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ endpoint: sub.endpoint }),
+      }).catch(() => {});
+      await sub.unsubscribe().catch(() => {});
+    }
+    return true;
+  } catch {
+    return false;
   }
 }
 

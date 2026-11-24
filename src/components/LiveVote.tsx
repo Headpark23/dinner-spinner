@@ -14,26 +14,20 @@ const loadAs = (): string => {
 
 /** The vote every phone in the household sees. The server decides the outcome. */
 export const LiveVoteCard: React.FC = () => {
-  const { tonight, householdMembers, meId, setMeId, castLiveVote, decideLive, clearLive, setActiveView } = useDinner();
-  const [as, setAs] = useState<string>(loadAs);
+  const { tonight, householdMembers, meId, myVoteName, setVoteIdentity, castLiveVote, decideLive, clearLive, setActiveView } = useDinner();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   if (!tonight || (tonight.status !== 'open' && tonight.status !== 'vetoed')) return null;
 
   const meMember = householdMembers.find((m) => m.id === meId);
-  const guess = [as, meMember?.name || ''].find((n) => n && tonight.people.some((p) => p.toLowerCase() === n.toLowerCase()));
+  const guess = [myVoteName(), loadAs(), meMember?.name || ''].find(
+    (n) => n && tonight.people.some((p) => p.toLowerCase() === n.toLowerCase())
+  );
   const who = guess ? tonight.people.find((p) => p.toLowerCase() === guess.toLowerCase())! : '';
 
   const choose = (name: string) => {
-    setAs(name);
-    try {
-      localStorage.setItem('ds_live_as', name);
-    } catch {
-      // per-phone convenience only
-    }
-    const m = householdMembers.find((x) => x.name.toLowerCase() === name.toLowerCase());
-    if (m) setMeId(m.id);
+    setVoteIdentity(name);
   };
 
   const act = async (fn: () => Promise<{ ok: boolean; message?: string }>) => {
@@ -179,14 +173,26 @@ export const JoinedBanner: React.FC = () => {
 
 /** Opens from an invite link (?join=code). Never joins until the person agrees. */
 export const JoinSheet: React.FC = () => {
-  const { joinHousehold, householdCode, googleClientId, signInWithGoogle, fetchCloudSnapshot, importBackupData } = useDinner();
+  const { joinHousehold, householdCode, googleClientId, signInWithGoogle, fetchCloudSnapshot, importBackupData, authHeaders } = useDinner();
   const [code, setCode] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // After joining: the family's saved recipes, offered rather than loaded without asking.
+  // Only offered for older family groups whose recipes haven't been live-shared yet.
   const [offer, setOffer] = useState<{ raw: any; recipes: number } | null>(null);
 
   const afterJoin = async () => {
+    try {
+      const live = await fetch('/api/shared/recipes', { headers: authHeaders() });
+      if (live.ok) {
+        const st = await live.json();
+        if (st?.seeded) {
+          setCode(null);
+          return;
+        }
+      }
+    } catch {
+      // fall through to snapshot check
+    }
     const snap = await fetchCloudSnapshot();
     if (snap.success && snap.check && snap.check.ok && snap.check.summary.recipes > 0) {
       setOffer({ raw: snap.check.payload, recipes: snap.check.summary.recipes });
@@ -274,8 +280,7 @@ export const JoinSheet: React.FC = () => {
     >
       <div className="space-y-3">
         <p className="text-[14px] text-ink-2">
-          Joining shares the shopping list and lets you vote from this phone. Next you can choose to load the family’s
-          saved recipes.
+          Joining shares the family’s recipes, fridge, store cupboard, shopping list, likes and dinner votes automatically.
         </p>
         {message && (
           <Notice tone="tomato" icon={<CircleAlert className="h-4 w-4" />}>

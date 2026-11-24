@@ -1,149 +1,230 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { SHARED, SharedName, SharedOp, SharedState, applySharedOp, diffShared } from '../utils/sharedSync';
+import { SHARED, SHARED_NAMES, SharedName, SharedOp, SharedPollEntry, SharedState, applySharedOp, diffShared } from '../utils/sharedSync';
 import { newOpId, withOpIds } from '../utils/opIds';
 
-/**
- * Keeps one of this phone's lists (recipes, cupboard, likes...) in step with the family group.
- *
- * The list stays ordinary React state, so nothing else in the app changes. This hook watches it:
- * when it changes here, the difference goes to the server as small operations (queued, so offline
- * edits are sent later); when another phone changes it, the server copy is written back into the
- * state. Without a family group it does nothing and the list stays on this phone.
- */
-export function useMirrorSync<T extends any[]>(opts: {
-  name: SharedName;
-  storageKey: string;
+export type SharedBinding<T extends any[] = any[]> = {
   value: T;
   setValue: (next: T) => void;
+  joinOps?: (server: T, local: T) => SharedOp[];
+};
+
+const read = <V,>(key: string, fallback: V): V => {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+const write = (key: string, v: unknown) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(v));
+  } catch {
+    // storage full or blocked
+  }
+};
+
+/**
+ * Keeps all shared household lists (recipes, shelved, hidden, cupboard, liked, avoid, staples)
+ * in step across phones through ONE calm batched loop instead of 7 parallel pollers.
+ *
+ * Local edits queue immediately in localStorage and flush together in a single `/api/shared/batch`
+ * request; background polling runs once every 15s (and on tab focus) with version tags so unchanged
+ * lists cost zero payload and zero extra Redis reads.
+ */
+export function useSharedListsSync(opts: {
+  storageKey: string;
   household: unknown;
   authHeaders: () => Record<string, string>;
-  /** When this phone joins a group that already has the list: extra operations to add what only this phone had. */
-  joinOps?: (server: T, local: T) => SharedOp[];
+  lists: Record<SharedName, SharedBinding<any[]>>;
   pollMs?: number;
-}) {
-  const { name, storageKey, value, setValue, household, authHeaders, joinOps, pollMs = 5000 } = opts;
-  const { kind, max } = SHARED[name];
-  const queueKey = `${storageKey}_sync_${name}_queue`;
-  // Per family group, so moving to another group runs the join step again.
-  const joinedKeyFor = () => `${storageKey}_sync_${name}_joined_${String((ctx.current.household as any)?.id || '')}`;
+}): { online: boolean | null } {
+  const { storageKey, household, authHeaders, lists, pollMs = 15_000 } = opts;
 
-  const read = <V,>(key: string, fallback: V): V => {
-    try {
-      const raw = localStorage.getItem(key);
-      return raw ? JSON.parse(raw) : fallback;
-    } catch {
-      return fallback;
-    }
-  };
-  const write = (key: string, v: unknown) => {
-    try {
-      localStorage.setItem(key, JSON.stringify(v));
-    } catch {
-      // storage full or blocked
-    }
-  };
+  const queueKey = (name: SharedName) => `${storageKey}_sync_${name}_queue`;
+  const joinedKey = (name: SharedName, hid: string) => `${storageKey}_sync_${name}_joined_${hid}`;
 
   const [online, setOnline] = useState<boolean | null>(null);
-  const baseline = useRef<T>(value); // what the server plus our queue already holds
-  const valueRef = useRef(value);
-  valueRef.current = value;
-  const queue = useRef<SharedOp[]>(read(queueKey, []));
-  const lastVersion = useRef<number | null>(null);
+
+  const baselines = useRef<Record<SharedName, any[]>>({} as Record<SharedName, any[]>);
+  const valueRefs = useRef<Record<SharedName, any[]>>({} as Record<SharedName, any[]>);
+  const queues = useRef<Record<SharedName, SharedOp[]>>({} as Record<SharedName, SharedOp[]>);
+  const versions = useRef<Partial<Record<SharedName, number>>>({});
+
+  for (const name of SHARED_NAMES) {
+    if (!(name in baselines.current)) baselines.current[name] = lists[name].value;
+    valueRefs.current[name] = lists[name].value;
+    if (!(name in queues.current)) queues.current[name] = read<SharedOp[]>(queueKey(name), []);
+  }
+
   const busy = useRef(false);
   const dirty = useRef(false);
-  const ctx = useRef({ household, authHeaders, setValue, joinOps });
-  ctx.current = { household, authHeaders, setValue, joinOps };
+  const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ctx = useRef({ household, authHeaders, lists });
+  ctx.current = { household, authHeaders, lists };
 
-  const apply = (s: SharedState<T>, op: SharedOp) => applySharedOp<T>(kind, max, s, op);
-
-  const post = (ops: SharedOp[]) =>
-    fetch(`/api/shared/${name}/ops`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...ctx.current.authHeaders() },
-      body: JSON.stringify({ ops }),
-    });
+  const hasQueued = () => SHARED_NAMES.some((n) => queues.current[n].length > 0);
 
   const sync = useCallback(async (): Promise<void> => {
-    if (!ctx.current.household) return;
+    const hh = ctx.current.household as { id?: string } | null;
+    if (!hh) return;
     if (busy.current) {
       dirty.current = true;
       return;
     }
     busy.current = true;
+    const hid = String(hh.id || '');
     try {
       do {
         dirty.current = false;
-        const queued = queue.current;
-        let res = queued.length
-          ? await post(queued)
-          : await fetch(`/api/shared/${name}${lastVersion.current !== null ? `?v=${lastVersion.current}` : ''}`, {
-              headers: ctx.current.authHeaders(),
-            });
-        if (!res.ok) throw new Error(`${name} sync failed`);
-        let json = await res.json();
-        if (queued.length) {
-          queue.current = queue.current.slice(queued.length);
-          write(queueKey, queue.current);
-        }
-        if (json.unchanged) {
-          setOnline(true);
-          continue;
-        }
-        if (!json.seeded) {
-          // First phone in the group: share what this phone has. Ignored if another phone beat us to it.
-          res = await post([{ type: 'seed', data: valueRef.current, opId: newOpId() }]);
-          if (!res.ok) throw new Error(`${name} seed failed`);
-          json = await res.json();
-          write(joinedKeyFor(), true);
-        } else if (!read(joinedKeyFor(), false)) {
-          // Joining a group that already has this list: keep theirs, add what only this phone had.
-          const extra = withOpIds(ctx.current.joinOps?.(json.data as T, valueRef.current) || []);
-          if (extra.length) {
-            res = await post(extra);
-            if (!res.ok) throw new Error(`${name} join failed`);
-            json = await res.json();
+        let replyLists: Record<SharedName, SharedPollEntry>;
+
+        if (hasQueued()) {
+          const sentCounts = {} as Record<SharedName, number>;
+          const opsByList: Partial<Record<SharedName, SharedOp[]>> = {};
+          for (const name of SHARED_NAMES) {
+            const q = queues.current[name];
+            if (q.length) {
+              opsByList[name] = q;
+              sentCounts[name] = q.length;
+            }
           }
-          write(joinedKeyFor(), true);
-        }
-        lastVersion.current = json.version;
-        const merged = queue.current.reduce(apply, json as SharedState<T>).data;
-        if (JSON.stringify(merged) !== JSON.stringify(valueRef.current)) {
-          baseline.current = merged;
-          valueRef.current = merged;
-          ctx.current.setValue(merged);
+          const res = await fetch('/api/shared/batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...ctx.current.authHeaders() },
+            body: JSON.stringify({ opsByList, versions: versions.current }),
+          });
+          if (!res.ok) throw new Error('shared batch sync failed');
+          const json = await res.json();
+          replyLists = json.lists;
+          for (const name of SHARED_NAMES) {
+            if (sentCounts[name]) {
+              queues.current[name] = queues.current[name].slice(sentCounts[name]);
+              write(queueKey(name), queues.current[name]);
+            }
+          }
         } else {
-          baseline.current = valueRef.current;
+          const vQuery = SHARED_NAMES.filter((n) => versions.current[n] !== undefined)
+            .map((n) => `${n}:${versions.current[n]}`)
+            .join(',');
+          const res = await fetch(`/api/shared${vQuery ? `?v=${encodeURIComponent(vQuery)}` : ''}`, {
+            headers: ctx.current.authHeaders(),
+          });
+          if (!res.ok) throw new Error('shared poll failed');
+          const json = await res.json();
+          replyLists = json.lists;
         }
+
+        // First-time seed or join merge across all lists in a single follow-up batch.
+        const initOps: Partial<Record<SharedName, SharedOp[]>> = {};
+        const markJoined: SharedName[] = [];
+        for (const name of SHARED_NAMES) {
+          const entry = replyLists?.[name];
+          if (!entry || 'unchanged' in entry) continue;
+          if (!entry.seeded) {
+            initOps[name] = [{ type: 'seed', data: valueRefs.current[name], opId: newOpId() }];
+            markJoined.push(name);
+          } else if (hid && !read(joinedKey(name, hid), false)) {
+            const extra = withOpIds(ctx.current.lists[name].joinOps?.(entry.data, valueRefs.current[name]) || []);
+            if (extra.length) initOps[name] = extra;
+            markJoined.push(name);
+          }
+        }
+
+        if (Object.keys(initOps).length > 0) {
+          const res = await fetch('/api/shared/batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...ctx.current.authHeaders() },
+            body: JSON.stringify({ opsByList: initOps, versions: versions.current }),
+          });
+          if (!res.ok) throw new Error('shared seed/join failed');
+          const json = await res.json();
+          replyLists = json.lists;
+        }
+        for (const name of markJoined) {
+          if (hid) write(joinedKey(name, hid), true);
+        }
+
+        for (const name of SHARED_NAMES) {
+          const entry = replyLists?.[name];
+          if (!entry) continue;
+          versions.current[name] = entry.version;
+          if ('unchanged' in entry) continue;
+          const { kind, max } = SHARED[name];
+          const merged = queues.current[name].reduce(
+            (s: SharedState<any[]>, op: SharedOp) => applySharedOp(kind, max, s, op),
+            entry
+          ).data;
+          if (JSON.stringify(merged) !== JSON.stringify(valueRefs.current[name])) {
+            baselines.current[name] = merged;
+            valueRefs.current[name] = merged;
+            ctx.current.lists[name].setValue(merged);
+          } else {
+            baselines.current[name] = valueRefs.current[name];
+          }
+        }
+
         setOnline(true);
       } while (dirty.current);
     } catch {
-      setOnline(false); // offline: changes stay queued and go out next time
+      setOnline(false);
     } finally {
       busy.current = false;
     }
-  }, [name]);
+  }, [storageKey]);
 
-  // Edits made on this phone become operations.
+  const scheduleFlush = useCallback(() => {
+    if (flushTimer.current) clearTimeout(flushTimer.current);
+    flushTimer.current = setTimeout(() => {
+      flushTimer.current = null;
+      void sync();
+    }, 40);
+  }, [sync]);
+
+  // Watch all 7 lists: diff local changes into each list's persistent queue and flush once.
   useEffect(() => {
-    if (value === baseline.current) return;
-    const ops = diffShared(kind, baseline.current, value);
-    baseline.current = value;
-    if (!ctx.current.household || ops.length === 0) return;
-    queue.current = [...queue.current, ...withOpIds(ops)];
-    write(queueKey, queue.current);
-    sync();
-  }, [value]);
+    let anyQueued = false;
+    for (const name of SHARED_NAMES) {
+      const cur = lists[name].value;
+      if (cur === baselines.current[name]) continue;
+      const { kind } = SHARED[name];
+      const ops = diffShared(kind, baselines.current[name], cur);
+      baselines.current[name] = cur;
+      if (ctx.current.household && ops.length > 0) {
+        queues.current[name] = [...queues.current[name], ...withOpIds(ops)];
+        write(queueKey(name), queues.current[name]);
+        anyQueued = true;
+      }
+    }
+    if (anyQueued) scheduleFlush();
+  }, [
+    lists.recipes.value,
+    lists.shelved.value,
+    lists.hidden.value,
+    lists.cupboard.value,
+    lists.liked.value,
+    lists.avoid.value,
+    lists.staples.value,
+    scheduleFlush,
+  ]);
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !household) return;
-    lastVersion.current = null;
-    sync();
+    if (typeof window === 'undefined' || !household) {
+      setOnline(null);
+      return;
+    }
+    versions.current = {};
+    void sync();
     const timer = setInterval(() => {
-      if (document.visibilityState === 'visible') sync();
+      if (document.visibilityState === 'visible') void sync();
     }, pollMs);
-    const onVisible = () => document.visibilityState === 'visible' && sync();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void sync();
+    };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
+      if (flushTimer.current) clearTimeout(flushTimer.current);
       clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
     };

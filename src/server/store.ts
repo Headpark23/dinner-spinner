@@ -4,7 +4,16 @@ import type { TakeawayHub } from '../utils/takeaways';
 
 export type Snapshot = { syncedAt: string; syncId: string; data: any };
 
-/** What a household keeps on the server. The saved copy (snapshot) is stored apart because it is large. */
+export type SharedListRecord = { version: number; seeded: boolean; data: unknown[]; applied?: string[] };
+
+/** Heavy recipe lists live under their own Redis key (`hh:${id}:meals`) so routine polls stay tiny. */
+export type MealsBook = {
+  _rev?: number;
+  recipes?: SharedListRecord;
+  shelved?: SharedListRecord;
+};
+
+/** What a household keeps on the server. The saved copy (snapshot) and recipe book are stored apart because they are large. */
 export type Household = {
   keyHash: string;
   /** Extra keys, one per phone signed in with Google. Only hashes are kept. */
@@ -25,8 +34,10 @@ export type Household = {
   cookLog?: unknown[];
   /** Local takeaways, the family's scores and notes. Merged by id from every phone. */
   takeaways?: TakeawayHub;
-  /** Lists kept in step across phones: recipes, hidden dishes, cupboard, likes, dislikes, staples. */
-  shared?: Record<string, { version: number; seeded: boolean; data: unknown[]; applied?: string[] }>;
+  /** Small lists kept in step across phones: hidden dishes, cupboard, likes, dislikes, staples (plus recipes on file store). */
+  shared?: Record<string, SharedListRecord>;
+  /** Version/seeded pointers for heavy recipe lists stored in `hh:${id}:meals` on Redis. */
+  sharedMeta?: Record<string, { version: number; seeded: boolean }>;
   /** Phones that asked to be told about votes (Web Push). */
   push?: import('./push').PushSub[];
   /** Bumped on every save so two phones writing at once can't silently overwrite each other. */
@@ -53,6 +64,9 @@ export interface Store {
   /** Looks up which family group a Google account (by its hashed id) belongs to. */
   getUser(userKey: string): Promise<UserLink | undefined>;
   putUser(userKey: string, link: UserLink): Promise<void>;
+  /** Optional separate storage for large shared recipe lists (`recipes`, `shelved`) on Redis. */
+  getMealsBook?(id: string): Promise<MealsBook | undefined>;
+  putMealsBook?(id: string, book: MealsBook): Promise<boolean>;
 }
 
 // ---------------------------------------------------------------------------
@@ -182,6 +196,21 @@ export function createRedisStore(url: string, token: string, doFetch: typeof fet
       if (!/^[0-9a-f]{64}$/.test(userKey)) return;
       await run('SET', `user:${userKey}`, JSON.stringify(link));
     },
+    async getMealsBook(id) {
+      if (!safeId(id)) return undefined;
+      const raw = await run('GET', `hh:${id}:meals`);
+      return raw ? (JSON.parse(raw) as MealsBook) : { _rev: 0 };
+    },
+    async putMealsBook(id, book) {
+      if (!safeId(id)) return false;
+      const expected = book._rev || 0;
+      const ok = await run('EVAL', CAS, 1, `hh:${id}:meals`, expected, JSON.stringify({ ...book, _rev: expected + 1 }));
+      if (Number(ok) === 1) {
+        book._rev = expected + 1;
+        return true;
+      }
+      return false;
+    },
   };
 }
 
@@ -193,13 +222,30 @@ export function createStoreFromEnv(filePath: string | null): Store {
   return createFileStore(filePath);
 }
 
-/** Re-runs `fn` on a fresh copy until the save wins, so simultaneous votes are never lost. */
+const pause = (attempt: number) =>
+  new Promise((r) => setTimeout(r, 15 + attempt * 20 + Math.floor(Math.random() * 25)));
+
+/** Re-runs `fn` on a fresh copy until the save wins, with jittered backoff so simultaneous writes never 503. */
 export async function mutate<T>(store: Store, id: string, fn: (h: Household) => T): Promise<T> {
-  for (let attempt = 0; attempt < 6; attempt++) {
+  for (let attempt = 0; attempt < 10; attempt++) {
     const h = await store.get(id);
     if (!h) throw new HttpError(401, { error: 'Household code missing or wrong.' });
     const result = fn(h);
     if (await store.put(id, h)) return result;
+    await pause(attempt);
+  }
+  throw new HttpError(503, { error: 'Busy. Try again in a moment.' });
+}
+
+export async function mutateMealsBook<T>(store: Store, id: string, fn: (book: MealsBook) => T): Promise<T> {
+  if (!store.getMealsBook || !store.putMealsBook) {
+    throw new Error('MealsBook storage not supported on this store');
+  }
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const book = (await store.getMealsBook(id)) || { _rev: 0 };
+    const result = fn(book);
+    if (await store.putMealsBook(id, book)) return result;
+    await pause(attempt);
   }
   throw new HttpError(503, { error: 'Busy. Try again in a moment.' });
 }

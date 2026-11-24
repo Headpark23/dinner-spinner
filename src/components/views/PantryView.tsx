@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { CupboardPanel } from '../CupboardPanel';
-import { shrinkImage } from '../../utils/shrinkImage';
+import { preparePhotoForUpload } from '../../utils/shrinkImage';
+import { splitReceiptItems } from '../../utils/storeCupboard';
 import { useDinner } from '../../context/DinnerContext';
 import { DietPicker } from '../DietPicker';
 import { MemberPrefs } from '../MemberPrefs';
@@ -262,20 +263,32 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
       );
       setActiveTab('cupboard');
     } else if (type === 'scan-receipt' && data.items) {
-      // Tins, jars, sauces and dry goods go in the cupboard; the rest in the fridge.
-      const forCupboard = (item: any) => /cupboard|grain|sauce|condiment/i.test(item.category || '');
-      addCupboardItems(data.items.filter(forCupboard).map((item: any) => ({ name: item.name, quantity: item.quantity })));
-      data.items = data.items.filter((item: any) => !forCupboard(item));
-      data.items.forEach((item: any) =>
+      // Tins, jars, sauces and dry goods go in the cupboard; fresh and chilled items go in the fridge.
+      const { cupboard: cupboardBatch, fridge: fridgeBatch } = splitReceiptItems<any>(data.items);
+      if (cupboardBatch.length) {
+        addCupboardItems(cupboardBatch.map((item: any) => ({ name: item.name, quantity: item.quantity })));
+      }
+      fridgeBatch.forEach((item: any) =>
         addPantryItem({
           name: item.name,
-          category: item.category || 'Cupboard & Grains',
+          category: item.category || 'Produce',
           freshness: 'green',
           quantity: item.quantity || '1',
         })
       );
-      flash(`Added ${data.items.length} items from ${data.storeName || 'your receipt'}${note}.`);
-      setActiveTab('fridge');
+      const total = fridgeBatch.length + cupboardBatch.length;
+      const where =
+        fridgeBatch.length && cupboardBatch.length
+          ? ` (${fridgeBatch.length} to fridge, ${cupboardBatch.length} to cupboard)`
+          : cupboardBatch.length
+            ? ' to the cupboard'
+            : ' to the fridge';
+      flash(
+        total
+          ? `Added ${total} ${total === 1 ? 'item' : 'items'}${where} from ${data.storeName || 'your receipt'}${note}.`
+          : `Couldn’t find any food items on that receipt${note}.`
+      );
+      setActiveTab(fridgeBatch.length === 0 && cupboardBatch.length > 0 ? 'cupboard' : 'fridge');
     } else if ((type === 'recipe-photo' || type === 'recipe-text') && data.meal) {
       applyDraft(
         {
@@ -352,9 +365,13 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
     // Full-size phone photos are too big to upload (the host stops at about 4.5 MB), so shrink first.
     reader.onload = async () => {
       setAnalyzing(type);
-      const original = reader.result as string;
-      const small = await shrinkImage(original);
-      callAnalyze(type, small ? { imageBase64: small, mimeType: 'image/jpeg' } : { imageBase64: original, mimeType: file.type || 'image/jpeg' });
+      const prepared = await preparePhotoForUpload(reader.result as string, file.type || 'image/jpeg');
+      if (!prepared.ok) {
+        setAnalyzing(null);
+        setAnalysisError(prepared.error);
+        return;
+      }
+      callAnalyze(type, { imageBase64: prepared.imageBase64, mimeType: prepared.mimeType });
     };
     reader.onerror = () => setAnalysisError('Couldn’t read that image file.');
     reader.readAsDataURL(file);

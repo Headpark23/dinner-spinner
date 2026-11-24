@@ -63,8 +63,8 @@ import { leftoverFridgeItem, MAX_LEFTOVER_PORTIONS, withDueFreshness, toDateOnly
 import { DietMode, isDietMode, effectiveRestrictions, cleanPersonPrefs } from '../utils/memberDiets';
 import { showStepNotification } from '../utils/stepAlerts';
 import { pushIsOn, syncPush } from '../utils/push';
-import { useMirrorSync } from './useMirrorSync';
-import { guessShelf, newCupboardId } from '../utils/storeCupboard';
+import { useSharedListsSync } from './useMirrorSync';
+import { guessShelf, newCupboardId, stockedCupboardNames } from '../utils/storeCupboard';
 import type { CupboardItem } from '../types';
 import { missingCost, costPerHead, costLimitValue, type CostLimit } from '../utils/cost';
 import { buildReels, reelExtras, jackpotRecipeId, JACKPOT_FILL, type ComboMode } from '../utils/reelParts';
@@ -142,6 +142,8 @@ interface DinnerContextType {
   addPantryItem: (item: Omit<PantryItem, 'id' | 'addedDate'>) => void;
   removePantryItem: (id: string) => void;
   staples: string[];
+  /** Everything stocked in the house beyond the fridge: "always have" staples plus non-low cupboard items. */
+  inStock: string[];
   addStaple: (name: string) => void;
   removeStaple: (name: string) => void;
   likedIngredients: string[];
@@ -246,6 +248,8 @@ interface DinnerContextType {
   clearLive: () => Promise<{ ok: boolean; message?: string }>;
   /** Who this phone votes as (the name chosen on the vote card, else "this phone is"). */
   myVoteName: () => string;
+  /** Sets who this phone belongs to / votes as, updating both live voting and push notification identity. */
+  setVoteIdentity: (name: string) => void;
   /** What someone on another phone just did in tonight's vote. */
   voteNews: { id: string; text: string; tone: 'sage' | 'tomato' | 'neutral'; proposal?: boolean } | null;
   dismissVoteNews: () => void;
@@ -350,8 +354,8 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   );
   const [staples, setStaples] = useState<string[]>(() => loadStored('staples', INITIAL_STAPLES));
   const [cupboard, setCupboard] = useState<CupboardItem[]>(() => loadStored<CupboardItem[]>('cupboard', []));
-  // What counts as "in the house" besides the fridge: things we always have, plus the cupboard.
-  const inStock = useMemo(() => [...staples, ...cupboard.map((c) => c.name)], [staples, cupboard]);
+  // What counts as "in the house" besides the fridge: things we always have, plus stocked (non-low) cupboard items.
+  const inStock = useMemo(() => [...staples, ...stockedCupboardNames(cupboard)], [staples, cupboard]);
   const [servings, setServingsState] = useState<number>(() => {
     const n = Number(loadStored<number>('servings', 4));
     return [2, 4, 6, 8].includes(n) ? n : 4;
@@ -673,45 +677,51 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const shared = useSharedTakeaways(household, STORAGE_KEY, authHeaders);
 
-  // ---------- Recipes, hidden dishes, cupboard, likes, dislikes and staples: shared by the family group ----------
+  // ---------- Recipes, shelved, hidden dishes, cupboard, likes, dislikes and staples: one calm batched sync ----------
   useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY}_cupboard`, JSON.stringify(cupboard));
   }, [cupboard]);
-  const mirror = { storageKey: STORAGE_KEY, household, authHeaders };
-  const recipesSync = useMirrorSync<Meal[]>({
-    ...mirror,
-    name: 'recipes',
-    value: meals,
-    setValue: setMeals,
-    // Joining a group that already has recipes: keep theirs, and add this phone's own recipes, scans and cooked dishes.
-    joinOps: (server, local) => {
-      const have = new Set(server.map((m) => m.id));
-      return local
-        .filter((m) => !have.has(m.id) && (m.source === 'own' || m.source === 'scanned' || m.source === 'idea' || m.cookCount > 0))
-        .map((item) => ({ type: 'upsert' as const, item }));
-    },
-  });
   const unionJoin = (server: string[], local: string[]) =>
     local.filter((v) => !server.some((x) => x.toLowerCase() === v.toLowerCase())).map((value) => ({ type: 'add' as const, value }));
-  useMirrorSync<string[]>({ ...mirror, name: 'hidden', value: rejectedMealIds, setValue: setRejectedMealIds, joinOps: unionJoin });
-  const cupboardSync = useMirrorSync<CupboardItem[]>({
-    ...mirror,
-    name: 'cupboard',
-    value: cupboard,
-    setValue: setCupboard,
-    joinOps: (server, local) => {
-      const names = new Set(server.map((c) => c.name.toLowerCase()));
-      return local.filter((c) => !names.has(c.name.toLowerCase())).map((item) => ({ type: 'upsert' as const, item }));
+  const sharedListsSync = useSharedListsSync({
+    storageKey: STORAGE_KEY,
+    household,
+    authHeaders,
+    lists: {
+      recipes: {
+        value: meals,
+        setValue: setMeals,
+        // Joining a group that already has recipes: keep theirs, and add this phone's own recipes, scans and cooked dishes.
+        joinOps: (server: Meal[], local: Meal[]) => {
+          const have = new Set(server.map((m) => m.id));
+          return local
+            .filter((m) => !have.has(m.id) && (m.source === 'own' || m.source === 'scanned' || m.source === 'idea' || m.cookCount > 0))
+            .map((item) => ({ type: 'upsert' as const, item }));
+        },
+      },
+      shelved: {
+        value: shelvedMeals,
+        setValue: setShelvedMeals,
+        joinOps: (server: Meal[], local: Meal[]) => {
+          const have = new Set(server.map((m) => m.id));
+          return local.filter((m) => !have.has(m.id)).map((item) => ({ type: 'upsert' as const, item }));
+        },
+      },
+      hidden: { value: rejectedMealIds, setValue: setRejectedMealIds, joinOps: unionJoin },
+      cupboard: {
+        value: cupboard,
+        setValue: setCupboard,
+        joinOps: (server: CupboardItem[], local: CupboardItem[]) => {
+          const names = new Set(server.map((c) => c.name.toLowerCase()));
+          return local.filter((c) => !names.has(c.name.toLowerCase())).map((item) => ({ type: 'upsert' as const, item }));
+        },
+      },
+      liked: { value: likedIngredients, setValue: setLikedIngredients, joinOps: unionJoin },
+      avoid: { value: bannedIngredients, setValue: setBannedIngredients, joinOps: unionJoin },
+      staples: { value: staples, setValue: setStaples, joinOps: unionJoin },
     },
   });
-  const likedSync = useMirrorSync<string[]>({ ...mirror, name: 'liked', value: likedIngredients, setValue: setLikedIngredients, joinOps: unionJoin });
-  useMirrorSync<string[]>({ ...mirror, name: 'avoid', value: bannedIngredients, setValue: setBannedIngredients, joinOps: unionJoin });
-  useMirrorSync<string[]>({ ...mirror, name: 'staples', value: staples, setValue: setStaples, joinOps: unionJoin });
-  const listsOnline = !household
-    ? null
-    : [recipesSync.online, cupboardSync.online, likedSync.online].includes(false)
-      ? false
-      : recipesSync.online;
+  const listsOnline = !household ? null : sharedListsSync.online;
   const whoAmI =
     householdMembers.find((m) => m.id === meId)?.name || googleProfile?.name?.split(' ')[0] || householdMembers[0]?.name || 'Someone';
   // Inside a family group the reel and the spinner draw from the shared list, favourites more often.
@@ -773,8 +783,13 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     syncShopping();
     const timer = setInterval(() => {
       if (document.visibilityState === 'visible') syncShopping();
-    }, 5000);
-    return () => clearInterval(timer);
+    }, 12_000);
+    const onVisible = () => document.visibilityState === 'visible' && syncShopping();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [syncShopping, household]);
 
   // ---------- Shared fridge (once the household is set up) ----------
@@ -830,11 +845,17 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, []);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     syncFridge();
     const timer = setInterval(() => {
       if (document.visibilityState === 'visible') syncFridge();
-    }, 5000);
-    return () => clearInterval(timer);
+    }, 12_000);
+    const onVisible = () => document.visibilityState === 'visible' && syncFridge();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [syncFridge, household]);
 
   const queueFridge = (rawOps: FridgeOp[]) => {
@@ -900,11 +921,17 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, []);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     syncFreezer();
     const timer = setInterval(() => {
       if (document.visibilityState === 'visible') syncFreezer();
-    }, 5000);
-    return () => clearInterval(timer);
+    }, 12_000);
+    const onVisible = () => document.visibilityState === 'visible' && syncFreezer();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [syncFreezer, household]);
 
   const queueFreezer = (rawOps: FreezerOp[]) => {
@@ -1511,7 +1538,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       tidyPlan(weekPlan, new Date(), meals),
       meals,
       pantry,
-      staples,
+      inStock,
       shoppingList.map((i) => i.name)
     );
     if (names.length) addShoppingItems(names, 'this week’s plan');
@@ -2316,14 +2343,25 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const clearLive = () => sendLive({ op: 'clear' });
 
   // ---- Telling this phone what the others did ------------------------------
-  const myVoteName = (): string => {
+  const [liveAs, setLiveAs] = useState<string>(() => {
     try {
-      const as = localStorage.getItem('ds_live_as');
-      if (as) return as;
+      return localStorage.getItem('ds_live_as') || '';
+    } catch {
+      return '';
+    }
+  });
+  const myVoteName = (): string => liveAs || meName() || '';
+  const setVoteIdentity = (name: string) => {
+    const clean = name.trim().slice(0, 30);
+    setLiveAs(clean);
+    try {
+      if (clean) localStorage.setItem('ds_live_as', clean);
+      else localStorage.removeItem('ds_live_as');
     } catch {
       // ignore
     }
-    return meName() || '';
+    const m = householdMembers.find((x) => x.name.toLowerCase() === clean.toLowerCase());
+    if (m) setMeId(m.id);
   };
   const [voteNews, setVoteNews] = useState<{ id: string; text: string; tone: 'sage' | 'tomato' | 'neutral'; proposal?: boolean } | null>(null);
   const prevTonight = useRef<LiveVote | null>(null);
@@ -2367,20 +2405,21 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!household || !pushIsOn()) return;
     const name = myVoteName();
     if (name) void syncPush(name, authHeaders(), false);
-  }, [household, meId]);
+  }, [household, meId, liveAs]);
 
-  // Tapping a vote notification while the app is open goes to Tonight.
+  // Tapping a vote notification while the app is open goes to Tonight (or the notification's target view).
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
     const onMessage = (e: MessageEvent) => {
       if (e.data?.type === 'open-tonight') {
-        setActiveView(3);
+        const nextView = typeof e.data.url === 'string' ? viewFromPath(e.data.url) : null;
+        setActiveView(nextView ?? 3);
         refreshTonight();
       }
     };
     navigator.serviceWorker.addEventListener('message', onMessage);
     return () => navigator.serviceWorker.removeEventListener('message', onMessage);
-  }, [refreshTonight]);
+  }, [refreshTonight, setActiveView]);
 
   // A vote opened on another phone shows up here too, ready to vote on.
   const seenOpenRound = useRef(0);
@@ -2555,6 +2594,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         addPantryItem,
         removePantryItem,
         staples,
+        inStock,
         addStaple,
         cupboard,
         addCupboardItems,
@@ -2642,6 +2682,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         castLiveVote,
         decideLive,
         myVoteName,
+        setVoteIdentity,
         voteNews,
         dismissVoteNews: () => setVoteNews(null),
         clearLive,

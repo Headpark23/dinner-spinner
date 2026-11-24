@@ -1,9 +1,9 @@
 import { alreadyApplied, cleanOpId, remember } from './opIds';
 
 /**
- * Household lists kept in step across phones: recipes, hidden dishes, the store cupboard, likes,
- * dislikes and "always have". Two shapes cover them all:
- *  - "list": items with an `id` (recipes, cupboard), changed by upsert / remove;
+ * Household lists kept in step across phones: recipes, shelved dishes, hidden dishes, the store
+ * cupboard, likes, dislikes and "always have". Two shapes cover them all:
+ *  - "list": items with an `id` (recipes, shelved, cupboard), changed by upsert / remove;
  *  - "set":  plain names (likes, dislikes, staples, hidden dish ids), changed by add / remove.
  * The server and every phone apply the same operations, so they always agree. Like the fridge,
  * the first phone to reach the server seeds it, and every operation carries an id so a resend
@@ -11,10 +11,11 @@ import { alreadyApplied, cleanOpId, remember } from './opIds';
  */
 
 export type SharedKind = 'list' | 'set';
-export type SharedName = 'recipes' | 'hidden' | 'cupboard' | 'liked' | 'avoid' | 'staples';
+export type SharedName = 'recipes' | 'shelved' | 'hidden' | 'cupboard' | 'liked' | 'avoid' | 'staples';
 
 export const SHARED: Record<SharedName, { kind: SharedKind; max: number }> = {
   recipes: { kind: 'list', max: 400 },
+  shelved: { kind: 'list', max: 200 },
   cupboard: { kind: 'list', max: 400 },
   hidden: { kind: 'set', max: 1000 },
   liked: { kind: 'set', max: 200 },
@@ -22,9 +23,14 @@ export const SHARED: Record<SharedName, { kind: SharedKind; max: number }> = {
   staples: { kind: 'set', max: 300 },
 };
 
+export const SHARED_NAMES = Object.keys(SHARED) as SharedName[];
+export const LARGE_SHARED: readonly SharedName[] = ['recipes', 'shelved'];
+export const isLargeShared = (name: SharedName): boolean => LARGE_SHARED.includes(name);
+
 export const isSharedName = (v: unknown): v is SharedName => typeof v === 'string' && Object.prototype.hasOwnProperty.call(SHARED, v);
 
 export type SharedState<T> = { version: number; seeded: boolean; data: T; applied?: string[] };
+export type SharedPollEntry<T = any[]> = SharedState<T> | { version: number; seeded: boolean; unchanged: true };
 
 export type SharedOp = { opId?: string } & (
   | { type: 'seed'; data: unknown }
@@ -35,7 +41,7 @@ export type SharedOp = { opId?: string } & (
   | { type: 'drop'; value: string }
 );
 
-const MAX_ITEM_CHARS = 20_000;
+const MAX_ITEM_CHARS = 16_000;
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 const cleanListItem = (raw: any): any | null => {

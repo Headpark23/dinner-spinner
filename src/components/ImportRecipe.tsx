@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { shrinkImage } from '../utils/shrinkImage';
+import { preparePhotoForUpload } from '../utils/shrinkImage';
 import { Camera, FileText, Image as ImageIcon, Link2, LoaderCircle, ClipboardPaste, Sparkles } from 'lucide-react';
 import { useDinner } from '../context/DinnerContext';
 import { textFromDocument, textFromLegacyDoc, previewFromPages } from '../utils/docText';
@@ -141,13 +141,12 @@ export const ImportRecipe: React.FC<{ onDraft: (recipe: ImportedRecipe, note: st
     try {
       let dataUrl = await readAsDataUrl(file);
       let sendType = file.type || 'image/jpeg';
-      if (isImg && file.size > 1_500_000) {
-        // Phone photos are huge; shrink them so they upload quickly and fit the limit. Text stays readable at 1800px.
-        const small = await shrinkImage(dataUrl);
-        if (small) {
-          dataUrl = small;
-          sendType = 'image/jpeg';
-        }
+      if (isImg) {
+        // Phone photos are huge; shrink them so they upload quickly and fit the ~4.5MB limit. Text stays readable at 1800px.
+        const prepared = await preparePhotoForUpload(dataUrl, sendType);
+        if (!prepared.ok) return fail(prepared.error);
+        dataUrl = prepared.imageBase64;
+        sendType = prepared.mimeType;
       }
       await runAi({ type: 'recipe-photo', imageBase64: dataUrl, mimeType: sendType }, 'Read from your file. Check it over, then save.');
     } catch (e: any) {

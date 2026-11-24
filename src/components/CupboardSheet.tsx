@@ -6,16 +6,16 @@ import { CupboardCandidate, cupboardCandidates, freezerCandidates, pickSurprise 
 
 /** Spin for a dinner that needs nothing from the shop: fridge, tins, staples and leftovers. */
 export const CupboardSheet: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
-  const { meals, pantry, staples, restrictions, freezer, useFreezerPortion, setSurpriseStep, sendToVote, addMeal, setActiveView } = useDinner();
+  const { meals, pantry, staples, inStock, cupboard, restrictions, freezer, useFreezerPortion, setSurpriseStep, sendToVote, addMeal, setActiveView } = useDinner();
   const candidates = useMemo(
     () =>
       isOpen
         ? [
             ...freezerCandidates(freezer, meals, restrictions.avoid, restrictions.diets),
-            ...cupboardCandidates({ meals, pantry, staples, banned: restrictions.avoid, diets: restrictions.diets }),
+            ...cupboardCandidates({ meals, pantry, staples: inStock, banned: restrictions.avoid, diets: restrictions.diets }),
           ]
         : [],
-    [isOpen, meals, pantry, staples, restrictions, freezer]
+    [isOpen, meals, pantry, inStock, restrictions, freezer]
   );
   const [pick, setPick] = useState<CupboardCandidate | null>(null);
   const [saved, setSaved] = useState(false);
@@ -35,7 +35,8 @@ export const CupboardSheet: React.FC<{ isOpen: boolean; onClose: () => void }> =
   }, [isOpen, candidates.length]);
 
   const fridgeCount = pantry.length;
-  const empty = fridgeCount === 0;
+  const cupboardCount = cupboard.filter((c) => !c.low).length;
+  const empty = fridgeCount === 0 && cupboardCount === 0;
 
   const close = () => {
     setPick(null);
@@ -54,7 +55,7 @@ export const CupboardSheet: React.FC<{ isOpen: boolean; onClose: () => void }> =
       <div className="space-y-4">
         <p className="flex items-center gap-2 text-[13px] text-ink-2">
           <Refrigerator className="h-4 w-4 shrink-0" />
-          {fridgeCount} in the fridge · {staples.length} staples · {candidates.length}{' '}
+          {fridgeCount} in the fridge · {cupboardCount > 0 ? `${cupboardCount} in cupboard · ` : ''}{staples.length} staples · {candidates.length}{' '}
           {candidates.length === 1 ? 'dinner' : 'dinners'} possible
         </p>
 

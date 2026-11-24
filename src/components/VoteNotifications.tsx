@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Bell, BellOff, BellRing, LoaderCircle, Share, X } from 'lucide-react';
 import { useDinner } from '../context/DinnerContext';
-import { getPushStatus, PushStatus, sendTestPush, syncPush } from '../utils/push';
+import { getPushStatus, PushStatus, sendTestPush, syncPush, unsubscribePush } from '../utils/push';
 import { Button, Card, cx } from './ui';
 
 /** "Sam said yes to Lasagne", shown on this phone when someone else acts on tonight's vote. */
@@ -46,11 +46,15 @@ export const VoteNewsBanner: React.FC = () => {
  * (iPhone not added to the Home Screen, blocked in settings, plain http).
  */
 export const VoteNotificationsCard: React.FC<{ compact?: boolean }> = ({ compact }) => {
-  const { householdCode, householdMembers, meId, setMeId, authHeaders, myVoteName } = useDinner();
+  const { householdCode, householdMembers, familyNames, authHeaders, myVoteName, setVoteIdentity } = useDinner();
   const [status, setStatus] = useState<PushStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const name = myVoteName();
+
+  const peopleOptions = Array.from(
+    new Set([...householdMembers.map((m) => m.name), ...familyNames].map((n) => n.trim()).filter(Boolean))
+  );
 
   useEffect(() => {
     let alive = true;
@@ -75,6 +79,15 @@ export const VoteNotificationsCard: React.FC<{ compact?: boolean }> = ({ compact
     setBusy(false);
     setStatus(await getPushStatus());
     setMessage(r.ok ? `Done. This phone will buzz for ${name} when dinner is put to the vote and when people vote.` : r.message || null);
+  };
+
+  const turnOff = async () => {
+    setBusy(true);
+    setMessage(null);
+    await unsubscribePush(authHeaders());
+    setBusy(false);
+    setStatus(await getPushStatus());
+    setMessage('Vote notifications are turned off on this phone.');
   };
 
   const test = async () => {
@@ -121,23 +134,15 @@ export const VoteNotificationsCard: React.FC<{ compact?: boolean }> = ({ compact
           <label className="flex items-center gap-2 text-[14px]">
             <span className="text-ink-2">This phone is</span>
             <select
-              value={householdMembers.find((m) => m.name === name)?.id || meId}
-              onChange={(e) => {
-                setMeId(e.target.value);
-                const m = householdMembers.find((x) => x.id === e.target.value);
-                try {
-                  if (m) localStorage.setItem('ds_live_as', m.name);
-                } catch {
-                  // ignore
-                }
-              }}
+              value={peopleOptions.find((p) => p.toLowerCase() === name.toLowerCase()) || ''}
+              onChange={(e) => setVoteIdentity(e.target.value)}
               aria-label="Who this phone belongs to"
               className={cx('h-10 rounded-lg border bg-card px-2 text-[14px] font-semibold', name ? 'border-line' : 'border-tomato')}
             >
               <option value="">Choose…</option>
-              {householdMembers.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
+              {peopleOptions.map((person) => (
+                <option key={person} value={person}>
+                  {person}
                 </option>
               ))}
             </select>
@@ -147,9 +152,14 @@ export const VoteNotificationsCard: React.FC<{ compact?: boolean }> = ({ compact
               {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Bell className="h-4 w-4" />} Turn on
             </Button>
           ) : (
-            <Button variant="secondary" size="sm" onClick={test} disabled={busy}>
-              {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <BellRing className="h-4 w-4" />} Send a test
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" size="sm" onClick={test} disabled={busy}>
+                {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <BellRing className="h-4 w-4" />} Send a test
+              </Button>
+              <Button variant="quiet" size="sm" onClick={turnOff} disabled={busy}>
+                <BellOff className="h-4 w-4" /> Turn off
+              </Button>
+            </div>
           )}
         </div>
       )}

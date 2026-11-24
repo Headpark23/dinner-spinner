@@ -21,7 +21,7 @@ export const PlannerSheet: React.FC<{ isOpen: boolean; onClose: () => void }> = 
     clearWeekPlan,
     shopForWeek,
     pantry,
-    staples,
+    inStock,
     shoppingList,
     sendToVote,
   } = useDinner();
@@ -31,7 +31,7 @@ export const PlannerSheet: React.FC<{ isOpen: boolean; onClose: () => void }> = 
   const days = nextDays(today, 7);
   const plan = tidyPlan(weekPlan, today, meals);
   const planned = Object.keys(plan).length;
-  const toBuy = weekShopping(plan, meals, pantry, staples, shoppingList.map((i) => i.name)).length;
+  const toBuy = weekShopping(plan, meals, pantry, inStock, shoppingList.map((i) => i.name)).length;
 
   const fillDay = (day: string, avoidId?: string) => {
     const wd = new Date(day + 'T12:00:00').getDay();
@@ -147,7 +147,7 @@ export const PlannerSheet: React.FC<{ isOpen: boolean; onClose: () => void }> = 
           {planned === 0 ? 'Add the week’s shopping' : `Add the week’s shopping (${toBuy} to buy)`}
         </Button>
         <p className="text-[12px] text-ink-3">
-          Skips what’s in your fridge, vault or staples, and anything already on the list. Diets and dislikes are
+          Skips what’s in your fridge, store cupboard or staples, and anything already on the list. Diets and dislikes are
           respected.
         </p>
       </div>

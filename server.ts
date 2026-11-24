@@ -13,9 +13,9 @@ import { createPlaces, type Places } from './src/server/places';
 import { createPhotoSearch } from './src/server/photoSearch';
 import { fetchPublicPage } from './src/server/fetchPage';
 import { extractRecipeFromHtml, htmlToText } from './src/utils/recipeImport';
-import { Household, HttpError, Store, UserLink, createFileStore, createStoreFromEnv, mutate } from './src/server/store';
+import { Household, HttpError, MealsBook, Store, UserLink, createFileStore, createStoreFromEnv, mutate, mutateMealsBook } from './src/server/store';
 import { cleanSub, notActor, pushPublicKey, sendToAll, voteMessage, type PushSub } from './src/server/push';
-import { SHARED, applySharedOp, emptyShared, isSharedName, type SharedName, type SharedState } from './src/utils/sharedSync';
+import { SHARED, SHARED_NAMES, applySharedOp, emptyShared, isLargeShared, isSharedName, type SharedName, type SharedPollEntry, type SharedState } from './src/utils/sharedSync';
 
 dotenv.config();
 
@@ -624,21 +624,186 @@ app.post('/api/tonight', smallJson, requireHousehold, async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Other shared lists (recipes, hidden dishes, store cupboard, likes, dislikes, "always have").
-// Same model as the fridge: small operations, a version number, the first phone seeds.
+// Other shared lists (recipes, shelved, hidden dishes, store cupboard, likes, dislikes, "always have").
+// Small lists live in `hh:${id}.shared`; heavy recipe lists (`recipes`, `shelved`) live in `hh:${id}:meals`
+// on Redis so routine vote/shopping/fridge polls never drag hundreds of recipes along.
 // ---------------------------------------------------------------------------
 const sharedOf = (h: Household, name: SharedName): SharedState<any[]> => {
   const all = (h.shared ||= {});
   return (all[name] ||= emptyShared()) as SharedState<any[]>;
 };
 
-app.get('/api/shared/:name', requireHousehold, (req, res) => {
+const usesSeparateMeals = () => Boolean(store.getMealsBook && store.putMealsBook);
+
+const parseKnownVersions = (raw: unknown): Partial<Record<SharedName, number>> => {
+  const out: Partial<Record<SharedName, number>> = {};
+  if (typeof raw !== 'string' || !raw.trim()) return out;
+  for (const part of raw.split(',')) {
+    const [k, v] = part.split(':');
+    const num = Number(v);
+    if (isSharedName(k) && Number.isFinite(num)) out[k] = num;
+  }
+  return out;
+};
+
+async function readSharedList(id: string, h: Household, name: SharedName, knownV?: number): Promise<SharedPollEntry> {
+  if (usesSeparateMeals() && isLargeShared(name)) {
+    const legacy = h.shared?.[name] as SharedState<any[]> | undefined;
+    const meta = h.sharedMeta?.[name] ?? (legacy ? { version: legacy.version, seeded: legacy.seeded } : { version: 0, seeded: false });
+    if (knownV !== undefined && knownV === meta.version) {
+      return { version: meta.version, seeded: meta.seeded, unchanged: true };
+    }
+    if (!meta.seeded && meta.version === 0 && !legacy) return emptyShared();
+    const book = await store.getMealsBook!(id);
+    const st = (book?.[name as 'recipes' | 'shelved'] as SharedState<any[]> | undefined) || legacy || emptyShared();
+    if (knownV !== undefined && knownV === st.version) return { version: st.version, seeded: st.seeded, unchanged: true };
+    return st;
+  }
+  const st = sharedOf(h, name);
+  if (knownV !== undefined && knownV === st.version) return { version: st.version, seeded: st.seeded, unchanged: true };
+  return st;
+}
+
+async function applySharedBatches(
+  id: string,
+  opsByList: Partial<Record<SharedName, unknown[]>>,
+  knownVersions: Partial<Record<SharedName, number>> = {}
+): Promise<Record<SharedName, SharedPollEntry>> {
+  const separate = usesSeparateMeals();
+  let updatedBook: MealsBook | null = null;
+
+  if (separate && ((opsByList.recipes?.length || 0) > 0 || (opsByList.shelved?.length || 0) > 0)) {
+    const existingH = await store.get(id);
+    if (!existingH) throw new HttpError(401, { error: 'Household code missing or wrong.' });
+    updatedBook = await mutateMealsBook(store, id, (book) => {
+      for (const name of ['recipes', 'shelved'] as const) {
+        const ops = opsByList[name];
+        if (!ops?.length) continue;
+        const { kind, max } = SHARED[name];
+        const cur = (book[name] as SharedState<any[]> | undefined) || (existingH.shared?.[name] as SharedState<any[]> | undefined) || emptyShared();
+        const next = ops.reduce((s: SharedState<any[]>, op: unknown) => applySharedOp(kind, max, s, op), cur);
+        next.version += 1;
+        book[name] = next;
+      }
+      return book;
+    });
+  }
+
+  const h = await mutate(store, id, (doc) => {
+    for (const name of SHARED_NAMES) {
+      if (separate && isLargeShared(name)) {
+        const fromBook = updatedBook?.[name as 'recipes' | 'shelved'];
+        if (fromBook) {
+          doc.sharedMeta = { ...(doc.sharedMeta || {}), [name]: { version: fromBook.version, seeded: fromBook.seeded } };
+          if (doc.shared?.[name]) delete doc.shared[name];
+        }
+        continue;
+      }
+      const ops = opsByList[name];
+      if (!ops?.length) continue;
+      const { kind, max } = SHARED[name];
+      const next = ops.reduce((s: SharedState<any[]>, op: unknown) => applySharedOp(kind, max, s, op), sharedOf(doc, name));
+      next.version += 1;
+      doc.shared![name] = next;
+    }
+    return doc;
+  });
+
+  const lists = {} as Record<SharedName, SharedPollEntry>;
+  let fetchedBook: MealsBook | undefined;
+  for (const name of SHARED_NAMES) {
+    const touched = (opsByList[name]?.length || 0) > 0;
+    const knownV = touched ? undefined : knownVersions[name];
+    if (separate && isLargeShared(name)) {
+      const inMem = updatedBook?.[name as 'recipes' | 'shelved'] as SharedState<any[]> | undefined;
+      if (inMem) {
+        lists[name] = inMem;
+        continue;
+      }
+      const meta = h.sharedMeta?.[name] ?? { version: 0, seeded: false };
+      if (knownV !== undefined && knownV === meta.version) {
+        lists[name] = { version: meta.version, seeded: meta.seeded, unchanged: true };
+      } else if (!meta.seeded && meta.version === 0 && !h.shared?.[name]) {
+        lists[name] = emptyShared();
+      } else {
+        fetchedBook ||= await store.getMealsBook!(id);
+        lists[name] = (fetchedBook?.[name as 'recipes' | 'shelved'] as SharedState<any[]> | undefined) || (h.shared?.[name] as SharedState<any[]>) || emptyShared();
+      }
+    } else {
+      const st = sharedOf(h, name);
+      lists[name] = knownV !== undefined && knownV === st.version ? { version: st.version, seeded: st.seeded, unchanged: true } : st;
+    }
+  }
+  return lists;
+}
+
+app.get('/api/shared', requireHousehold, async (req, res) => {
+  const id = (req as AuthedRequest).householdId!;
+  const h = (req as AuthedRequest).household!;
+  const known = parseKnownVersions(req.query.v);
+  try {
+    const lists = {} as Record<SharedName, SharedPollEntry>;
+    let book: MealsBook | undefined;
+    for (const name of SHARED_NAMES) {
+      if (usesSeparateMeals() && isLargeShared(name)) {
+        const legacy = h.shared?.[name] as SharedState<any[]> | undefined;
+        const meta = h.sharedMeta?.[name] ?? (legacy ? { version: legacy.version, seeded: legacy.seeded } : { version: 0, seeded: false });
+        if (known[name] !== undefined && known[name] === meta.version) {
+          lists[name] = { version: meta.version, seeded: meta.seeded, unchanged: true };
+        } else if (!meta.seeded && meta.version === 0 && !legacy) {
+          lists[name] = emptyShared();
+        } else {
+          book ||= await store.getMealsBook!(id);
+          const st = (book?.[name as 'recipes' | 'shelved'] as SharedState<any[]> | undefined) || legacy || emptyShared();
+          lists[name] = known[name] !== undefined && known[name] === st.version ? { version: st.version, seeded: st.seeded, unchanged: true } : st;
+        }
+      } else {
+        lists[name] = await readSharedList(id, h, name, known[name]);
+      }
+    }
+    res.json({ lists });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+app.post('/api/shared/batch', smallJson, requireHousehold, async (req, res) => {
+  const id = (req as AuthedRequest).householdId!;
+  const rawBatches = req.body?.opsByList;
+  if (!rawBatches || typeof rawBatches !== 'object') return res.status(400).json({ error: 'No operations' });
+  const opsByList: Partial<Record<SharedName, unknown[]>> = {};
+  let total = 0;
+  for (const [k, v] of Object.entries(rawBatches)) {
+    if (isSharedName(k) && Array.isArray(v) && v.length > 0) {
+      opsByList[k] = v.slice(0, 200);
+      total += opsByList[k]!.length;
+    }
+  }
+  if (total === 0) return res.status(400).json({ error: 'No operations' });
+  const known: Partial<Record<SharedName, number>> = {};
+  if (req.body?.versions && typeof req.body.versions === 'object') {
+    for (const [k, v] of Object.entries(req.body.versions)) {
+      if (isSharedName(k) && Number.isFinite(Number(v))) known[k] = Number(v);
+    }
+  }
+  try {
+    const lists = await applySharedBatches(id, opsByList, known);
+    res.json({ lists });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+app.get('/api/shared/:name', requireHousehold, async (req, res) => {
   const name = req.params.name;
   if (!isSharedName(name)) return res.status(404).json({ error: 'Unknown list' });
-  const st = sharedOf((req as AuthedRequest).household!, name);
-  // Phones poll every few seconds; when nothing changed, don't send the whole list again.
-  if (req.query.v !== undefined && Number(req.query.v) === st.version) return res.json({ version: st.version, seeded: st.seeded, unchanged: true });
-  res.json(st);
+  try {
+    const knownV = req.query.v !== undefined ? Number(req.query.v) : undefined;
+    const entry = await readSharedList((req as AuthedRequest).householdId!, (req as AuthedRequest).household!, name, knownV);
+    res.json(entry);
+  } catch (err) {
+    fail(res, err);
+  }
 });
 
 app.post('/api/shared/:name/ops', smallJson, requireHousehold, async (req, res) => {
@@ -646,15 +811,9 @@ app.post('/api/shared/:name/ops', smallJson, requireHousehold, async (req, res) 
   if (!isSharedName(name)) return res.status(404).json({ error: 'Unknown list' });
   const ops = Array.isArray(req.body?.ops) ? req.body.ops.slice(0, 200) : [];
   if (ops.length === 0) return res.status(400).json({ error: 'No operations' });
-  const { kind, max } = SHARED[name];
   try {
-    const st = await mutate(store, (req as AuthedRequest).householdId!, (h) => {
-      const next = ops.reduce((s: SharedState<any[]>, op: unknown) => applySharedOp(kind, max, s, op), sharedOf(h, name));
-      next.version += 1;
-      h.shared![name] = next;
-      return next;
-    });
-    res.json(st);
+    const lists = await applySharedBatches((req as AuthedRequest).householdId!, { [name]: ops });
+    res.json(lists[name]);
   } catch (err) {
     fail(res, err);
   }
@@ -824,8 +983,13 @@ async function generateWithFallback(request: any): Promise<any> {
   // (main, a fallback, main, the other fallback, ...) with a short pause, until the time budget is spent.
   for (let round = 0; ; round++) {
     if (round === 1) fallbacks = await fallbackModels();
+    const aliveFallbacks = (fallbacks || []).filter((m) => !dead.has(m));
     const model =
-      round % 2 === 0 ? PRIMARY_MODEL : (fallbacks || []).filter((m) => !dead.has(m))[Math.floor(round / 2) % Math.max(1, (fallbacks || []).length)];
+      round % 2 === 0
+        ? PRIMARY_MODEL
+        : aliveFallbacks.length > 0
+          ? aliveFallbacks[Math.floor(round / 2) % aliveFallbacks.length]
+          : PRIMARY_MODEL;
     if (model && !dead.has(model)) {
       const ms = Math.min(round === 0 ? 14000 : 9000, left() - 300);
       if (ms < 2500) throw last || new Error('Gemini timed out');
