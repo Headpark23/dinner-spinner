@@ -11,6 +11,8 @@ export type Household = {
   keyHashes?: string[];
   /** Google accounts in this family group (display only). */
   google?: { name: string; email: string }[];
+  /** Who has joined through an invite, newest last. Lets the person who invited them see it. */
+  joined?: { name: string; at: string }[];
   createdAt: string;
   snapshotAt: string | null;
   shopping: { version: number; items: ShoppingItem[]; applied?: string[] };

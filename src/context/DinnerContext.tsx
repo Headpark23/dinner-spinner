@@ -61,6 +61,7 @@ import {
 import { mentionsAny } from '../utils/avoid';
 import { leftoverFridgeItem, MAX_LEFTOVER_PORTIONS, withDueFreshness, toDateOnly } from '../utils/leftovers';
 import { DietMode, isDietMode, effectiveRestrictions, cleanPersonPrefs } from '../utils/memberDiets';
+import { showStepNotification } from '../utils/stepAlerts';
 import { missingCost, costPerHead, costLimitValue, type CostLimit } from '../utils/cost';
 import { buildReels, reelExtras, jackpotRecipeId, JACKPOT_FILL, type ComboMode } from '../utils/reelParts';
 
@@ -225,6 +226,9 @@ interface DinnerContextType {
   authHeaders: () => Record<string, string>;
   googleProfile: { name: string; email: string; picture: string } | null;
   familyNames: string[];
+  /** Names of people who joined through an invite since this phone last looked. */
+  newJoiners: string[];
+  dismissJoiners: () => void;
   signInWithGoogle: (
     credential: string,
     joinCode?: string
@@ -2013,6 +2017,12 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (res.status === 401) return { success: false, message: 'That code wasn’t recognised.' };
       if (!res.ok) return { success: false, message: 'Couldn’t reach the server.' };
       saveHousehold({ id, key });
+      // Tell the group, so whoever sent the invite sees that it was used.
+      fetch('/api/households/joined', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-household-id': id, 'x-household-key': key },
+        body: JSON.stringify({ name: householdMembers.find((m) => m.id === meId)?.name || 'Someone new' }),
+      }).catch(() => {});
       return { success: true, message: 'Joined. The shopping list is now shared.' };
     } catch {
       return { success: false, message: 'Couldn’t reach the server.' };
@@ -2046,20 +2056,79 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
   }, []);
 
-  // Who else is in the family group, for the "Mum and Dad are in" line.
+  // Who else is in the family group, for the "Mum and Dad are in" line, and who has just joined.
+  // Polled while the app is open, so the person who sent an invite finds out when it is used.
+  const [newJoiners, setNewJoiners] = useState<string[]>([]);
+  const seenJoinsKey = household ? `${STORAGE_KEY}_seen_joins_${household.id}` : '';
+  const [joinedTotal, setJoinedTotal] = useState(0);
   useEffect(() => {
-    if (!household) return;
+    if (!household) {
+      setNewJoiners([]);
+      return;
+    }
     let live = true;
-    fetch('/api/households/me', { headers: { 'x-household-id': household.id, 'x-household-key': household.key } })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
-        if (live && j && Array.isArray(j.familyNames)) setFamilyNames(j.familyNames.map(String));
-      })
-      .catch(() => {});
+    const check = () => {
+      fetch('/api/households/me', { headers: { 'x-household-id': household.id, 'x-household-key': household.key } })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          if (!live || !j) return;
+          if (Array.isArray(j.familyNames)) setFamilyNames(j.familyNames.map(String));
+          const joined: { name: string; at: string }[] = Array.isArray(j.joined) ? j.joined : [];
+          setJoinedTotal(joined.length);
+          let seen: number | null = null;
+          try {
+            const raw = localStorage.getItem(seenJoinsKey);
+            seen = raw === null ? null : Number(raw);
+          } catch {
+            // storage blocked: fall back to what this session has seen
+          }
+          if (seen === null || Number.isNaN(seen)) {
+            // First look at this group on this phone: whoever is already in is not news.
+            try {
+              localStorage.setItem(seenJoinsKey, String(joined.length));
+            } catch {
+              // ignore
+            }
+            return;
+          }
+          const fresh = joined.slice(seen).map((x) => String(x.name || 'Someone new'));
+          setNewJoiners(fresh);
+        })
+        .catch(() => {});
+    };
+    check();
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') check();
+    }, 15000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') check();
+    };
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       live = false;
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [household]);
+  }, [household, seenJoinsKey]);
+
+  const dismissJoiners = () => {
+    try {
+      if (seenJoinsKey) localStorage.setItem(seenJoinsKey, String(joinedTotal));
+    } catch {
+      // ignore
+    }
+    setNewJoiners([]);
+  };
+
+  // A system notification too, when allowed, for people who have the app open in another tab or app.
+  const notifiedJoins = useRef('');
+  useEffect(() => {
+    if (newJoiners.length === 0) return;
+    const text = `${newJoiners.join(' and ')} joined your family group`;
+    if (notifiedJoins.current === text) return;
+    notifiedJoins.current = text;
+    if (document.visibilityState !== 'visible') void showStepNotification('Dinner Spinner', text, 'family-join');
+  }, [newJoiners]);
 
   const signInWithGoogle = async (
     credential: string,
@@ -2408,6 +2477,8 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         authHeaders,
         googleProfile,
         familyNames,
+        newJoiners,
+        dismissJoiners,
         signInWithGoogle,
         tonight,
         startLiveVote,

@@ -183,7 +183,21 @@ app.get('/api/households/me', requireHousehold, (req, res) => {
     hasSnapshot: Boolean(h.snapshotAt),
     createdAt: h.createdAt,
     familyNames: (h.google || []).map((g) => g.name).filter(Boolean),
+    joined: h.joined || [],
   });
+});
+
+// A phone that joined with a code (no Google) says so, so whoever invited it can be told.
+app.post('/api/households/joined', smallJson, requireHousehold, async (req, res) => {
+  try {
+    const name = String(req.body?.name || 'Someone new').trim().slice(0, 40) || 'Someone new';
+    await mutate(store, (req as AuthedRequest).householdId!, (h) => {
+      h.joined = [...(h.joined || []), { name, at: new Date().toISOString() }].slice(-30);
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    fail(res, err);
+  }
 });
 
 // Sign in with Google: the same family group on every phone, no code to copy. A phone gets its
@@ -218,8 +232,10 @@ app.post('/api/auth/google', smallJson, rateLimit('sign-in', 30, 10 * 60_000), a
     if (householdId) {
       await mutate(store, householdId, (h) => {
         h.keyHashes = [...(h.keyHashes || []), keyHash].slice(-25);
+        const alreadyIn = (h.google || []).some((g) => g.email === me.email);
         const others = (h.google || []).filter((g) => g.email !== me.email);
         h.google = [...others, me].slice(-12);
+        if (joinCode && !alreadyIn) h.joined = [...(h.joined || []), { name, at: new Date().toISOString() }].slice(-30);
       });
     } else {
       householdId = 'h_' + crypto.randomBytes(6).toString('hex');
