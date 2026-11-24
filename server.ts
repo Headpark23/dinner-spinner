@@ -437,6 +437,15 @@ app.post('/api/takeaways/lookup', smallJson, requireHousehold, rateLimit('place 
     } catch (err) {
       // A restaurant's site that refuses an automated visit (or is down) is normal. The details can be typed in; keep the link.
       if (err instanceof HttpError && err.status === 502) {
+        // The site refused us. If Google knows the place by this website, use its details instead.
+        try {
+          const host = new URL(/^[a-z][a-z0-9+.-]*:/i.test(url) ? url : `https://${url}`).hostname;
+          const near = hubOf((req as AuthedRequest).household!).place;
+          const found = await places.findByWebsite?.(host, near ? { lat: near.lat, lon: near.lon } : undefined);
+          if (found) return res.json({ details: found, website: /^[a-z][a-z0-9+.-]*:/i.test(url) ? url : `https://${url}`, via: 'google' });
+        } catch {
+          // fall back to typing it in
+        }
         const upstream = typeof err.body.upstream === 'number' ? ` (${err.body.upstream})` : '';
         return res.status(502).json({
           error: `That site wouldn’t let the app read it${upstream}. Many restaurant sites block automated visits. Type the name below and we’ll keep the link.`,
