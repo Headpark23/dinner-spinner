@@ -1,0 +1,28 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { ingredientCost, missingCost, costLimitValue, costText, FREE_TOP_UP } from './cost';
+import { filterEligibleMeals } from './dinnerEngine';
+import { INITIAL_MEALS, INITIAL_PANTRY, INITIAL_STAPLES } from '../data/initialData';
+
+test('ingredient prices come from the words used', () => {
+  assert.ok(ingredientCost('chicken thighs') > ingredientCost('onion'));
+  assert.equal(ingredientCost('mystery thing'), 1);
+});
+
+test('cost limits', () => {
+  assert.equal(costLimitValue('any'), Infinity);
+  assert.equal(costLimitValue('5'), 5);
+  assert.equal(costLimitValue('free'), FREE_TOP_UP);
+  assert.equal(costText(0), 'Nothing to buy');
+  assert.equal(costText(4.4), 'about £4 to buy');
+});
+
+test('a cost limit narrows the pool, and relaxes when nothing fits', () => {
+  const of = (m: (typeof INITIAL_MEALS)[number]) => missingCost(m, INITIAL_PANTRY, INITIAL_STAPLES);
+  const all = filterEligibleMeals(INITIAL_MEALS, 'any' as never, 'any' as never, [], []);
+  const cheap = filterEligibleMeals(INITIAL_MEALS, 'any' as never, 'any' as never, [], [], { limit: 10, of });
+  assert.ok(cheap.pool.length <= all.pool.length);
+  const none = filterEligibleMeals(INITIAL_MEALS, 'any' as never, 'any' as never, [], [], { limit: -1, of });
+  assert.equal(none.costRelaxed, true);
+  assert.equal(none.pool.length, all.pool.length);
+});

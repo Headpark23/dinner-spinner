@@ -9,6 +9,7 @@ import { PlannerSheet } from '../PlannerSheet';
 import { DinnerSteps } from '../DinnerSteps';
 import { FamilyPrompt } from '../FamilyPrompt';
 import { CupboardSheet } from '../CupboardSheet';
+import { costLabel, type CostLimit } from '../../utils/cost';
 import { Card, Chip, Notice, DishTile, Segmented, Switch, Button, IconButton, Sheet, cx, timeLabel, effortLabel } from '../ui';
 
 const dayPart = () => {
@@ -62,6 +63,9 @@ export const MachineView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFam
     getCoolingOffDays,
     householdCode,
     shared,
+    costLimit,
+    setCostLimit,
+    costRelaxed,
   } = useDinner();
   const leagueTop = householdCode ? shared.league.find((r) => r.votes > 0) : undefined;
 
@@ -87,6 +91,8 @@ export const MachineView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFam
       ? null
       : eligiblePoolCount === 0
       ? null
+      : costRelaxed
+      ? `Nothing fits ${costLabel(costLimit).toLowerCase()} right now, so the reel holds everything else`
       : exactEffortMatchCount > 0
       ? null
       : `Nothing fits those limits, so the reel holds ${eligiblePoolCount} closest matches`;
@@ -142,6 +148,7 @@ export const MachineView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFam
             <span className="block text-[14px] font-semibold">
               {timeStake === 'any' || timeStake === 'all-day' ? 'Any time' : `Up to ${timeLabel(timeStake)}`} ·{' '}
               {effort === 'any' || effort === 'chef-mode' ? 'Any effort' : effort === 'one-pot' ? 'One pot' : 'Standard or easier'}
+              {mode === 'single' && costLimit !== 'any' ? ` · ${costLimit === 'free' ? 'Free' : '£' + costLimit}` : ''}
             </span>
             {useUpOn && (
               <span className="block truncate text-[12px] text-ink-2">
@@ -415,6 +422,33 @@ export const MachineView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFam
               ]}
             />
           </div>
+          {mode === 'single' && (
+            <div className="space-y-2">
+              <p className="text-[14px] font-semibold">How much to spend?</p>
+              <p className="-mt-1 text-[12px] text-ink-2">
+                What you would have to buy, a rough guess. “Free” is what is already in the fridge, tins and staples, give or take £2.
+              </p>
+              <Segmented<CostLimit>
+                label="Budget for ingredients"
+                value={costLimit}
+                onChange={setCostLimit}
+                options={[
+                  {
+                    value: 'free',
+                    label: (
+                      <span className="flex flex-col leading-tight">
+                        Free<span className="text-[10px] font-normal opacity-80">what we have</span>
+                      </span>
+                    ),
+                  },
+                  { value: '5', label: '£5' },
+                  { value: '10', label: '£10' },
+                  { value: 'any', label: 'No limit' },
+                ]}
+              />
+              {costLimit === 'free' && <p className="text-[12px] text-ink-3">Free means cooking from what we have, with at most about £2 of small top-ups.</p>}
+            </div>
+          )}
           {redItems.length > 0 && mode === 'single' && (
             <div className="rounded-xl border border-line bg-card px-3.5 py-3">
               <Switch

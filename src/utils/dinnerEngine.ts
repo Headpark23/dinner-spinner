@@ -115,6 +115,8 @@ const TIME_RANK: Record<TimeStake, number> = { '20m': 0, '30m': 1, '60m': 2, 'al
 const EFFORT_RANK: Record<EffortLevel, number> = { 'one-pot': 0, standard: 1, 'chef-mode': 2 };
 
 export interface EligiblePoolResult {
+  /** True when nothing fitted the cost limit, so it was ignored rather than leaving the reel empty. */
+  costRelaxed?: boolean;
   pool: Meal[];
   exactMatchCount: number;
   timeStakeMatchCount: number;
@@ -126,6 +128,22 @@ export interface EligiblePoolResult {
  * Gracefully falls back if exact (timeStake + effort) pool is empty while preserving banned exclusions.
  */
 export function filterEligibleMeals(
+  meals: Meal[],
+  timeStake: TimeStake | 'any',
+  effort: EffortLevel | 'any',
+  bannedIngredients: string[],
+  diets: DietId[] = [],
+  cost?: { limit: number; of: (m: Meal) => number }
+): EligiblePoolResult {
+  if (!cost || !Number.isFinite(cost.limit)) return filterByTimeAndEffort(meals, timeStake, effort, bannedIngredients, diets);
+  const affordable = meals.filter((m) => cost.of(m) <= cost.limit);
+  // Diets and the avoid list are never relaxed. If nothing is cheap enough, say so and show the rest.
+  const inCost = filterByTimeAndEffort(affordable, timeStake, effort, bannedIngredients, diets);
+  if (inCost.pool.length > 0) return inCost;
+  return { ...filterByTimeAndEffort(meals, timeStake, effort, bannedIngredients, diets), costRelaxed: true };
+}
+
+function filterByTimeAndEffort(
   meals: Meal[],
   timeStake: TimeStake | 'any',
   effort: EffortLevel | 'any',
