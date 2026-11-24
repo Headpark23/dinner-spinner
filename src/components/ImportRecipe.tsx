@@ -60,6 +60,7 @@ export const ImportRecipe: React.FC<{ onDraft: (recipe: ImportedRecipe, note: st
   const [url, setUrl] = useState('');
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
+  const [attempt, setAttempt] = useState(1);
   const [error, setError] = useState('');
   const cameraRef = useRef<HTMLInputElement | null>(null);
   const libraryRef = useRef<HTMLInputElement | null>(null);
@@ -109,12 +110,20 @@ export const ImportRecipe: React.FC<{ onDraft: (recipe: ImportedRecipe, note: st
           sendType = 'image/jpeg';
         }
       }
-      const res = await fetch('/api/pantry/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ type: 'recipe-photo', imageBase64: dataUrl, mimeType: sendType }),
-      });
-      const json = await res.json().catch(() => ({}));
+      // The scanner is sometimes swamped. If so, wait a few seconds and ask again, up to three times in all.
+      let res!: Response;
+      let json: any = {};
+      for (let n = 1; n <= 3; n++) {
+        setAttempt(n);
+        res = await fetch('/api/pantry/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({ type: 'recipe-photo', imageBase64: dataUrl, mimeType: sendType }),
+        });
+        json = await res.json().catch(() => ({}));
+        if (!(res.status === 503 && json.busy) || n === 3) break;
+        await new Promise((r) => setTimeout(r, 4000));
+      }
       if (!res.ok || !json.meal) {
         return fail(
           res.status === 413
@@ -323,9 +332,15 @@ export const ImportRecipe: React.FC<{ onDraft: (recipe: ImportedRecipe, note: st
       )}
 
       {busy && (
-        <p role="status" className="text-[13px] text-ink-2">
-          Reading it now. This can take up to 20 seconds.
-        </p>
+        <div role="status" className="flex items-start gap-2 rounded-xl bg-saffron-soft px-3 py-2.5 text-[13px] text-ink">
+          <LoaderCircle className="mt-0.5 h-4 w-4 shrink-0 animate-spin" />
+          <p>
+            <span className="font-semibold">Reading your recipe. Please wait, this can take up to a minute.</span>{' '}
+            {attempt > 1
+              ? `The reader is busy, so we're trying again (go ${attempt} of 3). Keep this screen open.`
+              : 'Keep this screen open until it finishes.'}
+          </p>
+        </div>
       )}
       {error && (
         <p role="alert" className="rounded-xl bg-tomato-soft px-3 py-2 text-[13px] text-tomato">
