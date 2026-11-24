@@ -110,6 +110,9 @@ export interface HouseholdMember {
   name: string;
   avatar: string;
   vetoTokensRemaining: number;
+  /** This person's own dietary needs, on top of the household's. Best guess from ingredient names. */
+  diets?: import('../utils/diets').DietId[];
+  avoid?: string[];
 }
 
 export interface VoteLog {

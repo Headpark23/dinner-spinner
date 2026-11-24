@@ -6,6 +6,7 @@ import { AfterDinnerReview } from '../AfterDinnerReview';
 import { RecipeSheet } from '../RecipeSheet';
 import { LiveVoteCard } from '../LiveVote';
 import { quantityFor } from '../../utils/quantities';
+import { dishClashes, describeClashes } from '../../utils/memberDiets';
 import { useWakeLock } from '../../utils/useWakeLock';
 import { stepDelays, showStepNotification, notificationsSupported } from '../../utils/stepAlerts';
 import { sound } from '../../utils/audio';
@@ -371,6 +372,7 @@ export const VotingView: React.FC = () => {
   const meal = proposedMeal!;
   const liveActive = !!tonight && (tonight.status === 'open' || tonight.status === 'vetoed') && tonight.meal?.id === meal.id;
   const voterOutOfVetoes = currentVoter.vetoTokensRemaining <= 0;
+  const clashes = dishClashes(meal, householdMembers);
 
 
   return (
@@ -382,6 +384,11 @@ export const VotingView: React.FC = () => {
           {timeLabel(meal.timeStake)} · {effortLabel(meal.effort)} · {meal.cuisine}
         </p>
         <p className="mt-2 text-[14px] text-ink-2">{meal.description}</p>
+        {clashes.length > 0 && (
+          <p role="status" className="mt-3 rounded-xl bg-saffron-soft px-3.5 py-2.5 text-[14px] font-medium text-ink">
+            Doesn’t suit {describeClashes(clashes)}.
+          </p>
+        )}
       </div>
 
       {liveActive ? <LiveVoteCard /> : (<>
