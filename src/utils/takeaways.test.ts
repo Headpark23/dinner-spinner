@@ -362,6 +362,15 @@ test('Takeaways: a place can be added from its own website', async () => {
     const none = await lookup(a, { url: 'https://blank.example' });
     assert.equal(none.status, 422);
     assert.match((await none.json()).error, /type the name/i);
+    const { HttpError } = await import('../server/store');
+    usePageFetcher((async () => { throw new HttpError(502, { error: 'That site said no (403). Paste the recipe text instead.', upstream: 403 }); }) as any);
+    const blocked = await lookup(a, { url: 'https://blocked.example' });
+    assert.equal(blocked.status, 502);
+    const body = await blocked.json();
+    assert.match(body.error, /(403)/);
+    assert.match(body.error, /type the name/i);
+    assert.doesNotMatch(body.error, /recipe/i, 'this is a restaurant, not a recipe');
+    assert.equal(body.website, 'https://blocked.example', 'the link is kept for the form');
   });
   const { fetchPublicPage } = await import('../server/fetchPage');
   usePageFetcher(fetchPublicPage);

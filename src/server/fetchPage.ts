@@ -70,6 +70,7 @@ export async function fetchPublicPage(
         headers: {
           'User-Agent': 'Mozilla/5.0 (compatible; DinnerSpinner/1.0; recipe importer)',
           Accept: 'text/html,application/xhtml+xml',
+          'Accept-Language': 'en-GB,en;q=0.9',
         },
       });
     } catch {
@@ -82,7 +83,7 @@ export async function fetchPublicPage(
       continue;
     }
     if (!res.ok) {
-      throw new HttpError(502, { error: `That site said no (${res.status}). Paste the recipe text instead.` });
+      throw new HttpError(502, { error: `That site said no (${res.status}). Paste the recipe text instead.`, upstream: res.status });
     }
     const type = res.headers.get('content-type') || '';
     if (type && !/html|xml|text/i.test(type)) throw new HttpError(400, { error: 'That link isn’t a web page.' });

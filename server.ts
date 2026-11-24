@@ -431,7 +431,20 @@ app.post('/api/takeaways/lookup', smallJson, requireHousehold, rateLimit('place 
   try {
     const url = typeof req.body?.url === 'string' ? req.body.url.trim().slice(0, 500) : '';
     if (!url) return res.status(400).json({ error: 'Paste the restaurant’s website.' });
-    const page = await pageFetcher(url);
+    let page: Awaited<ReturnType<typeof pageFetcher>>;
+    try {
+      page = await pageFetcher(url);
+    } catch (err) {
+      // A restaurant's site that refuses an automated visit (or is down) is normal. The details can be typed in; keep the link.
+      if (err instanceof HttpError && err.status === 502) {
+        const upstream = typeof err.body.upstream === 'number' ? ` (${err.body.upstream})` : '';
+        return res.status(502).json({
+          error: `That site wouldn’t let the app read it${upstream}. Many restaurant sites block automated visits. Type the name below and we’ll keep the link.`,
+          website: url,
+        });
+      }
+      throw err;
+    }
     const details = placeFromHtml(page.html);
     if (!details) {
       return res.status(422).json({ error: 'Couldn’t read a name from that page. Type the name and we’ll keep the link.', website: page.url });
