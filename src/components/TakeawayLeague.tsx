@@ -120,6 +120,53 @@ export const RatePanel: React.FC<{ spotId: string; spotName: string; onDone?: ()
 
 const LINK = 'inline-flex h-10 items-center gap-1.5 rounded-lg border border-line px-3 text-[13px] font-semibold text-ink-2';
 
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return 'Website';
+  }
+};
+
+/** Tap-to-call, the shop's own website, directions, and a search for it on the delivery apps. */
+export const SpotContact: React.FC<{ spot: { name: string; address?: string; phone?: string; website?: string; lat?: number; lon?: number }; town?: string }> = ({ spot, town }) => {
+  const links = orderLinks(spot, town);
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-2">
+        {spot.phone && (
+          <a href={`tel:${spot.phone.replace(/[^\d+]/g, '')}`} className={LINK}>
+            <Phone className="h-4 w-4" /> {spot.phone}
+          </a>
+        )}
+        {links.website && (
+          <a href={links.website} target="_blank" rel="noopener noreferrer" className={LINK}>
+            <Globe className="h-4 w-4" /> {hostOf(links.website)}
+          </a>
+        )}
+        <a href={links.directions} target="_blank" rel="noopener noreferrer" className={LINK}>
+          <Navigation className="h-4 w-4" /> Directions
+        </a>
+      </div>
+      {spot.address && <p className="text-[12px] text-ink-3">{spot.address}</p>}
+      <div>
+        <p className="mb-1 text-[12px] text-ink-3">Order online (opens a search for this shop)</p>
+        <div className="flex flex-wrap gap-2">
+          {[
+            ['Just Eat', links.justEat],
+            ['Uber Eats', links.uberEats],
+            ['Deliveroo', links.deliveroo],
+          ].map(([label, href]) => (
+            <a key={label} href={href} target="_blank" rel="noopener noreferrer" className={LINK}>
+              {label}
+            </a>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const LeagueItem: React.FC<{ row: LeagueRow; rank: number | null; open: boolean; onToggle: () => void }> = ({ row, rank, open, onToggle }) => {
   const { shared } = useDinner();
   const { spot } = row;

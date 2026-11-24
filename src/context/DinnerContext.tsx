@@ -581,6 +581,11 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       usualOrders: local?.usualOrders ?? [],
       orderCount: local?.orderCount,
       lastOrderedDate: local?.lastOrderedDate ?? null,
+      phone: row.spot.phone,
+      website: row.spot.website,
+      address: row.spot.address,
+      lat: row.spot.lat,
+      lon: row.spot.lon,
     };
   });
   const takeawayPool = usingShared ? sharedPool : takeaways;
