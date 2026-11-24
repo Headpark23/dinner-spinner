@@ -16,7 +16,7 @@ Effort: S = under a day, M = 1 to 3 days, L = a week or more.
 | 6 | Leftovers | **Mostly built.** "Made extra?" after dinner sends the rest to the fridge (use next, eat-by date) or the freezer; fridge rows show the use-by. | Use-by on ordinary items, auto use-next near the date, `makesLeftovers` on recipes. |
 | 7 | Supermarket links | **Done.** `utils/delivery.ts` (Tesco, Sainsbury's, Asda, Morrisons, Ocado, Waitrose, plus Uber Eats and Just Eat) and `DeliverySheet.tsx`. The shopping tab's `STORES` is built from the same list. | Nothing. |
 | 8 | Cost per serving | **Done.** `utils/cost.ts` estimates what you would have to *buy* tonight and a per-head figure from the same price table. Cost filter (Free, £5, £10, no limit) applies to spins and the week planner. | Show which planner nights went over the cap. |
-| 9 | Share a recipe card | **Not built.** `navigator.share` is used only for the family invite link. | Everything. |
+| 9 | Share a recipe card | **Built as a picture.** "Share as a picture" on the recipe sheet (share sheet, else copy, else download), with the photo credit printed. | A shareable link, only if a public site is planned. |
 | 10 | Surprise me from the fridge | **Mostly built.** "Cook from what we have" (`cupboard.ts`, `CupboardSheet.tsx`) plus the fridge photo scan. | Link the photo scan straight into one spin; include the freezer. |
 | 11 | Seasonal dishes | **Not built.** | Everything. |
 | 12 | Streaks and milestones | **Partly built.** Stats shows a "N-night streak" of home-cooked dinners (`ScorecardView.tsx`). | Milestones (rescued items, takeaway-free runs, freezer portions eaten). |
@@ -80,9 +80,11 @@ The Freezer tab is built and, as of PR 31, shared with the household like the fr
 - ~~Cost limit in the planner~~ **Done.** `suggestWeek` takes the same cost rule as the spin and relaxes it the same way if nothing is cheap enough. It is used when filling the week and when swapping one night. The planner sheet also now uses the effective diet and avoid lists from item 5 (it used the household lists only before).
 - **Still open.** The planner does not yet say which nights were over the cap. Tests: `utils/cost.test.ts`.
 
-### 9. Share a recipe card (M)
-- Canvas-rendered image (photo, title, time, ingredients) via `navigator.share({ files })`, with a copy-image fallback. Photos carry licence credits (`photoCredit`, `photoCredits.json`); print the credit on the card.
-- A link form needs a public recipe route, so do it only if a public site is planned.
+### 9. Share a recipe card (picture done)
+- ~~Canvas card~~ **Done.** "Share as a picture" on the recipe sheet draws a 1080 by 1350 card (photo, title, place and time, up to ten ingredients with "+N more", app name) with `utils/recipeCard.ts` and shares it with `navigator.share({ files })`. Where that is not available it copies the image, and failing that downloads a PNG. `utils/shareRecipeCard.ts` holds the browser glue.
+- ~~Photo credit~~ **Done.** The licence line is printed on the card whenever the photo is, using the same credit the recipe sheet shows. If a photo will not load the card is drawn without it and without a credit.
+- Not done: a link form. It needs a public recipe route, so do it only if a public site is planned.
+- **Still open.** A photo hosted on another site that does not allow cross-origin use will taint the canvas, and that dish gets "Couldn't make the picture". The bundled photos are same-origin so they are fine. Tests: `utils/recipeCard.test.ts`.
 
 ### 10. Surprise me from the fridge (S)
 - "Cook from what we have" and the fridge scan both exist but are separate steps. Add one button: scan, add what it sees, then spin from what is in the fridge. Offer the freezer batches first (follow-up 3).
