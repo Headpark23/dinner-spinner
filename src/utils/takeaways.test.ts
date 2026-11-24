@@ -289,3 +289,80 @@ test('Takeaways: each place gets its own website, directions and order-online li
   }
   assert.equal(T.orderLinks({ name: 'X' }).website, undefined);
 });
+
+test('Takeaways: only one branch of each big chain is kept, the nearest to the town', async () => {
+  const T = await import('./takeaways');
+  assert.equal(T.chainOf("McDonald's"), 'mcdonalds');
+  assert.equal(T.chainOf('McDonalds Restaurant'), 'mcdonalds');
+  assert.equal(T.chainOf('KFC'), 'kfc');
+  assert.equal(T.chainOf('Domino’s Pizza'), 'dominos');
+  assert.equal(T.chainOf('Greggs'), 'greggs');
+  assert.equal(T.chainOf('The Golden Wok'), null);
+  assert.equal(T.chainOf("Leon's Chippy"), null, 'an independent that merely shares a first name');
+  const el = (id: number, name: string, dLat: number) => ({ type: 'node', id, lat: 53.99 + dLat, lon: -1.54, tags: { name, amenity: 'fast_food' } });
+  const spots = T.parseOverpass(
+    { elements: [el(1, 'KFC', 0.02), el(2, 'KFC', 0.005), el(3, "McDonald's", 0.01), el(4, "McDonald's", 0.03), el(5, 'Spice Hut', 0.04), el(6, 'Spice Hut', 0.05)] },
+    { lat: 53.99, lon: -1.54 }
+  );
+  assert.deepEqual(spots.map((s) => s.id), ['osm_n2', 'osm_n3', 'osm_n5', 'osm_n6'], 'nearest KFC and McDonald’s only; independents all stay');
+  // Branches already in a saved hub collapse in the league too, keeping the most-scored (else nearest).
+  const now = new Date().toISOString();
+  const mk = (id: string, name: string, dLat: number) => ({ id, name, cuisine: 'Burgers', source: 'osm' as const, lat: 53.99 + dLat, lon: -1.54, updatedAt: now });
+  const hub = {
+    ...T.emptyHub(),
+    spots: [mk('a', 'KFC', 0.001), mk('b', 'KFC', 0.02), mk('c', 'Wok This Way', 0.01)],
+    ratings: [
+      { id: 'b|mum', spotId: 'b', who: 'Mum', stars: 5, updatedAt: now },
+      { id: 'b|dad', spotId: 'b', who: 'Dad', stars: 4, updatedAt: now },
+    ],
+  };
+  const league = T.buildLeague(hub, { lat: 53.99, lon: -1.54 });
+  assert.deepEqual(league.map((r) => r.spot.id), ['b', 'c'], 'the scored KFC wins; one row per chain');
+});
+
+test('Takeaways: the map search also catches curry houses and delivery restaurants that were never tagged as takeaways', async () => {
+  const T = await import('./takeaways');
+  const q = T.overpassQuery(53.99, -1.54, 3000);
+  assert.ok(q.includes('"delivery"="yes"') && q.includes('"cuisine"~"indian|chinese'));
+  const spots = T.parseNominatimSpots([
+    [
+      { osm_type: 'node', osm_id: 1, lat: '53.99', lon: '-1.54', category: 'amenity', type: 'restaurant', name: 'Taj Tandoori', extratags: { cuisine: 'indian' } },
+      { osm_type: 'node', osm_id: 2, lat: '53.99', lon: '-1.54', category: 'amenity', type: 'restaurant', name: 'Le Fine Dining', extratags: { cuisine: 'french' } },
+      { osm_type: 'node', osm_id: 3, lat: '53.99', lon: '-1.54', category: 'amenity', type: 'restaurant', name: 'Dine In Only', extratags: { cuisine: 'indian', takeaway: 'no' } },
+    ],
+  ]);
+  assert.deepEqual(spots.map((s) => s.name), ['Taj Tandoori']);
+});
+
+test('Takeaways: a place can be added from its own website', async () => {
+  const T = await import('./takeaways');
+  const page = `<html><head><title>Golden Wok | Order online</title><script type="application/ld+json">{"@context":"https://schema.org","@type":"Restaurant","name":"The Golden Wok","servesCuisine":"chinese","telephone":"01423 555123","address":{"streetAddress":"4 High St","addressLocality":"Harrogate","postalCode":"HG1 1AA"},"geo":{"latitude":53.99,"longitude":-1.54}}</script></head></html>`;
+  assert.deepEqual(T.placeFromHtml(page), {
+    name: 'The Golden Wok',
+    cuisine: 'Chinese',
+    address: '4 High St, Harrogate, HG1 1AA',
+    phone: '01423 555123',
+    lat: 53.99,
+    lon: -1.54,
+  });
+  assert.deepEqual(T.placeFromHtml('<html><head><title>Spice Hut - Takeaway in Leeds</title></head></html>'), { name: 'Spice Hut' });
+  assert.equal(T.placeFromHtml('<html></html>'), null);
+
+  const { usePageFetcher, useStore } = await import('../../server');
+  useStore(createFileStore(null));
+  usePageFetcher((async (url: string) => ({ html: url.includes('blank') ? '<html></html>' : page, url })) as any);
+  await withServer(async (baseUrl) => {
+    const lookup = (h: any, body: any) => fetch(`${baseUrl}/api/takeaways/lookup`, { method: 'POST', headers: authed(h), body: JSON.stringify(body) });
+    assert.equal((await fetch(`${baseUrl}/api/takeaways/lookup`, { method: 'POST', headers: json, body: '{}' })).status, 401, 'family groups only');
+    const a = await newHousehold(baseUrl);
+    assert.equal((await lookup(a, {})).status, 400);
+    const ok = await (await lookup(a, { url: 'https://goldenwok.example' })).json();
+    assert.equal(ok.details.name, 'The Golden Wok');
+    assert.equal(ok.website, 'https://goldenwok.example');
+    const none = await lookup(a, { url: 'https://blank.example' });
+    assert.equal(none.status, 422);
+    assert.match((await none.json()).error, /type the name/i);
+  });
+  const { fetchPublicPage } = await import('../server/fetchPage');
+  usePageFetcher(fetchPublicPage);
+});

@@ -6,6 +6,7 @@ import {
   emptyHub,
   mergeHub,
   type LeagueRow,
+  type PlaceDetails,
   type SharedSpot,
   type SpotRating,
 } from '../utils/takeaways';
@@ -22,7 +23,9 @@ export type SharedTakeaways = {
   discover: (radiusM?: number) => Promise<{ ok: boolean; message: string }>;
   rate: (spotId: string, who: string, stars: number, likes: string, dislikes: string) => void;
   hideSpot: (id: string, hidden: boolean) => void;
-  addSpot: (name: string, cuisine: string, who: string) => string | null;
+  addSpot: (name: string, cuisine: string, who: string, extra?: Partial<Pick<SharedSpot, 'website' | 'address' | 'phone' | 'lat' | 'lon'>>) => string | null;
+  /** Reads a restaurant's own web page for its name, cuisine, address and phone. Nothing is added until the person confirms. */
+  lookupLink: (url: string) => Promise<{ ok: boolean; message: string; website?: string; details?: PlaceDetails }>;
 };
 
 const KEY = 'takeaway_hub';
@@ -192,12 +195,26 @@ export function useSharedTakeaways(
     if (spot) edit({ spots: [{ ...spot, hidden: hidden || undefined, updatedAt: new Date().toISOString() }] });
   };
 
-  const addSpot: SharedTakeaways['addSpot'] = (name, cuisine, who) => {
+  const addSpot: SharedTakeaways['addSpot'] = (name, cuisine, who, extra = {}) => {
     const id = 'man_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     if (!name.trim()) return null;
-    edit({ spots: [{ id, name, cuisine, source: 'manual', addedBy: who, updatedAt: new Date().toISOString() }] });
+    edit({ spots: [{ id, name, cuisine, source: 'manual', addedBy: who, ...extra, updatedAt: new Date().toISOString() }] });
     return id;
   };
 
-  return { hub, league: buildLeague(hub, hub.place), online, busy, findTown, discover, rate, hideSpot, addSpot };
+  const lookupLink: SharedTakeaways['lookupLink'] = async (url) => {
+    if (!hid) return { ok: false, message: 'Start a family group first.' };
+    setBusy(true);
+    try {
+      const { res, json } = await post('/api/takeaways/lookup', { url });
+      if (res.ok && json?.details) return { ok: true, message: 'Found it. Check the details, then add it.', website: json.website, details: json.details };
+      return { ok: false, message: String(json?.error || 'Couldn’t read that page.'), website: typeof json?.website === 'string' ? json.website : undefined };
+    } catch {
+      return { ok: false, message: 'Couldn’t reach the server.' };
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return { hub, league: buildLeague(hub, hub.place), online, busy, findTown, discover, rate, hideSpot, addSpot, lookupLink };
 }
