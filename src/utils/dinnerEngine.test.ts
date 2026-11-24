@@ -1039,3 +1039,16 @@ test('Freezer: totals, ordering, age and sanitising', async () => {
   assert.deepEqual(f.sanitizeFreezer('garbage'), []);
 });
 
+
+test('Backup check: a damaged freezer list is refused, a good one passes', async () => {
+  const { checkBackup } = await import('./backup');
+  const good = { name: 'Chilli', portions: 2, totalPortions: 3, frozenDate: '2026-01-01T12:00:00Z' };
+  assert.equal(checkBackup({ freezer: [good] }).ok, true);
+  assert.equal(checkBackup({ freezer: [] }).ok, true, 'an empty freezer is a valid backup');
+  const bad = (freezer: unknown) => checkBackup({ meals: [], freezer }) as { ok: false; error: string };
+  assert.match(bad('nope').error, /freezer/);
+  assert.match(bad([{ portions: 2 }]).error, /freezer/, 'missing name');
+  assert.match(bad([{ name: 'Soup', portions: 'many' }]).error, /freezer/, 'portions not a number');
+  assert.match(bad([{ name: 'Soup', portions: -1 }]).error, /freezer/, 'negative portions');
+  assert.match(bad(Array.from({ length: 301 }, () => good)).error, /freezer/, 'too many');
+});

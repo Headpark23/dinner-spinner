@@ -30,7 +30,7 @@ The Freezer tab is built and, as of PR 31, shared with the household like the fr
 3. **Count it in "Cook from what we have" (S).** A batch in the freezer is a dinner that needs nothing from the shop. Offer it first in `CupboardSheet`, with the "Eat soon" ones at the front.
 4. **Leftovers (item 6) goes into it.** After dinner, "made extra?" can either add a fridge item with a use-by or send the rest to the freezer in one tap. See item 6 below.
 5. **Stats (S).** Portions eaten from the freezer feed the milestones in item 12.
-6. **Backup check (S).** `utils/backup.ts` (`checkBackup`) validates every other store but not `freezer`. It is sanitised on import, but add it to the checker so a damaged freezer list is reported like the others.
+6. ~~Backup check~~ **Done.** `checkBackup` now refuses a backup whose freezer list is damaged (not a list, over 300 batches, missing a name, or a bad portion count), with the same "nothing was changed" message as the fridge.
 
 ## Remaining work by item
 
@@ -90,7 +90,7 @@ The Freezer tab is built and, as of PR 31, shared with the household like the fr
 
 ## Suggested order
 
-1. ~~Freezer household sync~~ (done). Next, the small **backup check** for the freezer (follow-up 6), and the per-operation id that stops a lost reply double-ticking a portion (fridge and freezer).
+1. ~~Freezer household sync and backup check~~ (done). Next, the per-operation id that stops a lost reply double-ticking a portion (fridge and freezer).
 2. **Quick wins that finish half-built features:** wake lock and locked-screen alerts (3), update and install prompts (2), merge the shop lists (7), cost per head (8).
 3. **Planner upgrades** (1) together with freezer nights and "Cook from what we have" (follow-ups 2 and 3, item 10), since all touch the same plan and spin code.
 4. **Engine pass** for per-person diets (5), leftovers (6) and seasons (11), so `filterEligibleMeals` and `selectWeightedMeal` change once with shared tests.
