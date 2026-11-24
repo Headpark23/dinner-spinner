@@ -1,6 +1,7 @@
 import type { Meal } from '../types';
 import { DietId, mealFitsDiets } from './diets';
 import { withTweaks } from './dinnerEngine';
+import { mentions } from './avoid';
 
 /**
  * Keeps the recipe book in step with what the household loves and refuses.
@@ -14,14 +15,14 @@ import { withTweaks } from './dinnerEngine';
 
 const norm = (s: string) => s.trim().toLowerCase();
 
-const has = (ingredient: string, term: string) => ingredient.toLowerCase().includes(term);
+const has = (ingredient: string, term: string) => mentions(ingredient, term);
 
 /** Does the dish (with the household's own additions) contain any of these? */
 export function mealContains(meal: Meal, terms: string[]): boolean {
   const wanted = terms.map(norm).filter(Boolean);
   if (wanted.length === 0) return false;
   const ingredients = withTweaks(meal).ingredients;
-  return ingredients.some((ing) => wanted.some((t) => has(ing, t)));
+  return [meal.title, ...ingredients].some((ing) => wanted.some((t) => has(ing, t)));
 }
 
 /** How many of the loved ingredients appear in the dish. */
