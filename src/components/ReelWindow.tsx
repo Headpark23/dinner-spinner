@@ -4,7 +4,7 @@ import { Lock, ChevronDown, Dices, RotateCcw } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { COMBO_HEADERS } from '../data/initialData';
 import { Button, cx, timeLabel, effortLabel } from './ui';
-import { costText } from '../utils/cost';
+import { costText, costPerHeadText } from '../utils/cost';
 
 interface ReelWindowProps {
   onSpin: () => void;
@@ -48,6 +48,7 @@ export const ReelWindow: React.FC<ReelWindowProps> = ({ onSpin }) => {
     meals,
     eligiblePool,
     costToBuy,
+    costEach,
     comboReels,
     activeView,
     toggleSound,
@@ -183,7 +184,7 @@ export const ReelWindow: React.FC<ReelWindowProps> = ({ onSpin }) => {
                       {activeMealResult && (
                         <p className="mt-1 text-[12px] text-on-enamel-2">
                           {timeLabel(activeMealResult.timeStake)} · {effortLabel(activeMealResult.effort)} ·{' '}
-                          {activeMealResult.cuisine} · {costText(costToBuy(activeMealResult))}
+                          {activeMealResult.cuisine} · {costText(costToBuy(activeMealResult))} · {costPerHeadText(costEach(activeMealResult))}
                         </p>
                       )}
                     </div>

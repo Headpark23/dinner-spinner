@@ -61,7 +61,7 @@ import {
 import { mentionsAny } from '../utils/avoid';
 import { leftoverFridgeItem, MAX_LEFTOVER_PORTIONS } from '../utils/leftovers';
 import { DietMode, isDietMode, effectiveRestrictions, cleanPersonPrefs } from '../utils/memberDiets';
-import { missingCost, costLimitValue, type CostLimit } from '../utils/cost';
+import { missingCost, costPerHead, costLimitValue, type CostLimit } from '../utils/cost';
 import { buildReels, reelExtras, jackpotRecipeId, JACKPOT_FILL, type ComboMode } from '../utils/reelParts';
 
 interface DinnerContextType {
@@ -75,6 +75,11 @@ interface DinnerContextType {
   setCostLimit: (c: CostLimit) => void;
   /** Roughly what a dish would cost to buy, given what is in the fridge and cupboards. */
   costToBuy: (meal: Meal) => number;
+  /** Rough cost per person from the price table, ignoring what is in the house. */
+  costEach: (meal: Meal) => number;
+  /** What spins, the planner and swaps leave out: the household lists plus, in "skip" mode, each person's own. */
+  restrictions: { diets: DietId[]; avoid: string[] };
+  costRule: { limit: number; of: (m: Meal) => number };
   costRelaxed: boolean;
   effort: EffortFilter;
   setEffort: (e: EffortFilter) => void;
@@ -558,7 +563,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (weekThemes[wd] && THEMES.some((t) => t.id === weekThemes[wd])) themes[d] = weekThemes[wd];
     });
     setWeekPlan((prev) =>
-      suggestWeek(meals, { days, plan: tidyPlan(prev, today, meals), themes, diets: effDiets, banned: effBanned })
+      suggestWeek(meals, { days, plan: tidyPlan(prev, today, meals), themes, diets: effDiets, banned: effBanned, cost: costRule })
     );
   };
   const clearWeekPlan = () => setWeekPlan({});
@@ -930,6 +935,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Eligible pool computation for current filters
   const costToBuy = (m: Meal) => missingCost(m, pantry, staples);
+  const costEach = (m: Meal) => costPerHead(m, staples);
   const costRule = { limit: costLimitValue(costLimit), of: costToBuy };
   const eligibleInfo = filterEligibleMeals(meals, timeStake, effort, effBanned, effDiets, costRule);
   const eligiblePoolCount = eligibleInfo.pool.length;
@@ -2272,6 +2278,9 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         costLimit,
         setCostLimit,
         costToBuy,
+        costEach,
+        restrictions,
+        costRule,
         costRelaxed,
 
         consecutiveRejections,
