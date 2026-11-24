@@ -1,5 +1,6 @@
 import fs from 'fs';
 import type { ShoppingItem } from '../types';
+import type { TakeawayHub } from '../utils/takeaways';
 
 export type Snapshot = { syncedAt: string; syncId: string; data: any };
 
@@ -18,6 +19,8 @@ export type Household = {
   fridge?: { version: number; seeded: boolean; items: unknown[] };
   /** Dinners the household has cooked, merged from every phone. */
   cookLog?: unknown[];
+  /** Local takeaways, the family's scores and notes. Merged by id from every phone. */
+  takeaways?: TakeawayHub;
   /** Bumped on every save so two phones writing at once can't silently overwrite each other. */
   _rev?: number;
   /** Older files kept the saved copy inline. Only the file store still uses this. */
