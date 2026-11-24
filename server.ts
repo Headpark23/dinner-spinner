@@ -611,23 +611,61 @@ function withTimeout<T>(promise: Promise<T>, ms = GEMINI_TIMEOUT_MS): Promise<T>
   });
 }
 
-// Gemini is sometimes overloaded (503) or rate limited (429). Try the main model, then a second one, each with its
-// own short timeout so both fit inside the serverless time limit.
-const GEMINI_MODELS = ['gemini-3.8-flash', 'gemini-2.5-flash'];
-const GEMINI_ATTEMPT_MS = Math.min(GEMINI_TIMEOUT_MS, 12000);
-const isBusyError = (e: any) => /\b(503|429|UNAVAILABLE|RESOURCE_EXHAUSTED|overloaded|high demand|timed out|abort)/i.test(String(e?.message || e));
+// Gemini is sometimes overloaded (503) or rate limited (429), and old models get retired (404). So: try the main model,
+// then another current flash model (found by asking Gemini what exists, not hard-coded), then the main one once more.
+// The whole thing has a time budget that fits inside the serverless limit.
+const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+const GEMINI_BUDGET_MS = 26000;
+const isBusyError = (e: any) =>
+  /\b(503|429|404|UNAVAILABLE|RESOURCE_EXHAUSTED|NOT_FOUND|overloaded|high demand|timed out|abort)/i.test(String(e?.message || e));
+
+let fallbackCache: { at: number; models: string[] } | null = null;
+async function fallbackModels(): Promise<string[]> {
+  if (fallbackCache && Date.now() - fallbackCache.at < 10 * 60_000) return fallbackCache.models;
+  const found: { name: string; v: number }[] = [];
+  try {
+    const pager: any = await withTimeout(ai!.models.list(), 4000);
+    for await (const m of pager) {
+      const name = String(m.name || '').replace(/^models\//, '');
+      const actions: string[] = m.supportedActions || [];
+      if (!/flash/i.test(name) || /image|tts|audio|live|embed|robot|computer|lite|thinking|exp/i.test(name)) continue;
+      if (actions.length && !actions.includes('generateContent')) continue;
+      if (name === PRIMARY_MODEL) continue;
+      found.push({ name, v: parseFloat((name.match(/(\d+(?:\.\d+)?)/) || [])[1] || '0') });
+    }
+  } catch (e) {
+    console.warn('Could not list Gemini models:', (e as any)?.message);
+  }
+  found.sort((x, y) => y.v - x.v);
+  const models = found.slice(0, 2).map((m) => m.name);
+  console.warn('Gemini fallback models:', models.join(', ') || '(none)');
+  fallbackCache = { at: Date.now(), models };
+  return models;
+}
+
 async function generateWithFallback(request: any): Promise<any> {
+  const started = Date.now();
+  const tryModel = (model: string, ms: number) =>
+    withTimeout(ai!.models.generateContent({ ...request, model, config: { ...request.config, abortSignal: AbortSignal.timeout(ms) } }), ms);
+  const left = () => GEMINI_BUDGET_MS - (Date.now() - started);
   let last: any;
-  for (const model of GEMINI_MODELS) {
-    try {
-      return await withTimeout(
-        ai!.models.generateContent({ ...request, model, config: { ...request.config, abortSignal: AbortSignal.timeout(GEMINI_ATTEMPT_MS) } }),
-        GEMINI_ATTEMPT_MS
-      );
-    } catch (e) {
-      last = e;
-      if (!isBusyError(e)) throw e;
-      console.warn(`Gemini ${model} busy, trying the next model:`, (e as any)?.message);
+  const queue: (string | null)[] = [PRIMARY_MODEL, null, PRIMARY_MODEL]; // null = "the fallbacks"
+  const tried = new Set<string>();
+  for (let i = 0; i < queue.length; i++) {
+    let models: string[];
+    if (queue[i] === null) models = (await fallbackModels()).filter((m) => !tried.has(m)).slice(0, 1);
+    else models = [queue[i] as string];
+    for (const model of models) {
+      const ms = Math.min(i === 0 ? 10000 : 8000, left() - 500);
+      if (ms < 2000) throw last || new Error('Gemini timed out');
+      try {
+        return await tryModel(model, ms);
+      } catch (e) {
+        last = e;
+        tried.add(model);
+        if (!isBusyError(e)) throw e;
+        console.warn(`Gemini ${model} unavailable, trying again:`, (e as any)?.message);
+      }
     }
   }
   throw last;
