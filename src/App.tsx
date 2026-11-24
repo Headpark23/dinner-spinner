@@ -149,9 +149,9 @@ const BackToMore: React.FC = () => {
   return (
     <button
       onClick={() => setActiveView(7)}
-      className="-ml-2 mb-2 inline-flex h-10 items-center gap-0.5 rounded-lg px-2 text-[14px] font-semibold text-ink-2 hover:text-ink"
+      className="mb-3 inline-flex h-10 items-center gap-1 rounded-full border border-line bg-card pr-4 pl-2 text-[14px] font-semibold text-ink shadow-[0_1px_2px_rgba(31,26,21,0.05)] hover:border-line-strong"
     >
-      <ChevronLeft className="h-5 w-5" /> More
+      <ChevronLeft className="h-5 w-5" /> Back to More
     </button>
   );
 };
