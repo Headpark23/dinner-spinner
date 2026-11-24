@@ -1565,7 +1565,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (route === 'freezer') {
       addFreezerItem({ name: entry.title, portions: n, mealId: entry.mealId, note: 'Leftovers' });
     } else {
-      addPantryItem(leftoverFridgeItem({ title: entry.title, makesLeftovers: meal?.makesLeftovers }, n));
+      addPantryItem(leftoverFridgeItem({ title: entry.title, ingredients: meal?.ingredients, tags: meal?.tags, makesLeftovers: meal?.makesLeftovers }, n));
     }
     setCookLog((prev) => prev.map((c) => (c.id === cookLogId ? { ...c, leftovers: { route, portions: n } } : c)));
   };
