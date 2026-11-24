@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { Camera, FileText, Image as ImageIcon, Link2, LoaderCircle, ClipboardPaste } from 'lucide-react';
 import { useDinner } from '../context/DinnerContext';
-import { textFromDocument } from '../utils/docText';
+import { textFromDocument, textFromLegacyDoc, previewFromPages } from '../utils/docText';
 import { extractRecipeFromHtml, parseRecipeText, recipeFromJsonLd, type ImportedRecipe } from '../utils/recipeImport';
 import { Button, TextInput, cx } from './ui';
 
@@ -28,6 +28,26 @@ const readAsText = (file: File) =>
     r.onload = () => resolve(String(r.result));
     r.onerror = () => reject(new Error('Couldn’t read that file.'));
     r.readAsText(file);
+  });
+
+/** Scale a photo down to at most 1800px and re-encode as JPEG. Returns null if the browser can't do it. */
+const shrinkImage = (dataUrl: string) =>
+  new Promise<string | null>((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const scale = Math.min(1, 1800 / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      } catch {
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = dataUrl;
   });
 
 /**
@@ -71,19 +91,35 @@ export const ImportRecipe: React.FC<{ onDraft: (recipe: ImportedRecipe, note: st
 
   const scan = async (file: File) => {
     setError('');
-    if (file.size > 8_000_000) return fail('That file is too big. Try a smaller photo, or paste the text.');
+    // The host rejects requests over about 4.5MB, and base64 adds a third, so a PDF has to be under ~3MB.
+    const isImg = file.type.startsWith('image/');
+    if (!isImg && file.size > 3_000_000) {
+      return fail('That PDF is too big to send (over 3MB). Export a smaller or single-page copy, take a photo of the page, or paste the text.');
+    }
+    if (file.size > 40_000_000) return fail('That file is too big. Try a smaller photo, or paste the text.');
     setBusy(true);
     try {
-      const dataUrl = await readAsDataUrl(file);
+      let dataUrl = await readAsDataUrl(file);
+      let sendType = file.type || 'image/jpeg';
+      if (isImg && file.size > 1_500_000) {
+        // Phone photos are huge; shrink them so they upload quickly and fit the limit. Text stays readable at 1800px.
+        const small = await shrinkImage(dataUrl);
+        if (small) {
+          dataUrl = small;
+          sendType = 'image/jpeg';
+        }
+      }
       const res = await fetch('/api/pantry/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ type: 'recipe-photo', imageBase64: dataUrl, mimeType: file.type || 'image/jpeg' }),
+        body: JSON.stringify({ type: 'recipe-photo', imageBase64: dataUrl, mimeType: sendType }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.meal) {
         return fail(
-          res.status === 503 && json.busy
+          res.status === 413
+            ? 'That file is too big to send. Try a smaller PDF or photo, or paste the text.'
+            : res.status === 503 && json.busy
             ? String(json.error)
             : res.status === 503
             ? 'Reading photos and PDFs isn’t switched on yet. A web link or pasted text works now.'
@@ -127,8 +163,15 @@ export const ImportRecipe: React.FC<{ onDraft: (recipe: ImportedRecipe, note: st
       }
       return fail('Couldn’t read the text in that document. Copy the recipe and use Paste text instead.');
     }
-    if (/\.(doc|pages)$/.test(name)) {
-      return fail('Old Word (.doc) and Pages files can’t be read directly. Save it as .docx or PDF, or copy the text and use Paste text.');
+    if (/\.doc$/.test(name)) {
+      const rough = textFromLegacyDoc(new Uint8Array(await file.arrayBuffer()));
+      if (rough) return onDraft(parseRecipeText(rough), 'Read from an old Word file, which is rougher than a newer one. Check it over carefully, then save.');
+      return fail('Couldn’t find readable text in that .doc file. Save it as .docx or PDF, or copy the text and use Paste text.');
+    }
+    if (/\.pages$/.test(name)) {
+      const preview = await previewFromPages(new Uint8Array(await file.arrayBuffer())).catch(() => null);
+      if (preview) return scan(new File([preview.bytes as BlobPart], preview.name, { type: preview.type }));
+      return fail('Couldn’t open that Pages file. In Pages choose File, Export To, PDF (or Word), then add that, or copy the text and use Paste text.');
     }
     if (/\.rtf$/.test(name)) {
       return fail('RTF files can’t be read directly. Save it as .docx or PDF, or copy the text and use Paste text.');
@@ -244,7 +287,7 @@ export const ImportRecipe: React.FC<{ onDraft: (recipe: ImportedRecipe, note: st
           <input
             ref={fileRef}
             type="file"
-            accept="application/pdf,.pdf,image/*,text/*,.txt,.md,.html,.htm,.json,.rtf,.doc,.docx"
+            accept="application/pdf,.pdf,image/*,text/*,.txt,.md,.html,.htm,.json,.rtf,.doc,.docx,.odt,.pages"
             onChange={pick(fromFile)}
             className="hidden"
             aria-hidden="true"

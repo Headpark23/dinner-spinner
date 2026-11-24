@@ -83,3 +83,68 @@ export async function textFromDocument(buf: Uint8Array): Promise<string | null> 
   }
   return null;
 }
+
+const JUNK = /times new roman|microsoft (office )?word|normal\.dot|msword|calibri|arial|symbol|wingdings|document summary|root entry|comp obj|worddocument|macrosoft|default paragraph|table normal|header|footer|heading \d|body text|\bbjbj\b|_pid_|\bFIB\b/i;
+
+/**
+ * Best-effort text from an old binary Word (.doc) file. We don't parse the format: Word keeps the body as plain 8-bit
+ * or UTF-16 text, so we pull out the long readable runs and drop the font and style names around them. It is rougher
+ * than .docx, so the caller should treat the result as a draft.
+ */
+export function textFromLegacyDoc(buf: Uint8Array): string | null {
+  if (!(buf[0] === 0xd0 && buf[1] === 0xcf && buf[2] === 0x11 && buf[3] === 0xe0)) return null;
+  const runs: { at: number; text: string }[] = [];
+  const ok = (c: number) => (c >= 32 && c < 127) || c === 13 || c === 10 || c === 9 || c === 0xa3 || c === 0xbd || c === 0xb0 || c === 0x2019;
+  // 8-bit runs
+  let start = -1;
+  for (let i = 0; i <= buf.length; i++) {
+    const good = i < buf.length && ok(buf[i]);
+    if (good && start < 0) start = i;
+    if (!good && start >= 0) {
+      if (i - start >= 24) runs.push({ at: start, text: String.fromCharCode(...buf.subarray(start, i)) });
+      start = -1;
+    }
+  }
+  // UTF-16LE runs
+  start = -1;
+  for (let i = 0; i + 1 <= buf.length; i += 1) {
+    const lo = buf[i], hi = i + 1 < buf.length ? buf[i + 1] : 1;
+    const good = hi === 0 && ok(lo);
+    if (good && start < 0) start = i;
+    if (!good && start >= 0) {
+      if ((i - start) / 2 >= 24) {
+        let t = '';
+        for (let j = start; j < i; j += 2) t += String.fromCharCode(buf[j]);
+        runs.push({ at: start, text: t });
+      }
+      start = -1;
+      if (!(hi === 0 && ok(lo))) continue;
+    }
+    if (good) i += 1;
+  }
+  runs.sort((a, b) => a.at - b.at);
+  const text = runs
+    .map((r) => r.text)
+    .filter((t) => !JUNK.test(t) || t.length > 200)
+    .join('\n')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[\t ]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return text.length >= 20 ? text : null;
+}
+
+/** The preview a Pages file carries (a PDF or picture of its first page), for the scanner to read. */
+export async function previewFromPages(buf: Uint8Array): Promise<{ bytes: Uint8Array; type: string; name: string } | null> {
+  const tries: [string, string][] = [
+    ['QuickLook/Preview.pdf', 'application/pdf'],
+    ['QuickLook/Thumbnail.jpg', 'image/jpeg'],
+    ['preview.jpg', 'image/jpeg'],
+    ['Thumbnails/PageCapThumbnail.jpg', 'image/jpeg'],
+  ];
+  for (const [entry, type] of tries) {
+    const bytes = await readZipEntry(buf, entry);
+    if (bytes && bytes.length > 500) return { bytes, type, name: entry.split('/').pop()! };
+  }
+  return null;
+}
