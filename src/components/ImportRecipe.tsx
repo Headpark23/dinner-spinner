@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { Camera, FileText, Image as ImageIcon, Link2, LoaderCircle, ClipboardPaste } from 'lucide-react';
 import { useDinner } from '../context/DinnerContext';
+import { textFromDocument } from '../utils/docText';
 import { extractRecipeFromHtml, parseRecipeText, recipeFromJsonLd, type ImportedRecipe } from '../utils/recipeImport';
 import { Button, TextInput, cx } from './ui';
 
@@ -9,7 +10,7 @@ type Way = 'link' | 'photo' | 'file' | 'text';
 const WAYS: { id: Way; label: string; hint: string; icon: React.ReactNode }[] = [
   { id: 'link', label: 'Web link', hint: 'From a recipe site', icon: <Link2 className="h-5 w-5" /> },
   { id: 'photo', label: 'Photo', hint: 'Book, card or screen', icon: <Camera className="h-5 w-5" /> },
-  { id: 'file', label: 'PDF or file', hint: 'PDF, text, saved page', icon: <FileText className="h-5 w-5" /> },
+  { id: 'file', label: 'PDF or file', hint: 'PDF, Word, text, saved page', icon: <FileText className="h-5 w-5" /> },
   { id: 'text', label: 'Paste text', hint: 'From notes or a message', icon: <ClipboardPaste className="h-5 w-5" /> },
 ];
 
@@ -82,7 +83,9 @@ export const ImportRecipe: React.FC<{ onDraft: (recipe: ImportedRecipe, note: st
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.meal) {
         return fail(
-          res.status === 503
+          res.status === 503 && json.busy
+            ? String(json.error)
+            : res.status === 503
             ? 'Reading photos and PDFs isn’t switched on yet. A web link or pasted text works now.'
             : res.status === 401
               ? 'Start a family group first, because reading photos and PDFs is for groups. A web link or pasted text works without one.'
@@ -115,8 +118,20 @@ export const ImportRecipe: React.FC<{ onDraft: (recipe: ImportedRecipe, note: st
     const isImage = file.type.startsWith('image/');
     const isPdf = file.type === 'application/pdf' || name.endsWith('.pdf');
     if (isImage || isPdf) return scan(file);
-    if (/\.(docx?|pages|odt|rtf)$/.test(name)) {
-      return fail('Word and Pages files can’t be read directly. Save it as a PDF, or copy the text and use Paste text.');
+    if (/\.(docx|odt)$/.test(name)) {
+      try {
+        const doc = await textFromDocument(new Uint8Array(await file.arrayBuffer()));
+        if (doc && doc.trim()) return onDraft(parseRecipeText(doc), 'Read from your document. Check it over, then save.');
+      } catch {
+        // fall through to the message below
+      }
+      return fail('Couldn’t read the text in that document. Copy the recipe and use Paste text instead.');
+    }
+    if (/\.(doc|pages)$/.test(name)) {
+      return fail('Old Word (.doc) and Pages files can’t be read directly. Save it as .docx or PDF, or copy the text and use Paste text.');
+    }
+    if (/\.rtf$/.test(name)) {
+      return fail('RTF files can’t be read directly. Save it as .docx or PDF, or copy the text and use Paste text.');
     }
     try {
       const body = await readAsText(file);
@@ -223,7 +238,7 @@ export const ImportRecipe: React.FC<{ onDraft: (recipe: ImportedRecipe, note: st
             <FileText className="h-4 w-4" /> Choose a file
           </Button>
           <p className="text-[12px] text-ink-3">
-            PDF, text or notes, a saved web page, or a photo. Text files and saved pages work without any setup;
+            PDF, Word (.docx), text or notes, a saved web page, or a photo. Text files and saved pages work without any setup;
             PDFs and photos are read by the scanner{aiEnabled ? '' : ' (not switched on yet)'}.
           </p>
           <input
