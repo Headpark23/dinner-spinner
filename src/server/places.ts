@@ -1,7 +1,9 @@
 import { HttpError } from './store';
 import {
   FALLBACK_TERMS,
+  GOOGLE_PAGES,
   GOOGLE_QUERIES,
+  mergeSpotLists,
   overpassQuery,
   parseGeocode,
   parseGooglePlaces,
@@ -41,7 +43,7 @@ const sleepFor = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 const GOOGLE_SEARCH = 'https://places.googleapis.com/v1/places:searchText';
 /** Only these fields are asked for: they decide which price band a request falls in. */
-const GOOGLE_FIELDS = 'places.id,places.displayName,places.formattedAddress,places.location,places.types,places.primaryTypeDisplayName,places.businessStatus,places.nationalPhoneNumber,places.websiteUri';
+const GOOGLE_FIELDS = 'nextPageToken,places.id,places.displayName,places.formattedAddress,places.location,places.types,places.primaryTypeDisplayName,places.businessStatus,places.nationalPhoneNumber,places.websiteUri';
 
 /**
  * With a Google Places key, takeaways come from Google (fuller coverage); without one, or if Google fails,
@@ -121,25 +123,37 @@ export function createPlaces(
       low: { latitude: lat - dLat, longitude: lon - dLon },
       high: { latitude: lat + dLat, longitude: lon + dLon },
     };
-    const replies = await Promise.all(
+    // Every search runs at once; each follows its own pages (20 places a page) one after another.
+    const deadline = Date.now() + 14_000;
+    const perQuery = await Promise.all(
       GOOGLE_QUERIES.map(async (q) => {
-        try {
-          const res = await withTimeout(
-            GOOGLE_SEARCH,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': googleKey!, 'X-Goog-FieldMask': GOOGLE_FIELDS },
-              body: JSON.stringify({ textQuery: q, pageSize: 20, regionCode: 'GB', locationRestriction: { rectangle } }),
-            },
-            9_000
-          );
-          return res.ok ? await res.json() : undefined;
-        } catch {
-          return undefined;
+        const pages: unknown[] = [];
+        let pageToken: string | undefined;
+        for (let page = 0; page < GOOGLE_PAGES; page++) {
+          if (Date.now() > deadline) break;
+          try {
+            const res = await withTimeout(
+              GOOGLE_SEARCH,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': googleKey!, 'X-Goog-FieldMask': GOOGLE_FIELDS },
+                body: JSON.stringify({ textQuery: q, pageSize: 20, regionCode: 'GB', locationRestriction: { rectangle }, ...(pageToken ? { pageToken } : {}) }),
+              },
+              8_000
+            );
+            if (!res.ok) break;
+            const json: any = await res.json();
+            pages.push(json);
+            pageToken = typeof json?.nextPageToken === 'string' && json.nextPageToken ? json.nextPageToken : undefined;
+            if (!pageToken) break;
+          } catch {
+            break;
+          }
         }
+        return pages;
       })
     );
-    const good = replies.filter((r) => r && Array.isArray((r as any).places));
+    const good = perQuery.flat().filter((r) => r && Array.isArray((r as any).places));
     if (good.length === 0) return undefined;
     const spots = parseGooglePlaces(good, { lat, lon }, radiusM);
     return spots.length > 0 ? spots : undefined;
@@ -161,13 +175,24 @@ export function createPlaces(
     },
 
     async takeawaysNear(lat, lon, radiusM) {
-      if (googleKey) {
-        const g = await google(lat, lon, radiusM);
-        if (g) return { spots: g, complete: false };
-      }
-      const json = await overpass(lat, lon, radiusM);
-      if (json !== undefined) return { spots: parseOverpass(json, { lat, lon }), complete: true };
-      return { spots: await nominatimFallback(lat, lon, radiusM), complete: false };
+      const osm = async (): Promise<Nearby> => {
+        const json = await overpass(lat, lon, radiusM);
+        if (json !== undefined) return { spots: parseOverpass(json, { lat, lon }), complete: true };
+        return { spots: await nominatimFallback(lat, lon, radiusM), complete: false };
+      };
+      if (!googleKey) return osm();
+      // Google and the map data are asked together; the map data adds the small independents Google may miss.
+      let mapError: unknown;
+      const [g, m] = await Promise.all([
+        google(lat, lon, radiusM),
+        osm().catch((e) => {
+          mapError = e;
+          return undefined;
+        }),
+      ]);
+      if (g) return { spots: m ? mergeSpotLists(g, m.spots, { lat, lon }) : g, complete: false };
+      if (m) return m;
+      throw mapError;
     },
   };
 }
