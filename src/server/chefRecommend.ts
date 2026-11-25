@@ -110,7 +110,7 @@ export function createChefRecommender(deps: {
           key,
           withTimeout(
             deps.findPhoto(clean).catch(() => null),
-            3500,
+            2400,
             null
           )
         );
@@ -118,27 +118,31 @@ export function createChefRecommender(deps: {
       return cache.get(key)!;
     };
 
-    await Promise.all(
-      normalized.map(async (rec, idx) => {
-        const rawDishQuery = typeof rawRecs[idx]?.photoQuery === 'string' ? rawRecs[idx].photoQuery : '';
-        const hero = (rawDishQuery ? await lookup(rawDishQuery) : null) || (await lookup(rec.title));
-        if (hero) {
-          rec.imageUrl = hero.url;
-          rec.photoCredit = hero.credit;
-        }
+    await withTimeout(
+      Promise.all(
+        normalized.map(async (rec, idx) => {
+          const rawDishQuery = typeof rawRecs[idx]?.photoQuery === 'string' ? rawRecs[idx].photoQuery : '';
+          const hero = (rawDishQuery ? await lookup(rawDishQuery) : null) || (await lookup(rec.title));
+          if (hero) {
+            rec.imageUrl = hero.url;
+            rec.photoCredit = hero.credit;
+          }
 
-        // Enrich up to 3 distinct key step photos per dish so instructions have rich visual cues.
-        await Promise.all(
-          rec.steps.slice(0, 4).map(async (step) => {
-            if (!step.photoQuery) return;
-            const found = await lookup(step.photoQuery);
-            if (found) {
-              step.imageUrl = found.url;
-              step.photoCredit = found.credit;
-            }
-          })
-        );
-      })
+          // Enrich up to 2 key step photos per dish so instructions have visual cues without blowing serverless time.
+          await Promise.all(
+            rec.steps.slice(0, 2).map(async (step) => {
+              if (!step.photoQuery) return;
+              const found = await lookup(step.photoQuery);
+              if (found) {
+                step.imageUrl = found.url;
+                step.photoCredit = found.credit;
+              }
+            })
+          );
+        })
+      ),
+      3000,
+      []
     );
 
     return { recommendations: normalized };

@@ -75,14 +75,14 @@ ${req.excludeTitles?.length ? `- Do NOT repeat any of these dishes: ${req.exclud
 QUALITY RULES:
 1. Build dishes primarily from the ingredients they ALREADY have. At most 1-2 small optional extras if it elevates the dish, clearly listed in optionalExtras.
 2. Each dish must cite a genuine culinary inspiration in chefInspiration (e.g. "Yotam Ottolenghi-style charred veg & yoghurt", "Kenji López-Alt's crispy-skin pan technique", "Classic Roman trattoria method").
-3. Give 4 to 6 crystal-clear chronological cooking steps in "steps". Each step needs:
-   - title: short 2-5 word stage header (e.g. "Sear until deeply golden")
-   - instruction: specific, actionable chef guidance with heat level, timing, and technique
+3. Give exactly 4 concise, high-impact chronological cooking steps in "steps". Each step needs:
+   - title: short 2-4 word stage header (e.g. "Sear until golden")
+   - instruction: 1-2 crisp sentences with heat level, timing, and technique
    - minutesBefore: integer minutes before serving (descending to 0 for plating)
-   - visualCue: what the cook should see/smell so they know it is right (e.g. "Edges crisp and golden, garlic fragrant not brown")
-   - photoQuery: a clean 2-4 word food photography search phrase for this stage (e.g. "crispy pan seared chicken", "simmering tomato sauce pan", "plated pasta herbs")
-4. Also provide a dish-level "photoQuery" (2-4 clean words of the finished dish, e.g. "shakshuka skillet eggs", "chicken piccata lemon") so we can fetch a real dish photo.
-5. Use UK English (courgette, aubergine, coriander, spring onion, tin, hob).`;
+   - visualCue: short visual check (e.g. "Deep golden crust, fragrant garlic")
+   - photoQuery: clean 2-3 word food photo search phrase (e.g. "seared chicken pan", "simmering tomato sauce")
+4. Also provide a dish-level "photoQuery" (2-3 clean words of the finished dish, e.g. "shakshuka eggs", "chicken piccata") so we can fetch a real dish photo.
+5. Keep every string concise and punchy. Use UK English (courgette, aubergine, coriander, spring onion, tin, hob).`;
 }
 
 export function normalizeChefRecommendations(

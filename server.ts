@@ -988,17 +988,24 @@ async function generateWithFallback(request: any): Promise<any> {
     if (round === 1) fallbacks = await fallbackModels();
     const aliveFallbacks = (fallbacks || []).filter((m) => !dead.has(m));
     const model =
-      round % 2 === 0
+      round === 0
         ? PRIMARY_MODEL
         : aliveFallbacks.length > 0
-          ? aliveFallbacks[Math.floor(round / 2) % aliveFallbacks.length]
+          ? aliveFallbacks[(round - 1) % aliveFallbacks.length]
           : PRIMARY_MODEL;
     if (model && !dead.has(model)) {
-      const ms = Math.min(round === 0 ? 14000 : 9000, left() - 300);
+      const ms = Math.min(round === 0 ? 18000 : 10000, left() - 300);
       if (ms < 2500) throw last || new Error('Gemini timed out');
+      const isLite = /lite/i.test(model);
+      const reqConfig = { ...(request.config || {}) };
+      if (!isLite && reqConfig.thinkingConfig === undefined) {
+        reqConfig.thinkingConfig = { thinkingBudget: 0 };
+      } else if (isLite && 'thinkingConfig' in reqConfig) {
+        delete reqConfig.thinkingConfig;
+      }
       try {
         return await withTimeout(
-          ai!.models.generateContent({ ...request, model, config: { ...request.config, abortSignal: AbortSignal.timeout(ms) } }),
+          ai!.models.generateContent({ ...request, model, config: { ...reqConfig, abortSignal: AbortSignal.timeout(ms) } }),
           ms
         );
       } catch (e) {
@@ -1009,7 +1016,7 @@ async function generateWithFallback(request: any): Promise<any> {
       }
     }
     if (left() < 3500) throw last || new Error('Gemini timed out');
-    await new Promise((r) => setTimeout(r, 900));
+    await new Promise((r) => setTimeout(r, 600));
   }
 }
 
