@@ -1,6 +1,6 @@
 import type { Meal, PantryItem, FreezerItem, TimeStake, EffortLevel } from '../types';
 import { mentionsAny } from './avoid';
-import { calculateMealPantryMatch, isMealCoolingOff } from './dinnerEngine';
+import { calculateMealPantryMatch, isMealCoolingOff, withTweaks } from './dinnerEngine';
 import { DietId, mealFitsDiets } from './diets';
 import { inFreezer, oldestFirst, isEatSoon } from './freezer';
 
@@ -547,4 +547,56 @@ export function pickSurprise(
     if (roll < 0) return pool[i];
   }
   return pool[pool.length - 1];
+}
+
+export interface KitchenRecipeMatch {
+  meal: Meal;
+  /** Recipe ingredients found in the fridge, cupboard or staples. */
+  uses: string[];
+  /** Recipe ingredients that would need buying. */
+  missing: string[];
+  /** Fridge items marked "use next" that it uses up. */
+  rescues: string[];
+  /** Cooked in the last few days: still shown, but ranked after the rest. */
+  coolingOff: boolean;
+}
+
+export interface KitchenRecipeOptions {
+  meals: Meal[];
+  pantry: PantryItem[];
+  /** Staples plus stocked store-cupboard names. */
+  staples: string[];
+  banned: string[];
+  diets: DietId[];
+  nowMs?: number;
+}
+
+/**
+ * "Cook from our recipes": every saved recipe ranked by how much of it is already in the kitchen.
+ * Using more of what's in the house ranks higher, "use next" fridge items count extra, and each thing
+ * left to buy counts against it. Recipes that need nothing from the house are left out.
+ */
+export function kitchenRecipeMatches({ meals, pantry, staples, banned, diets, nowMs }: KitchenRecipeOptions): KitchenRecipeMatch[] {
+  const lowerBanned = banned.map((b) => b.toLowerCase()).filter(Boolean);
+  const out: (KitchenRecipeMatch & { score: number })[] = [];
+  for (const meal of meals) {
+    if (meal.ingredients.length === 0) continue;
+    if (!mealFitsDiets(meal.ingredients, diets)) continue;
+    if (mentionsAny([meal.title, ...meal.ingredients], lowerBanned)) continue;
+    const match = calculateMealPantryMatch(meal, pantry, staples);
+    if (match.matchedCount === 0) continue;
+    const missing = new Set(match.missingItems);
+    const uses = withTweaks(meal).ingredients.filter((i) => !missing.has(i));
+    const coolingOff = isMealCoolingOff(meal, nowMs);
+    const score = match.matchedCount + match.redMatchedItems.length * 1.5 - match.missingItems.length * 0.75 - (coolingOff ? 100 : 0);
+    out.push({ meal, uses, missing: match.missingItems, rescues: match.redMatchedItems, coolingOff, score });
+  }
+  out.sort(
+    (a, b) =>
+      b.score - a.score ||
+      a.missing.length - b.missing.length ||
+      (b.meal.rating || 0) - (a.meal.rating || 0) ||
+      a.meal.title.localeCompare(b.meal.title)
+  );
+  return out.map(({ score: _s, ...rest }) => rest);
 }

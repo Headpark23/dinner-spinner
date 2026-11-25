@@ -29,6 +29,7 @@ import { PlannerSheet } from '../PlannerSheet';
 import { DinnerSteps } from '../DinnerSteps';
 import { FamilyPrompt } from '../FamilyPrompt';
 import { CupboardSheet } from '../CupboardSheet';
+import { KitchenRecipesSheet } from '../KitchenRecipesSheet';
 import { UsedTodaySheet, type UsedTodayInitialMeal } from '../UsedTodaySheet';
 import { FreezerCard } from '../FreezerCard';
 import { MEAL_SLOTS, todayDayKey } from '../../utils/dailyLog';
@@ -109,6 +110,7 @@ export const MachineView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFam
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [plannerOpen, setPlannerOpen] = useState(false);
   const [cupboardOpen, setCupboardOpen] = useState(false);
+  const [kitchenRecipesOpen, setKitchenRecipesOpen] = useState(false);
   const [usedTodayOpen, setUsedTodayOpen] = useState(false);
   const [usedTodayInitial, setUsedTodayInitial] = useState<UsedTodayInitialMeal | null>(null);
   const todayKey = todayDayKey();
@@ -342,27 +344,54 @@ export const MachineView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFam
       <section aria-label="Quick kitchen ways in" className="pt-1">
         <p className="eyebrow mb-2 px-1">Other ways to decide</p>
         <div className="grid grid-cols-2 gap-2.5">
-          <button
-            onClick={() => setCupboardOpen(true)}
-            className="editorial-card group flex flex-col justify-between rounded-[20px] border border-saffron/30 bg-gradient-to-br from-card via-card to-saffron-soft/65 p-3.5 text-left transition-all hover:border-saffron/55"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-saffron-soft text-saffron ring-1 ring-saffron/25">
-                <ChefHat className="h-5 w-5" strokeWidth={1.8} />
-              </span>
-              <span className="rounded-full bg-brass/25 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.06em] text-saffron">
-                AI Chef
-              </span>
+          <div className="col-span-2 rounded-[22px] border border-line/80 bg-sunk/55 p-2.5">
+            <p className="mb-2 px-1 font-display text-[15.5px] font-semibold text-ink">Cook what we have</p>
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => setKitchenRecipesOpen(true)}
+                className="editorial-card group flex flex-col justify-between rounded-[18px] border border-sage/30 bg-gradient-to-br from-card via-card to-sage-soft/60 p-3.5 text-left transition-all hover:border-sage/55"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-sage-soft text-sage ring-1 ring-sage/25">
+                    <Refrigerator className="h-5 w-5" strokeWidth={1.8} />
+                  </span>
+                  <span className="rounded-full bg-sage/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.06em] text-sage">
+                    Saved
+                  </span>
+                </div>
+                <div className="mt-3">
+                  <span className="block font-display text-[16px] leading-tight font-semibold text-ink">From our recipes</span>
+                  <span className="mt-1 block text-[12px] leading-snug text-ink-2">
+                    {meals.length > 0 ? 'Best 3–4 matches for the kitchen' : 'Save recipes to use this'}
+                  </span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCupboardOpen(true)}
+                className="editorial-card group flex flex-col justify-between rounded-[18px] border border-saffron/30 bg-gradient-to-br from-card via-card to-saffron-soft/65 p-3.5 text-left transition-all hover:border-saffron/55"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-saffron-soft text-saffron ring-1 ring-saffron/25">
+                    <ChefHat className="h-5 w-5" strokeWidth={1.8} />
+                  </span>
+                  <span className="rounded-full bg-brass/25 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.06em] text-saffron">
+                    AI
+                  </span>
+                </div>
+                <div className="mt-3">
+                  <span className="block font-display text-[16px] leading-tight font-semibold text-ink">AI Chef</span>
+                  <span className="mt-1 block text-[12px] leading-snug text-ink-2">
+                    {redItems.length > 0
+                      ? `New top chef dishes · rescues ${redItems.length} use-next`
+                      : 'New top chef dishes from your stock'}
+                  </span>
+                </div>
+              </button>
             </div>
-            <div className="mt-3">
-              <span className="block font-display text-[16.5px] leading-tight font-semibold text-ink">Cook what we have</span>
-              <span className="mt-1 block text-[12px] leading-snug text-ink-2">
-                {redItems.length > 0
-                  ? `Top chef dishes · rescues ${redItems.length} use-next`
-                  : 'Top chef recipes & step photos'}
-              </span>
-            </div>
-          </button>
+          </div>
 
           <button
             type="button"
@@ -399,7 +428,7 @@ export const MachineView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFam
 
           <button
             onClick={() => setActiveView(1)}
-            className="editorial-card group flex flex-col justify-between rounded-[20px] border border-brass/35 bg-gradient-to-br from-card via-card to-brass/14 p-3.5 text-left transition-all hover:border-brass/60"
+            className="editorial-card group col-span-2 flex flex-col justify-between rounded-[20px] border border-brass/35 bg-gradient-to-br from-card via-card to-brass/14 p-3.5 text-left transition-all hover:border-brass/60"
           >
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brass/18 text-saffron ring-1 ring-brass/30">
               <Trophy className="h-5 w-5" strokeWidth={1.8} />
@@ -532,6 +561,7 @@ export const MachineView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFam
         </div>
       </Card>
 
+      <KitchenRecipesSheet isOpen={kitchenRecipesOpen} onClose={() => setKitchenRecipesOpen(false)} />
       <CupboardSheet
         isOpen={cupboardOpen}
         onClose={() => setCupboardOpen(false)}

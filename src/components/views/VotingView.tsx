@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { VoteNotificationsCard } from '../VoteNotifications';
 import { useDinner } from '../../context/DinnerContext';
-import { Check, X, Copy, UserPlus, Trash2, CircleAlert, RotateCcw, Dices, Clock, Bell, BellOff } from 'lucide-react';
+import { ArrowLeft, Check, X, Copy, UserPlus, Trash2, CircleAlert, RotateCcw, Dices, Clock, Bell, BellOff } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { AfterDinnerReview } from '../AfterDinnerReview';
 import { LeftoversStep } from '../LeftoversStep';
@@ -68,6 +68,7 @@ export const VotingView: React.FC = () => {
     startLiveVote,
     servings,
     setServings,
+    cancelVote,
   } = useDinner();
 
   const [copied, setCopied] = useState(false);
@@ -76,6 +77,7 @@ export const VotingView: React.FC = () => {
   const [newMemberName, setNewMemberName] = useState('');
   const [recipeOpen, setRecipeOpen] = useState(false);
   const [liveError, setLiveError] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
 
   // Cooking reminders. While a dinner is being cooked the screen is kept awake (so the page and its timers
   // keep running), and each step raises a system notification through the service worker plus an in-app banner.
@@ -441,8 +443,25 @@ export const VotingView: React.FC = () => {
   const voterOutOfVetoes = currentVoter.vetoTokensRemaining <= 0;
   const clashes = dishClashes(meal, householdMembers);
 
+  const cancel = async () => {
+    setCancelling(true);
+    try {
+      await cancelVote();
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
+      <button
+        type="button"
+        onClick={cancel}
+        disabled={cancelling}
+        className="inline-flex h-10 items-center gap-1.5 rounded-full px-1 text-[14px] font-semibold text-ink-2 hover:text-ink disabled:opacity-60"
+      >
+        <ArrowLeft className="h-4 w-4" /> {cancelling ? 'Cancelling…' : 'Cancel vote, back to home'}
+      </button>
       <Card className="overflow-hidden">
         {mealPhoto && (
           <div className="relative aspect-[16/10] w-full overflow-hidden bg-sunk">

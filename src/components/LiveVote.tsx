@@ -14,7 +14,7 @@ const loadAs = (): string => {
 
 /** The vote every phone in the household sees. The server decides the outcome. */
 export const LiveVoteCard: React.FC = () => {
-  const { tonight, householdMembers, meId, myVoteName, setVoteIdentity, castLiveVote, decideLive, clearLive, setActiveView } = useDinner();
+  const { tonight, householdMembers, meId, myVoteName, setVoteIdentity, castLiveVote, decideLive, clearLive, cancelVote, setActiveView } = useDinner();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -132,7 +132,7 @@ export const LiveVoteCard: React.FC = () => {
         <button disabled={busy} onClick={() => act(decideLive)} className="hover:text-ink hover:underline">
           Just decide. Skip the vote
         </button>
-        <button disabled={busy} onClick={() => act(clearLive)} className="hover:text-ink hover:underline">
+        <button disabled={busy} onClick={() => act(async () => { await cancelVote(); return { ok: true }; })} className="hover:text-ink hover:underline">
           Cancel vote
         </button>
       </div>

@@ -192,6 +192,8 @@ interface DinnerContextType {
   // Voting Booth & Household Members
   proposedMeal: Meal | null;
   sendToVote: (meal: Meal) => void;
+  /** Drops the dish being voted on (and any shared vote for it) and goes back to the home screen. */
+  cancelVote: () => Promise<void>;
   householdMembers: HouseholdMember[];
   addHouseholdMember: (name: string, avatar: string) => void;
   removeHouseholdMember: (id: string) => void;
@@ -2443,6 +2445,14 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const castLiveVote = (voter: string, vote: 'yes' | 'no') => sendLive({ op: 'vote', voter, vote });
   const decideLive = () => sendLive({ op: 'decide', by: myVoteName() });
   const clearLive = () => sendLive({ op: 'clear' });
+  const cancelVote = async () => {
+    const liveOpen = !!tonight && (tonight.status === 'open' || tonight.status === 'vetoed');
+    if (liveOpen) await clearLive();
+    setProposedMeal(null);
+    setCurrentBallot({});
+    setActiveVoterIndex(0);
+    setActiveView(0);
+  };
 
   // ---- Telling this phone what the others did ------------------------------
   const [liveAs, setLiveAs] = useState<string>(() => {
@@ -2743,6 +2753,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         proposedMeal,
         sendToVote,
+        cancelVote,
         householdMembers,
         addHouseholdMember,
         removeHouseholdMember,
