@@ -289,6 +289,10 @@ interface DinnerContextType {
   useFreezerPortion: (id: string) => void;
   putBackFreezerPortion: (id: string) => void;
   removeFreezerItem: (id: string) => void;
+  /** Undo helpers: put back exactly the item that was removed. */
+  restorePantryItem: (item: PantryItem) => void;
+  restoreCupboardItem: (item: CupboardItem) => void;
+  restoreFreezerItem: (item: FreezerItem) => void;
   clearUsedFreezer: () => void;
 
   // Shared shopping list
@@ -1712,6 +1716,10 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
   const putBackFreezerPortionById = (id: string) => queueFreezer([{ type: 'putBack', id }]);
   const removeFreezerItem = (id: string) => queueFreezer([{ type: 'remove', id }]);
+  const restoreFreezerItem = (item: FreezerItem) => queueFreezer([{ type: 'add', item }]);
+  const restorePantryItem = (item: PantryItem) => queueFridge([{ type: 'add', item }]);
+  const restoreCupboardItem = (item: CupboardItem) =>
+    setCupboard((prev) => (prev.some((c) => c.id === item.id) ? prev : [item, ...prev]));
   const clearUsedFreezer = () => queueFreezer([{ type: 'clearUsed' }]);
 
   // ---------- After-dinner reviews ----------
@@ -2712,6 +2720,9 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         addCupboardItems,
         setCupboardLow,
         removeCupboardItem,
+        restorePantryItem,
+        restoreCupboardItem,
+        restoreFreezerItem,
         dailyLog,
         logDailyEntry,
         deleteDailyEntry,

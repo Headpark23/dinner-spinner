@@ -59,7 +59,7 @@ import { UsedTodaySheet, type UsedTodayInitialMeal } from '../UsedTodaySheet';
 import { findExistingStockMatches, type StockMatchCandidate } from '../../utils/dailyLog';
 import { PageHeader } from '../ui';
 import { freezerIcon, itemIcon } from '../../utils/itemIcon';
-import { searchKitchen } from '../../utils/kitchenSearch';
+import { searchKitchen, type KitchenHit } from '../../utils/kitchenSearch';
 import { cuisinePhotoUrl, resolveMealPhoto } from '../../data/photos';
 import { INITIAL_MEALS } from '../../data/initialData';
 import {
@@ -155,6 +155,11 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
     useFreezerPortion,
     putBackFreezerPortion,
     removeFreezerItem,
+    removeCupboardItem,
+    restorePantryItem,
+    restoreCupboardItem,
+    restoreFreezerItem,
+    removeShoppingByName,
     clearUsedFreezer,
     store,
     setStore,
@@ -181,6 +186,44 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
   const [freezePortions, setFreezePortions] = useState(4);
   const [freezeNote, setFreezeNote] = useState('');
   const [kitchenQuery, setKitchenQuery] = useState('');
+  /** The last "Used up" from the search, kept so it can be undone. */
+  const [lastUsedUp, setLastUsedUp] = useState<{
+    hit: KitchenHit;
+    addedToList: boolean;
+    fridge?: (typeof pantry)[number];
+    cupboard?: (typeof cupboard)[number];
+    freezer?: (typeof freezer)[number];
+  } | null>(null);
+  const usedUpNote = lastUsedUp ? `${lastUsedUp.hit.name} is out of the kitchen and on the shopping list.` : null;
+  const setUsedUpNote = (v: null) => setLastUsedUp(v);
+
+  /** From a search result: take the item out of the kitchen and put it on the shopping list. */
+  const useUpAndReorder = (hit: KitchenHit) => {
+    const snapshot = {
+      hit,
+      fridge: hit.place === 'fridge' ? pantry.find((p) => p.id === hit.id) : undefined,
+      cupboard: hit.place === 'cupboard' ? cupboard.find((c) => c.id === hit.id) : undefined,
+      freezer: hit.place === 'freezer' ? freezer.find((f) => f.id === hit.id) : undefined,
+    };
+    if (hit.place === 'fridge') removePantryItem(hit.id);
+    else if (hit.place === 'cupboard') removeCupboardItem(hit.id);
+    else if (hit.place === 'freezer') removeFreezerItem(hit.id);
+    else removeStaple(hit.name);
+    const already = shoppingList.some((s) => !s.checked && s.name.trim().toLowerCase() === hit.name.trim().toLowerCase());
+    if (!already) addShoppingItems([hit.name]);
+    setLastUsedUp({ ...snapshot, addedToList: !already });
+  };
+
+  const undoUsedUp = () => {
+    if (!lastUsedUp) return;
+    const { hit, addedToList } = lastUsedUp;
+    if (lastUsedUp.fridge) restorePantryItem(lastUsedUp.fridge);
+    else if (lastUsedUp.cupboard) restoreCupboardItem(lastUsedUp.cupboard);
+    else if (lastUsedUp.freezer) restoreFreezerItem(lastUsedUp.freezer);
+    else if (hit.place === 'staples') addStaple(hit.name);
+    if (addedToList) removeShoppingByName(hit.name);
+    setLastUsedUp(null);
+  };
   const stocked = oldestFirst(inFreezer(freezer));
   const finished = usedUp(freezer);
   const freezerPortions = totalPortions(freezer);
@@ -680,7 +723,10 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
               <input
                 type="search"
                 value={kitchenQuery}
-                onChange={(e) => setKitchenQuery(e.target.value)}
+                onChange={(e) => {
+                  setKitchenQuery(e.target.value);
+                  setUsedUpNote(null);
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Escape') setKitchenQuery('');
                 }}
@@ -702,36 +748,61 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
               )}
             </div>
 
+            {usedUpNote && (
+              <p role="status" className="fade-up flex items-center gap-2 rounded-2xl border border-sage/30 bg-sage-soft/60 px-3.5 py-2.5 text-[13.5px] text-ink">
+                <Check className="h-4 w-4 shrink-0 text-sage" strokeWidth={2.6} />
+                <span className="min-w-0 flex-1">{usedUpNote}</span>
+                <button type="button" onClick={undoUsedUp} className="shrink-0 rounded-full px-2 py-1 text-[13px] font-semibold text-tomato hover:underline">
+                  Undo
+                </button>
+                <button type="button" onClick={() => setUsedUpNote(null)} aria-label="Dismiss" className="shrink-0 text-ink-3 hover:text-ink">
+                  <X className="h-4 w-4" />
+                </button>
+              </p>
+            )}
+
             {q && (
               <div aria-live="polite">
                 {hits.length > 0 ? (
                   <ul className="editorial-card divide-y divide-line overflow-hidden rounded-[20px] border border-line/90 bg-card">
                     {hits.slice(0, 12).map((h) => (
-                      <li key={`${h.place}-${h.id}`}>
+                      <li key={`${h.place}-${h.id}`} className="flex items-center gap-1 pr-2">
                         <button
                           type="button"
                           onClick={() => {
                             setActiveTab(h.place);
                             setKitchenQuery('');
                           }}
-                          className="flex w-full items-center gap-2.5 py-2 pr-3 pl-3 text-left hover:bg-sunk/60"
+                          className="flex min-w-0 flex-1 items-center gap-2.5 py-2 pr-1 pl-3 text-left hover:bg-sunk/60"
                         >
                           <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sunk text-[18px] leading-none">
                             {h.place === 'freezer' ? freezerIcon(h.name) : itemIcon(h.name)}
                           </span>
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-[15px] font-medium text-ink">{h.name}</span>
-                            <span className={cx('block truncate text-[12px]', h.warn ? 'text-tomato' : 'text-ink-3')}>{h.detail}</span>
+                            <span className="flex min-w-0 items-center gap-1 text-[12px]">
+                              <span
+                                className={cx(
+                                  'inline-flex shrink-0 items-center gap-0.5 font-semibold',
+                                  h.place === 'freezer' ? 'text-sky-700 dark:text-sky-300' : 'text-sage'
+                                )}
+                              >
+                                {h.place === 'freezer' && <Snowflake className="h-3 w-3" />}
+                                {PLACE_LABEL[h.place]}
+                              </span>
+                              {h.place !== 'staples' && (
+                                <span className={cx('truncate', h.warn ? 'text-tomato' : 'text-ink-3')}>· {h.detail}</span>
+                              )}
+                            </span>
                           </span>
-                          <span
-                            className={cx(
-                              'inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11.5px] font-semibold',
-                              h.place === 'freezer' ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300' : 'bg-sage-soft text-sage'
-                            )}
-                          >
-                            {h.place === 'freezer' && <Snowflake className="h-3 w-3" />}
-                            {PLACE_LABEL[h.place]}
-                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => useUpAndReorder(h)}
+                          aria-label={`${h.name} is used up: remove it from the kitchen and add it to the shopping list`}
+                          className="inline-flex h-9 shrink-0 items-center gap-1 rounded-full border border-tomato/30 bg-tomato-soft/60 px-2.5 text-[12.5px] font-semibold text-tomato hover:border-tomato/60"
+                        >
+                          <ShoppingBasket className="h-3.5 w-3.5" /> Used up
                         </button>
                       </li>
                     ))}
