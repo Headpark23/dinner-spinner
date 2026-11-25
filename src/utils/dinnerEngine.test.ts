@@ -565,10 +565,20 @@ test('Fridge ops: seed once, add, cycle freshness, remove, rescue use-next items
 
 test('Item icons: keywords map to graphics with a basket fallback', async () => {
   const { itemIcon } = await import('./itemIcon');
+  const { INITIAL_MEALS } = await import('../data/initialData');
+  const { WORLD_RECIPES } = await import('../data/worldRecipes');
   assert.equal(itemIcon('Semi-Skimmed Milk'), '🥛');
   assert.equal(itemIcon('Free-Range Chicken Thighs'), '🍗');
   assert.equal(itemIcon('Greek yoghurt'), '🥣');
+  assert.equal(itemIcon('Red Chillies'), '🌶️');
+  assert.equal(itemIcon('Pineapple'), '🍍');
+  assert.equal(itemIcon('Corn Tortillas'), '🫓');
   assert.equal(itemIcon('Mystery thing'), '🛒');
+  for (const meal of [...INITIAL_MEALS, ...WORLD_RECIPES]) {
+    for (const ing of meal.ingredients) {
+      assert.notEqual(itemIcon(ing), '🛒', `Bundled ingredient "${ing}" (${meal.id}) should not fall back to trolley`);
+    }
+  }
 });
 
 test('Shopping list ops: add dedupes, ticks record who, clear removes ticked', async () => {
