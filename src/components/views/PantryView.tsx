@@ -54,6 +54,7 @@ import {
 import { FreshnessLevel, Meal, TimeStake, EffortLevel } from '../../types';
 import { RecipeSheet } from '../RecipeSheet';
 import { CupboardSheet } from '../CupboardSheet';
+import { KitchenRecipesSheet } from '../KitchenRecipesSheet';
 import { UsedTodaySheet, type UsedTodayInitialMeal } from '../UsedTodaySheet';
 import { findExistingStockMatches, type StockMatchCandidate } from '../../utils/dailyLog';
 import { PageHeader } from '../ui';
@@ -207,6 +208,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
   const [usedTodayOpen, setUsedTodayOpen] = useState(false);
   const [usedTodayInitial, setUsedTodayInitial] = useState<UsedTodayInitialMeal | null>(null);
   const [aiChefOpen, setAiChefOpen] = useState(false);
+  const [kitchenRecipesOpen, setKitchenRecipesOpen] = useState(false);
 
   // Vault
   const [vaultSearch, setVaultSearch] = useState('');
@@ -809,23 +811,34 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
               </Card>
             ) : (
               <>
-                <button
-                  type="button"
-                  onClick={() => setAiChefOpen(true)}
-                  className="editorial-card flex w-full items-center gap-3 rounded-[20px] border border-saffron/35 bg-gradient-to-r from-card via-card to-saffron-soft/55 px-3.5 py-3 text-left transition-all hover:border-saffron/60"
-                >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-saffron-soft text-saffron ring-1 ring-saffron/25">
-                    <ChefHat className="h-5 w-5" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block font-display text-[15.5px] leading-tight font-semibold text-ink">
-                      Ask AI Chef what to cook
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setAiChefOpen(true)}
+                    className="editorial-card flex flex-col gap-2.5 rounded-[20px] border border-saffron/35 bg-gradient-to-br from-card via-card to-saffron-soft/55 p-3.5 text-left transition-all hover:border-saffron/60"
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-saffron-soft text-saffron ring-1 ring-saffron/25">
+                      <ChefHat className="h-5 w-5" />
                     </span>
-                    <span className="mt-0.5 block text-[12px] text-ink-2">
-                      Top-chef dishes from your fridge &amp; cupboard with step photos
+                    <span className="min-w-0">
+                      <span className="block font-display text-[15.5px] leading-tight font-semibold text-ink">Ask AI Chef</span>
+                      <span className="mt-0.5 block text-[12px] leading-snug text-ink-2">New top-chef dishes from your stock</span>
                     </span>
-                  </span>
-                </button>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setKitchenRecipesOpen(true)}
+                    className="editorial-card flex flex-col gap-2.5 rounded-[20px] border border-sage/30 bg-gradient-to-br from-card via-card to-sage-soft/55 p-3.5 text-left transition-all hover:border-sage/55"
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sage-soft text-sage ring-1 ring-sage/25">
+                      <BookOpen className="h-5 w-5" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block font-display text-[15.5px] leading-tight font-semibold text-ink">Suggest a saved recipe</span>
+                      <span className="mt-0.5 block text-[12px] leading-snug text-ink-2">Your recipes that use the most of this</span>
+                    </span>
+                  </button>
+                </div>
                 {renderFreshnessGroup('red', 'Use next')}
                 {renderFreshnessGroup('amber', 'Eat soon')}
                 {renderFreshnessGroup('green', 'Fresh')}
@@ -1771,6 +1784,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
           }
         />
       )}
+      <KitchenRecipesSheet isOpen={kitchenRecipesOpen} onClose={() => setKitchenRecipesOpen(false)} />
       <CupboardSheet
         isOpen={aiChefOpen}
         onClose={() => setAiChefOpen(false)}
