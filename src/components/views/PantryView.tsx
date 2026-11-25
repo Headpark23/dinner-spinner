@@ -59,6 +59,7 @@ import { UsedTodaySheet, type UsedTodayInitialMeal } from '../UsedTodaySheet';
 import { findExistingStockMatches, type StockMatchCandidate } from '../../utils/dailyLog';
 import { PageHeader } from '../ui';
 import { freezerIcon, itemIcon } from '../../utils/itemIcon';
+import { searchKitchen } from '../../utils/kitchenSearch';
 import { cuisinePhotoUrl, resolveMealPhoto } from '../../data/photos';
 import { INITIAL_MEALS } from '../../data/initialData';
 import {
@@ -179,6 +180,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
   const [freezeName, setFreezeName] = useState('');
   const [freezePortions, setFreezePortions] = useState(4);
   const [freezeNote, setFreezeNote] = useState('');
+  const [kitchenQuery, setKitchenQuery] = useState('');
   const stocked = oldestFirst(inFreezer(freezer));
   const finished = usedUp(freezer);
   const freezerPortions = totalPortions(freezer);
@@ -665,6 +667,103 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
           }
         />
       )}
+
+      {scope === 'fridge' && (() => {
+        const q = kitchenQuery.trim();
+        const hits = q ? searchKitchen(q, { pantry, cupboard, freezer, staples }) : [];
+        const onList = q && shoppingList.some((s) => !s.checked && s.name.trim().toLowerCase() === q.toLowerCase());
+        const PLACE_LABEL = { fridge: 'Fridge', cupboard: 'Cupboard', freezer: 'Freezer', staples: 'Always have' } as const;
+        return (
+          <div className="space-y-2">
+            <div className="relative">
+              <Search className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-ink-3" aria-hidden="true" />
+              <input
+                type="search"
+                value={kitchenQuery}
+                onChange={(e) => setKitchenQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') setKitchenQuery('');
+                }}
+                placeholder="Do we have…? Search fridge, cupboard & freezer"
+                aria-label="Search the kitchen"
+                enterKeyHint="search"
+                autoComplete="off"
+                className="h-11 w-full rounded-2xl border border-line bg-card pr-10 pl-10 text-[15px] text-ink placeholder:text-ink-3 focus:border-line-strong focus:outline-none focus-visible:ring-2 focus-visible:ring-tomato/30 [&::-webkit-search-cancel-button]:hidden"
+              />
+              {kitchenQuery && (
+                <button
+                  type="button"
+                  onClick={() => setKitchenQuery('')}
+                  aria-label="Clear search"
+                  className="absolute top-1/2 right-1.5 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-ink-3 hover:bg-sunk hover:text-ink"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+
+            {q && (
+              <div aria-live="polite">
+                {hits.length > 0 ? (
+                  <ul className="editorial-card divide-y divide-line overflow-hidden rounded-[20px] border border-line/90 bg-card">
+                    {hits.slice(0, 12).map((h) => (
+                      <li key={`${h.place}-${h.id}`}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveTab(h.place);
+                            setKitchenQuery('');
+                          }}
+                          className="flex w-full items-center gap-2.5 py-2 pr-3 pl-3 text-left hover:bg-sunk/60"
+                        >
+                          <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sunk text-[18px] leading-none">
+                            {h.place === 'freezer' ? freezerIcon(h.name) : itemIcon(h.name)}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[15px] font-medium text-ink">{h.name}</span>
+                            <span className={cx('block truncate text-[12px]', h.warn ? 'text-tomato' : 'text-ink-3')}>{h.detail}</span>
+                          </span>
+                          <span
+                            className={cx(
+                              'inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11.5px] font-semibold',
+                              h.place === 'freezer' ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300' : 'bg-sage-soft text-sage'
+                            )}
+                          >
+                            {h.place === 'freezer' && <Snowflake className="h-3 w-3" />}
+                            {PLACE_LABEL[h.place]}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="flex items-center justify-between gap-3 rounded-[20px] border border-line bg-card px-3.5 py-3">
+                    <p className="min-w-0 text-[14px] text-ink-2">
+                      No <strong className="text-ink">{q}</strong> in the kitchen.
+                    </p>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={!!onList}
+                      onClick={() => addShoppingItems([q])}
+                    >
+                      {onList ? (
+                        <>
+                          <Check className="h-4 w-4" /> On the list
+                        </>
+                      ) : (
+                        <>
+                          <ShoppingBasket className="h-4 w-4" /> Add to list
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {tabs.length > 0 && (
         <div className="space-y-2" role="tablist" aria-label="Kitchen sections">
