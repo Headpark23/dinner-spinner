@@ -91,6 +91,7 @@ export const MachineView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFam
     costRelaxed,
     cupboard,
     weekPlan,
+    meals,
     likedIngredients: likesForRow,
     bannedIngredients: dislikesForRow,
     dailyLog,
@@ -365,16 +366,16 @@ export const MachineView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFam
 
           <button
             type="button"
-            onClick={() => setPlannerOpen(true)}
+            onClick={() => setActiveView(5)}
             className="editorial-card group flex flex-col justify-between rounded-[20px] border border-sage/25 bg-gradient-to-br from-card via-card to-sage-soft/55 p-3.5 text-left transition-all hover:border-sage/45"
           >
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-sage-soft text-sage ring-1 ring-sage/20">
-              <CalendarDays className="h-5 w-5" strokeWidth={1.8} />
+              <BookOpen className="h-5 w-5" strokeWidth={1.8} />
             </span>
             <div className="mt-3">
-              <span className="block font-display text-[16.5px] leading-tight font-semibold text-ink">Plan the week</span>
+              <span className="block font-display text-[16.5px] leading-tight font-semibold text-ink">Your saved recipes</span>
               <span className="mt-1 block text-[12px] leading-snug text-ink-2">
-                {plannedCount > 0 ? `${plannedCount} of 7 nights planned` : '7 dinners, one shop'}
+                {meals.length > 0 ? `${meals.length} ${meals.length === 1 ? 'dish' : 'dishes'} in your book` : 'Browse your recipe book'}
               </span>
             </div>
           </button>
@@ -461,6 +462,24 @@ export const MachineView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFam
         </div>
       </Card>
 
+      {/* Plan the week */}
+      <button
+        type="button"
+        onClick={() => setPlannerOpen(true)}
+        className="editorial-card flex w-full items-center gap-3 rounded-[20px] border border-sage/25 bg-gradient-to-r from-card via-card to-sage-soft/55 px-3.5 py-3 text-left transition-all hover:border-sage/45"
+      >
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sage-soft text-sage ring-1 ring-sage/20">
+          <CalendarDays className="h-5 w-5" strokeWidth={1.8} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-display text-[16.5px] leading-tight font-semibold text-ink">Plan the week</span>
+          <span className="mt-0.5 block text-[12px] leading-snug text-ink-2">
+            {plannedCount > 0 ? `${plannedCount} of 7 nights planned` : '7 dinners, one shop'}
+          </span>
+        </span>
+        <ChevronRight className="h-4 w-4 shrink-0 text-ink-3" />
+      </button>
+
       <FreezerCard
         onOpen={() => {
           openPantryTab('freezer');
@@ -511,18 +530,6 @@ export const MachineView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFam
             </span>
           </button>
         </div>
-
-        <button
-          onClick={() => setActiveView(5)}
-          className="flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors hover:bg-sunk/55"
-        >
-          <BookOpen className="h-[18px] w-[18px] shrink-0 text-ink-2" strokeWidth={1.75} />
-          <span className="min-w-0 flex-1 text-[13.5px]">
-            <span className="font-semibold">Rather pick from the book?</span>{' '}
-            <span className="text-ink-2">Browse your saved recipes</span>
-          </span>
-          <ChevronRight className="h-4 w-4 text-ink-3" />
-        </button>
       </Card>
 
       <CupboardSheet
