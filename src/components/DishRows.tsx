@@ -1,6 +1,5 @@
 import React from 'react';
 import { Star } from 'lucide-react';
-import { photoFor } from '../data/photos';
 import { DishTile, cx } from './ui';
 import type { Meal } from '../types';
 
@@ -47,37 +46,30 @@ export const DishRow: React.FC<{
   open: boolean;
   onToggle: () => void;
   children?: React.ReactNode;
-}> = ({ meal, title, detail, rating, cuisine, open, onToggle, children }) => {
-  const photo = meal ? meal.imageUrl || photoFor(meal.id) : undefined;
-  return (
-    <li>
-      <button
-        onClick={onToggle}
-        aria-expanded={open}
-        className={cx(
-          'flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition-colors hover:bg-sunk/65',
-          open && 'bg-sunk/75'
-        )}
-      >
-        {photo ? (
-          <img
-            src={photo}
-            alt=""
-            width={48}
-            height={48}
-            loading="lazy"
-            className="h-12 w-12 shrink-0 rounded-xl object-cover ring-1 ring-black/8"
-          />
-        ) : (
-          <DishTile cuisine={meal?.cuisine || cuisine} imageUrl={meal?.imageUrl} size={48} />
-        )}
-        <span className="min-w-0 flex-1">
-          <span className="block truncate font-display text-[15.5px] font-semibold leading-snug">{title}</span>
-          <span className="block truncate text-[12px] text-ink-2">{detail}</span>
-        </span>
-        {rating !== undefined && <StarsInline value={rating} />}
-      </button>
-      {open && <div className="fade-up px-3 pb-3 pt-1.5">{children}</div>}
-    </li>
-  );
-};
+}> = ({ meal, title, detail, rating, cuisine, open, onToggle, children }) => (
+  <li>
+    <button
+      onClick={onToggle}
+      aria-expanded={open}
+      className={cx(
+        'flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition-colors hover:bg-sunk/65',
+        open && 'bg-sunk/75'
+      )}
+    >
+      <DishTile
+        id={meal?.id}
+        title={meal?.title || title}
+        cuisine={meal?.cuisine || cuisine}
+        ingredients={meal?.ingredients}
+        imageUrl={meal?.imageUrl}
+        size={48}
+      />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-display text-[15.5px] font-semibold leading-snug">{title}</span>
+        <span className="block truncate text-[12px] text-ink-2">{detail}</span>
+      </span>
+      {rating !== undefined && <StarsInline value={rating} />}
+    </button>
+    {open && <div className="fade-up px-3 pb-3 pt-1.5">{children}</div>}
+  </li>
+);

@@ -1,5 +1,5 @@
-import { flagCodeFor, FlagTile } from './CuisineFlag';
-import React, { useEffect, useRef } from 'react';
+import { resolveMealPhoto } from '../data/photos';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
@@ -403,36 +403,38 @@ const cuisineTint: Record<string, string> = {
 };
 export const cuisineColor = (cuisine?: string) => cuisineTint[cuisine || ''] || '#786653';
 
-export const DishTile: React.FC<{ cuisine?: string; imageUrl?: string; size?: number; className?: string }> = ({
-  cuisine,
-  imageUrl,
-  size = 48,
-  className,
-}) =>
-  imageUrl ? (
+export const DishTile: React.FC<{
+  cuisine?: string;
+  title?: string;
+  ingredients?: string[];
+  id?: string;
+  imageUrl?: string;
+  size?: number;
+  className?: string;
+}> = ({ cuisine, title, ingredients, id, imageUrl, size = 48, className }) => {
+  const resolved = resolveMealPhoto({ id, title, cuisine, ingredients, imageUrl });
+  const [failed, setFailed] = useState(false);
+  const src = failed ? resolved.fallbackUrl : resolved.url;
+
+  useEffect(() => {
+    setFailed(false);
+  }, [resolved.url]);
+
+  return (
     <img
-      src={imageUrl}
+      src={src}
       alt=""
       width={size}
       height={size}
       loading="lazy"
+      onError={() => {
+        if (!failed && src !== resolved.fallbackUrl) setFailed(true);
+      }}
       className={cx('shrink-0 rounded-xl object-cover ring-1 ring-black/8', className)}
       style={{ width: size, height: size }}
     />
-  ) : flagCodeFor(cuisine) ? (
-    <FlagTile code={flagCodeFor(cuisine)!} size={size} className={className} />
-  ) : (
-    <span
-      aria-hidden="true"
-      className={cx(
-        'inline-flex shrink-0 items-center justify-center rounded-xl font-display font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]',
-        className
-      )}
-      style={{ width: size, height: size, background: cuisineColor(cuisine), fontSize: size * 0.42 }}
-    >
-      {(cuisine || '?').charAt(0)}
-    </span>
   );
+};
 
 export const timeLabel = (t: string) =>
   t === '20m' ? '20 min' : t === '30m' ? '30 min' : t === '60m' ? '1 hour' : 'All day';

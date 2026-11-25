@@ -12,7 +12,7 @@ import { dishClashes, describeClashes } from '../../utils/memberDiets';
 import { useWakeLock } from '../../utils/useWakeLock';
 import { stepDelays, showStepNotification, notificationsSupported } from '../../utils/stepAlerts';
 import { sound } from '../../utils/audio';
-import { photoFor } from '../../data/photos';
+import { resolveMealPhoto } from '../../data/photos';
 import { HouseholdMember } from '../../types';
 import { Button, Card, Chip, Notice, Segmented, TextInput, cx, timeLabel, effortLabel } from '../ui';
 
@@ -199,14 +199,24 @@ export const VotingView: React.FC = () => {
 
   // ---------- Agreed: timeline ----------
   if (agreedMeal) {
-    const agreedPhoto = agreedMeal.imageUrl || photoFor(agreedMeal.id);
+    const resolvedAgreed = resolveMealPhoto(agreedMeal);
+    const agreedPhoto = resolvedAgreed.url;
     const nextStepObj = nextIdx >= 0 ? reverseTimers[nextIdx] : undefined;
     return (
       <div className="space-y-4">
         <Card className="overflow-hidden">
           {agreedPhoto && (
-            <div className="relative aspect-[16/9] w-full overflow-hidden">
-              <img src={agreedPhoto} alt="" className="h-full w-full object-cover" />
+            <div className="relative aspect-[16/9] w-full overflow-hidden bg-sunk">
+              <img
+                src={agreedPhoto}
+                alt=""
+                onError={(e) => {
+                  if (!e.currentTarget.src.endsWith(resolvedAgreed.fallbackUrl)) {
+                    e.currentTarget.src = resolvedAgreed.fallbackUrl;
+                  }
+                }}
+                className="h-full w-full object-cover"
+              />
               <div className="absolute inset-0 bg-gradient-to-t from-black/72 via-black/15 to-transparent" />
               <div className="absolute top-3 left-3">
                 <span className="inline-flex items-center gap-1 rounded-full bg-sage px-3 py-1 text-[12px] font-bold text-white shadow-sm">
@@ -425,7 +435,8 @@ export const VotingView: React.FC = () => {
 
   // ---------- Voting ----------
   const meal = proposedMeal!;
-  const mealPhoto = meal.imageUrl || photoFor(meal.id);
+  const resolvedProposal = resolveMealPhoto(meal);
+  const mealPhoto = resolvedProposal.url;
   const liveActive = !!tonight && (tonight.status === 'open' || tonight.status === 'vetoed') && tonight.meal?.id === meal.id;
   const voterOutOfVetoes = currentVoter.vetoTokensRemaining <= 0;
   const clashes = dishClashes(meal, householdMembers);
@@ -434,8 +445,17 @@ export const VotingView: React.FC = () => {
     <div className="space-y-4">
       <Card className="overflow-hidden">
         {mealPhoto && (
-          <div className="relative aspect-[16/10] w-full overflow-hidden">
-            <img src={mealPhoto} alt="" className="h-full w-full object-cover" />
+          <div className="relative aspect-[16/10] w-full overflow-hidden bg-sunk">
+            <img
+              src={mealPhoto}
+              alt=""
+              onError={(e) => {
+                if (!e.currentTarget.src.endsWith(resolvedProposal.fallbackUrl)) {
+                  e.currentTarget.src = resolvedProposal.fallbackUrl;
+                }
+              }}
+              className="h-full w-full object-cover"
+            />
             <div className="absolute inset-0 bg-gradient-to-t from-black/72 via-black/18 to-transparent" />
             <div className="absolute top-3 left-3 flex gap-1.5">
               <span className="rounded-full bg-black/55 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-xs">

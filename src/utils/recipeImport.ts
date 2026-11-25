@@ -15,6 +15,7 @@ export type ImportedRecipe = {
   ingredients: string[];
   prepSteps: string[];
   tags: string[];
+  imageUrl?: string;
 };
 
 const decodeEntities = (raw: string) =>
@@ -336,14 +337,19 @@ export function repairImportedMeal(meal: Meal): Meal {
 
   const minsHint = meal.timeStake === '20m' ? 20 : meal.timeStake === '30m' ? 30 : meal.timeStake === '60m' ? 60 : 90;
   const prepSteps = steps.length > 0 ? spreadOffsets(steps, minsHint) : meal.prepSteps;
+  const cuisine =
+    !meal.cuisine || meal.cuisine.trim().toLowerCase() === 'other'
+      ? inferCuisine(meal.title, ingredients)
+      : meal.cuisine;
 
   if (
+    cuisine === meal.cuisine &&
     JSON.stringify(ingredients) === JSON.stringify(meal.ingredients) &&
     JSON.stringify(prepSteps) === JSON.stringify(meal.prepSteps)
   ) {
     return meal;
   }
-  return { ...meal, ingredients, prepSteps };
+  return { ...meal, cuisine, ingredients, prepSteps };
 }
 
 /** ISO-8601 durations like PT1H15M, as used by structured recipe data. */
@@ -417,6 +423,50 @@ function findRecipeNode(json: any): any | null {
   return null;
 }
 
+function extractImageUrl(raw: unknown): string | undefined {
+  if (!raw) return undefined;
+  if (typeof raw === 'string') {
+    const u = raw.trim();
+    return /^https:\/\/\S+/i.test(u) && !/\.svg(\?|$)|logo|avatar|icon/i.test(u) ? u : undefined;
+  }
+  if (Array.isArray(raw)) {
+    for (const item of raw) {
+      const found = extractImageUrl(item);
+      if (found) return found;
+    }
+    return undefined;
+  }
+  if (typeof raw === 'object') {
+    const obj = raw as Record<string, unknown>;
+    return extractImageUrl(obj.url || obj.contentUrl || obj['@id']);
+  }
+  return undefined;
+}
+
+const CUISINE_HINTS: [RegExp, string][] = [
+  [/\b(pasta|spaghetti|rigatoni|penne|lasagn[ea]|risotto|gnocchi|parmigiana|carbonara|pesto|orzo|bolognese|mascarpone|parmesan)\b/i, 'Italian'],
+  [/\b(tikka|masala|korma|biryani|paneer|dal|dhal|tandoori|garam\s+masala|turmeric|cumin|naan|curry\s+leaves|dopiaza|rogan)\b/i, 'Indian'],
+  [/\b(tacos?|fajitas?|enchiladas?|burritos?|quesadillas?|chipotle|jalape[nñ]o|tortillas?|salsa|guacamole)\b/i, 'Mexican'],
+  [/\b(pad\s+thai|lemongrass|galangal|fish\s+sauce|thai\s+basil|massaman|tom\s+yum|green\s+curry|red\s+curry)\b/i, 'Thai'],
+  [/\b(soy\s+sauce|hoisin|oyster\s+sauce|five[- ]spice|chow\s+mein|szechuan|sichuan|wonton|bok\s+choy|pak\s+choi|char\s+siu)\b/i, 'Chinese'],
+  [/\b(miso|mirin|teriyaki|ramen|udon|katsu|dashi|nori|edamame|gyoza)\b/i, 'Japanese'],
+  [/\b(gochujang|kimchi|bulgogi|bibimbap|sesame\s+oil)\b/i, 'Korean'],
+  [/\b(halloumi|feta|souvlaki|moussaka|tzatziki|oregano|spanakopita|gyros)\b/i, 'Greek'],
+  [/\b(chorizo|paella|paprika|manchego|gambas|saffron)\b/i, 'Spanish'],
+  [/\b(harissa|tagine|couscous|ras\s+el\s+hanout|preserved\s+lemon)\b/i, 'Moroccan'],
+  [/\b(tahini|sumac|za'?atar|shakshuka|falafel|shawarma|pomegranate)\b/i, 'Middle Eastern'],
+  [/\b(bourguignon|coq\s+au\s+vin|shallots?|dijon|creme\s+fraiche|crème\s+fraîche|quiche|ratatouille)\b/i, 'French'],
+  [/\b(yorkshire|sausages?|mash|shepherd'?s\s+pie|cottage\s+pie|toad\s+in\s+the\s+hole|hotpot|cheddar|gravy)\b/i, 'British'],
+];
+
+export function inferCuisine(title: string, ingredients: string[]): string {
+  const hay = `${title} ${ingredients.join(' ')}`;
+  for (const [re, name] of CUISINE_HINTS) {
+    if (re.test(hay)) return name;
+  }
+  return 'British';
+}
+
 /** Reads a schema.org Recipe object (already parsed JSON) into a dish. Null if there is nothing usable. */
 export function recipeFromJsonLd(json: unknown): ImportedRecipe | null {
   const node = findRecipeNode(json);
@@ -431,7 +481,9 @@ export function recipeFromJsonLd(json: unknown): ImportedRecipe | null {
   const minutes = isoMinutes(node.totalTime) || isoMinutes(node.cookTime) + isoMinutes(node.prepTime);
   if (steps.length === 0) steps = ['Follow the original recipe (see the source link)'];
   const category = clean(asArray(node.recipeCategory)[0], 40);
-  const cuisine = clean(asArray(node.recipeCuisine)[0], 40) || 'Other';
+  const rawCuisine = clean(asArray(node.recipeCuisine)[0], 40);
+  const cuisine = rawCuisine && rawCuisine.toLowerCase() !== 'other' ? rawCuisine : inferCuisine(title, ingredients);
+  const imageUrl = extractImageUrl(node.image || node.thumbnailUrl);
   const keywords = clean(asArray(node.keywords).join(','), 200)
     .split(',')
     .map((k) => k.trim())
@@ -446,17 +498,23 @@ export function recipeFromJsonLd(json: unknown): ImportedRecipe | null {
     ingredients,
     prepSteps: spreadOffsets(steps, minutes),
     tags: ['Imported', ...(category ? [category] : []), ...keywords].slice(0, 5),
+    ...(imageUrl ? { imageUrl } : {}),
   };
 }
 
-/** Finds the recipe data in a web page's HTML. */
+/** Finds the recipe data in a web page's HTML (including og:image fallback if JSON-LD omitted image). */
 export function extractRecipeFromHtml(html: string): ImportedRecipe | null {
+  const ogMatch =
+    /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i.exec(html) ||
+    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i.exec(html);
+  const ogImage = extractImageUrl(ogMatch?.[1]);
+
   const re = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(html))) {
     try {
       const found = recipeFromJsonLd(JSON.parse(m[1].trim()));
-      if (found) return found;
+      if (found) return !found.imageUrl && ogImage ? { ...found, imageUrl: ogImage } : found;
     } catch {
       // not valid JSON; try the next block
     }
@@ -567,7 +625,7 @@ export function parseRecipeText(raw: string): ImportedRecipe {
   return {
     title,
     description: intro.filter((l) => !META_NOISE.test(l)).slice(0, 2).join(' ').slice(0, 300),
-    cuisine: 'Other',
+    cuisine: inferCuisine(title, normalized.ingredients),
     timeStake: timeStakeFor(minutes),
     effort: EFFORT_HINT.test(text) ? 'one-pot' : normalized.steps.length > 10 ? 'chef-mode' : 'standard',
     ingredients: normalized.ingredients,

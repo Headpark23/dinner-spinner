@@ -211,3 +211,74 @@ test('Recipe import tightening: commas stay inside ingredients, sentences never 
     }
   }
 });
+
+test('Guessed dish photos & og:image import: every dish and cuisine resolves to a real bundled food photo with zero flags or O tiles', async () => {
+  const fs = await import('node:fs');
+  const { WORLD_RECIPES } = await import('../data/worldRecipes');
+  const { INITIAL_MEALS } = await import('../data/initialData');
+  const { POPULAR_CUISINES } = await import('../data/popularCuisines');
+  const { PHOTO_CREDITS, resolveMealPhoto, cuisinePhotoUrl } = await import('../data/photos');
+
+  const checkLocalUrl = (url: string, label: string) => {
+    const m = /^\/photos\/([a-z0-9_]+)\.webp$/.exec(url);
+    assert.ok(m, `Expected local webp URL for ${label}, got ${url}`);
+    assert.ok(PHOTO_CREDITS[m[1]], `Missing credit for ${m[1]} (${label})`);
+    assert.equal(fs.existsSync(`public${url}`), true, `Missing image file public${url} (${label})`);
+  };
+
+  // Every built-in and world recipe gets a verified local food photo (exact or smartly guessed)
+  for (const meal of [...INITIAL_MEALS, ...WORLD_RECIPES]) {
+    const res = resolveMealPhoto(meal);
+    checkLocalUrl(res.url, meal.id);
+    checkLocalUrl(res.fallbackUrl, `${meal.id} fallback`);
+  }
+
+  // Custom/imported dishes & combo spins match sensible food photography and never fall back to flags or letters
+  const salmon = resolveMealPhoto({ id: 'meal_custom_1', title: 'Sticky Honey Garlic Salmon', cuisine: 'Other', ingredients: ['salmon', 'honey'] });
+  assert.equal(salmon.url, '/photos/w_teriyaki.webp');
+  assert.equal(salmon.guessed, true);
+
+  const lasagne = resolveMealPhoto({ id: 'meal_custom_2', title: "Mum's Lasagne", cuisine: 'Other', ingredients: ['beef mince', 'pasta'] });
+  assert.equal(lasagne.url, '/photos/w_lasagne.webp');
+
+  const mystery = resolveMealPhoto({ id: 'meal_custom_3', title: 'Tuesday Surprise', cuisine: 'Other', ingredients: ['salt'] });
+  checkLocalUrl(mystery.url, 'mystery fallback');
+
+  // External imported URLs keep their URL as primary and retain a local fallbackUrl if blocked/broken
+  const external = resolveMealPhoto({
+    id: 'meal_custom_4',
+    title: 'Crispy Tacos',
+    cuisine: 'Mexican',
+    imageUrl: 'https://images.example.com/tacos.jpg',
+  });
+  assert.equal(external.url, 'https://images.example.com/tacos.jpg');
+  assert.equal(external.guessed, false);
+  assert.equal(external.fallbackUrl, '/photos/w_tacos_pastor.webp');
+
+  // Every World Kitchen cuisine chip resolves to a real dish thumbnail
+  for (const c of [{ id: 'all' }, ...POPULAR_CUISINES, { id: 'other' }]) {
+    checkLocalUrl(cuisinePhotoUrl(c.id), `cuisine:${c.id}`);
+  }
+
+  // JSON-LD image & og:image extraction
+  const withOg = extractRecipeFromHtml(
+    `<html><head><meta property="og:image" content="https://cdn.example.com/chilli-hero.jpg" />` +
+      PAGE.replace('<html><head>', '')
+  )!;
+  assert.equal(withOg.imageUrl, 'https://cdn.example.com/chilli-hero.jpg');
+
+  // repairImportedMeal upgrades old "Other" recipes to an inferred cuisine
+  const oldOther: any = {
+    id: 'meal_old_other',
+    title: "Mum's Lasagne",
+    description: 'Classic bake',
+    cuisine: 'Other',
+    timeStake: '60m',
+    effort: 'standard',
+    source: 'own',
+    tags: ['Imported'],
+    ingredients: ['500g beef mince', 'lasagne sheets'],
+    prepSteps: ['Bake until bubbling (-0m)'],
+  };
+  assert.equal(repairImportedMeal(oldOther).cuisine, 'Italian');
+});

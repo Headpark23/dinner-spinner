@@ -3,7 +3,7 @@ import { useDinner } from '../context/DinnerContext';
 import { Lock, ChevronDown, Dices, RotateCcw } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { COMBO_HEADERS } from '../data/initialData';
-import { photoFor } from '../data/photos';
+import { resolveMealPhoto } from '../data/photos';
 import { Button, DishTile, cx, timeLabel, effortLabel } from './ui';
 import { costText, costPerHeadText } from '../utils/cost';
 
@@ -129,7 +129,7 @@ export const ReelWindow: React.FC<ReelWindowProps> = ({ onSpin }) => {
   const currentIdx = pool.findIndex((m) => m.id === activeMealResult?.id);
   const prevMeal = activeMealResult && pool.length > 1 ? pool[(currentIdx - 1 + pool.length) % pool.length] : null;
   const nextMeal = activeMealResult && pool.length > 1 ? pool[(currentIdx + 1) % pool.length] : null;
-  const activePhoto = activeMealResult ? activeMealResult.imageUrl || photoFor(activeMealResult.id) : undefined;
+  const activeResolvedPhoto = activeMealResult ? resolveMealPhoto(activeMealResult) : undefined;
 
   const drumCaption =
     mode === 'single'
@@ -179,11 +179,16 @@ export const ReelWindow: React.FC<ReelWindowProps> = ({ onSpin }) => {
             {mode === 'single' ? (
               <div className="reel-fade relative h-[164px] overflow-hidden px-4">
                 {/* Warm ambient photo glow behind the settled dish */}
-                {!isSpinning && activePhoto && (
+                {!isSpinning && activeResolvedPhoto && (
                   <img
-                    src={activePhoto}
+                    src={activeResolvedPhoto.url}
                     alt=""
                     aria-hidden="true"
+                    onError={(e) => {
+                      if (!e.currentTarget.src.endsWith(activeResolvedPhoto.fallbackUrl)) {
+                        e.currentTarget.src = activeResolvedPhoto.fallbackUrl;
+                      }
+                    }}
                     className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-[0.16] blur-md"
                   />
                 )}
@@ -201,8 +206,11 @@ export const ReelWindow: React.FC<ReelWindowProps> = ({ onSpin }) => {
                     <div className="my-auto flex items-center justify-center gap-3 px-2">
                       {activeMealResult && (
                         <DishTile
+                          id={activeMealResult.id}
+                          title={activeMealResult.title}
                           cuisine={activeMealResult.cuisine}
-                          imageUrl={activePhoto}
+                          ingredients={activeMealResult.ingredients}
+                          imageUrl={activeMealResult.imageUrl}
                           size={50}
                           className="hidden shrink-0 rounded-xl ring-1 ring-brass/40 shadow-md xs:inline-flex sm:inline-flex"
                         />

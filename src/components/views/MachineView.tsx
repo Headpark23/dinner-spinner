@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { RecipeSheet } from '../RecipeSheet';
-import { photoFor } from '../../data/photos';
+import { resolveMealPhoto } from '../../data/photos';
 import { useDinner } from '../../context/DinnerContext';
 import { ReelWindow } from '../ReelWindow';
 import { TimeFilter, EffortFilter, MachineMode } from '../../types';
@@ -29,7 +29,7 @@ import { FamilyPrompt } from '../FamilyPrompt';
 import { CupboardSheet } from '../CupboardSheet';
 import { FreezerCard } from '../FreezerCard';
 import { costLabel, type CostLimit } from '../../utils/cost';
-import { Card, Chip, Notice, DishTile, Segmented, Switch, Button, IconButton, Sheet, cx, timeLabel, effortLabel } from '../ui';
+import { Card, Chip, Notice, Segmented, Switch, Button, IconButton, Sheet, cx, timeLabel, effortLabel } from '../ui';
 
 const dayPart = () => {
   const now = new Date();
@@ -113,7 +113,7 @@ export const MachineView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFam
   const redItems = pantry.filter((p) => p.freshness === 'red');
   const pantryMatch = activeMealResult ? getMealPantryMatch(activeMealResult) : null;
   const coolingDays = activeMealResult ? getCoolingOffDays(activeMealResult) : null;
-  const resultPhoto = activeMealResult ? activeMealResult.imageUrl || photoFor(activeMealResult.id) : undefined;
+  const resolvedResultPhoto = activeMealResult ? resolveMealPhoto(activeMealResult) : undefined;
   const plannedCount = Object.keys(weekPlan).length;
 
   const poolNote =
@@ -201,86 +201,63 @@ export const MachineView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFam
       )}
 
       {/* Editorial Hero Result Card */}
-      {activeMealResult && !isSpinning && pantryMatch && (
+      {activeMealResult && !isSpinning && pantryMatch && resolvedResultPhoto && (
         <div ref={resultRef} className="scroll-mt-[72px]">
           <Card className="fade-up overflow-hidden" aria-label="Spin result" aria-live="polite">
-            {resultPhoto ? (
-              <div className="relative">
-                <button onClick={() => setSheetOpen(true)} className="group block w-full text-left" aria-label="Open the full recipe">
-                  <div className="relative aspect-[16/10] w-full overflow-hidden">
-                    <img
-                      src={resultPhoto}
-                      alt=""
-                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
-                      width={540}
-                      height={338}
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/72 via-black/18 to-black/10" />
-                    <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
-                      <span className="inline-flex items-center gap-1 rounded-full bg-black/55 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-xs">
-                        <Clock className="h-3 w-3" /> {timeLabel(activeMealResult.timeStake)}
+            <div className="relative">
+              <button onClick={() => setSheetOpen(true)} className="group block w-full text-left" aria-label="Open the full recipe">
+                <div className="relative aspect-[16/10] w-full overflow-hidden bg-sunk">
+                  <img
+                    src={resolvedResultPhoto.url}
+                    alt=""
+                    onError={(e) => {
+                      if (!e.currentTarget.src.endsWith(resolvedResultPhoto.fallbackUrl)) {
+                        e.currentTarget.src = resolvedResultPhoto.fallbackUrl;
+                      }
+                    }}
+                    className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
+                    width={540}
+                    height={338}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/72 via-black/18 to-black/10" />
+                  <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-black/55 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-xs">
+                      <Clock className="h-3 w-3" /> {timeLabel(activeMealResult.timeStake)}
+                    </span>
+                    <span className="inline-flex items-center rounded-full bg-black/55 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-xs">
+                      {activeMealResult.cuisine}
+                    </span>
+                    {activeMealResult.rating === 5 && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-brass px-2.5 py-1 text-[11.5px] font-bold text-enamel">
+                        <Star className="h-3 w-3 fill-current" /> 5★
                       </span>
-                      <span className="inline-flex items-center rounded-full bg-black/55 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-xs">
-                        {activeMealResult.cuisine}
-                      </span>
-                      {activeMealResult.rating === 5 && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-brass px-2.5 py-1 text-[11.5px] font-bold text-enamel">
-                          <Star className="h-3 w-3 fill-current" /> 5★
-                        </span>
-                      )}
-                    </div>
-                    <div className="absolute right-14 bottom-3 left-4 text-white">
-                      <p className="text-[10.5px] font-semibold tracking-[0.1em] uppercase text-white/80">Tonight’s pick</p>
-                      <h2 className="mt-0.5 font-display text-[24px] leading-[1.12] font-semibold drop-shadow-xs">
-                        {activeMealResult.title}
-                      </h2>
-                    </div>
+                    )}
                   </div>
-                </button>
-                <IconButton
-                  label={activeMealResult.isFavorite ? 'Remove from favourites' : 'Add to favourites'}
-                  active={activeMealResult.isFavorite}
-                  onClick={() => toggleFavoriteMeal(activeMealResult.id)}
-                  className="absolute right-3 bottom-3 h-10 w-10 rounded-full bg-card/92 shadow-md backdrop-blur-xs"
-                >
-                  <Heart className={cx('h-5 w-5', activeMealResult.isFavorite && 'fill-current')} strokeWidth={1.85} />
-                </IconButton>
-              </div>
-            ) : null}
+                  <div className="absolute right-14 bottom-3 left-4 text-white">
+                    <p className="text-[10.5px] font-semibold tracking-[0.1em] uppercase text-white/80">Tonight’s pick</p>
+                    <h2 className="mt-0.5 font-display text-[24px] leading-[1.12] font-semibold drop-shadow-xs">
+                      {activeMealResult.title}
+                    </h2>
+                  </div>
+                </div>
+              </button>
+              <IconButton
+                label={activeMealResult.isFavorite ? 'Remove from favourites' : 'Add to favourites'}
+                active={activeMealResult.isFavorite}
+                onClick={() => toggleFavoriteMeal(activeMealResult.id)}
+                className="absolute right-3 bottom-3 h-10 w-10 rounded-full bg-card/92 shadow-md backdrop-blur-xs"
+              >
+                <Heart className={cx('h-5 w-5', activeMealResult.isFavorite && 'fill-current')} strokeWidth={1.85} />
+              </IconButton>
+            </div>
 
             <div className="p-4">
-              {!resultPhoto && (
-                <div className="mb-2 flex items-start gap-3">
-                  <DishTile cuisine={activeMealResult.cuisine} imageUrl={activeMealResult.imageUrl} size={54} />
-                  <div className="min-w-0 flex-1">
-                    <p className="eyebrow">Tonight’s pick</p>
-                    <h2 className="font-display text-[22px] leading-snug font-semibold">{activeMealResult.title}</h2>
-                    <p className="mt-0.5 text-[13px] text-ink-2">
-                      {timeLabel(activeMealResult.timeStake)} · {effortLabel(activeMealResult.effort)} · {activeMealResult.cuisine}
-                    </p>
-                  </div>
-                  <IconButton
-                    label={activeMealResult.isFavorite ? 'Remove from favourites' : 'Add to favourites'}
-                    active={activeMealResult.isFavorite}
-                    onClick={() => toggleFavoriteMeal(activeMealResult.id)}
-                    className="-mr-1.5 -mt-1"
-                  >
-                    <Heart className={cx('h-5 w-5', activeMealResult.isFavorite && 'fill-current')} strokeWidth={1.75} />
-                  </IconButton>
-                </div>
-              )}
-
               <p className="line-clamp-2 text-[14px] leading-relaxed text-ink-2">{activeMealResult.description}</p>
 
-              {(coolingDays !== null || pantryMatch.redMatchedItems.length > 0 || (activeMealResult.rating === 5 && !resultPhoto)) && (
+              {(coolingDays !== null || pantryMatch.redMatchedItems.length > 0) && (
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   {pantryMatch.redMatchedItems.length > 0 && (
                     <Chip tone="tomato">Uses up {pantryMatch.redMatchedItems.join(', ')}</Chip>
-                  )}
-                  {activeMealResult.rating === 5 && !resultPhoto && (
-                    <Chip tone="saffron">
-                      <Star className="h-3 w-3 fill-current" /> Five-star dish
-                    </Chip>
                   )}
                   {coolingDays !== null && isCoolingOff(activeMealResult) && (
                     <Chip>

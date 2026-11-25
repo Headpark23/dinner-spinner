@@ -4,7 +4,7 @@ import { Meal, MealTweaks } from '../types';
 import { withTweaks } from '../utils/dinnerEngine';
 import { repairImportedMeal, splitIngredientDisplay } from '../utils/recipeImport';
 import { quantityFor, hasQuantities } from '../utils/quantities';
-import { photoFor, PHOTO_CREDITS } from '../data/photos';
+import { resolveMealPhoto } from '../data/photos';
 import { Check, Plus, X, Send, Dices, Star, ThumbsDown, Heart, ShoppingBasket, ImageDown, Clock } from 'lucide-react';
 import { shareRecipeCard } from '../utils/shareRecipeCard';
 import { costPerHeadText } from '../utils/cost';
@@ -77,8 +77,8 @@ export const RecipeSheet: React.FC<{
 
   const saveTweaks = (next: MealTweaks) => updateMealTweaks(current.id, next);
 
-  const photo = current.imageUrl || photoFor(current.id);
-  const credit = PHOTO_CREDITS[current.id] || (current.imageUrl ? current.photoCredit : undefined);
+  const resolvedPhoto = resolveMealPhoto(current);
+  const credit = resolvedPhoto.credit;
   const reviews = cookLog
     .filter((c) => c.mealId === current.id)
     .flatMap((c) => (c.reviews || []).map((r) => ({ ...r, date: c.date })))
@@ -88,52 +88,59 @@ export const RecipeSheet: React.FC<{
 
   return (
     <Sheet isOpen onClose={onClose} title={current.title} labelledBy="recipe-title" tall>
-      {photo && (
-        <figure className="-mx-5 -mt-1 mb-4 overflow-hidden">
-          <div className="relative aspect-[16/10] w-full overflow-hidden">
-            <img src={photo} alt={current.title} className="h-full w-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-black/15" />
-            <div className="absolute bottom-3 left-4 flex flex-wrap gap-1.5">
-              <span className="inline-flex items-center gap-1 rounded-full bg-black/55 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-xs">
-                <Clock className="h-3 w-3" /> {timeLabel(current.timeStake)}
-              </span>
-              <span className="inline-flex items-center rounded-full bg-black/55 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-xs">
-                {effortLabel(current.effort)}
-              </span>
-              <span className="inline-flex items-center rounded-full bg-black/55 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-xs">
-                {costPerHeadText(costEach(current))}
-              </span>
-            </div>
-            {inRotation && (
-              <IconButton
-                label={current.isFavorite ? 'Remove from favourites' : 'Add to favourites'}
-                active={current.isFavorite}
-                onClick={() => toggleFavoriteMeal(current.id)}
-                className="absolute right-3 bottom-3 h-10 w-10 rounded-full bg-card/92 shadow-md backdrop-blur-xs"
-              >
-                <Heart className={cx('h-5 w-5', current.isFavorite && 'fill-current')} />
-              </IconButton>
-            )}
-          </div>
-          {credit && (
-            <figcaption className="px-5 pt-1.5 text-[11px] text-ink-3">
-              Photo:{' '}
-              <a href={credit.source} target="_blank" rel="noreferrer" className="underline">
-                {credit.author.slice(0, 60)}
-              </a>
-              , {credit.license}
-            </figcaption>
+      <figure className="-mx-5 -mt-1 mb-4 overflow-hidden">
+        <div className="relative aspect-[16/10] w-full overflow-hidden bg-sunk">
+          <img
+            src={resolvedPhoto.url}
+            alt={current.title}
+            onError={(e) => {
+              if (!e.currentTarget.src.endsWith(resolvedPhoto.fallbackUrl)) {
+                e.currentTarget.src = resolvedPhoto.fallbackUrl;
+              }
+            }}
+            className="h-full w-full object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-black/15" />
+          {resolvedPhoto.guessed && (
+            <span className="absolute top-3 left-4 rounded-full bg-black/48 px-2.5 py-0.5 text-[11px] font-medium text-white/90 backdrop-blur-xs">
+              Suggested photo
+            </span>
           )}
-        </figure>
-      )}
+          <div className="absolute bottom-3 left-4 flex flex-wrap gap-1.5">
+            <span className="inline-flex items-center gap-1 rounded-full bg-black/55 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-xs">
+              <Clock className="h-3 w-3" /> {timeLabel(current.timeStake)}
+            </span>
+            <span className="inline-flex items-center rounded-full bg-black/55 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-xs">
+              {effortLabel(current.effort)}
+            </span>
+            <span className="inline-flex items-center rounded-full bg-black/55 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-xs">
+              {costPerHeadText(costEach(current))}
+            </span>
+          </div>
+          {inRotation && (
+            <IconButton
+              label={current.isFavorite ? 'Remove from favourites' : 'Add to favourites'}
+              active={current.isFavorite}
+              onClick={() => toggleFavoriteMeal(current.id)}
+              className="absolute right-3 bottom-3 h-10 w-10 rounded-full bg-card/92 shadow-md backdrop-blur-xs"
+            >
+              <Heart className={cx('h-5 w-5', current.isFavorite && 'fill-current')} />
+            </IconButton>
+          )}
+        </div>
+        {credit && (
+          <figcaption className="px-5 pt-1.5 text-[11px] text-ink-3">
+            Photo:{' '}
+            <a href={credit.source} target="_blank" rel="noreferrer" className="underline">
+              {credit.author.slice(0, 60)}
+            </a>
+            , {credit.license}
+          </figcaption>
+        )}
+      </figure>
 
       <div className="flex flex-wrap items-center gap-2 text-[13px] font-medium text-ink-2">
         <span>{[current.origin, current.cuisine].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(' · ')}</span>
-        {!photo && (
-          <span>
-            · {timeLabel(current.timeStake)} · {effortLabel(current.effort)} · {costPerHeadText(costEach(current))}
-          </span>
-        )}
       </div>
 
       {current.rating > 0 && (
@@ -406,7 +413,7 @@ export const RecipeSheet: React.FC<{
           onClick={async () => {
             setCardNote('Making the picture…');
             try {
-              const r = await shareRecipeCard(effective, { photo: photo || undefined, credit });
+              const r = await shareRecipeCard(effective, { photo: resolvedPhoto.url, credit });
               setCardNote(r === 'copied' ? 'Picture copied. Paste it into a message.' : r === 'downloaded' ? 'Picture saved to your downloads.' : null);
             } catch {
               setCardNote('Couldn’t make the picture. Try again.');
@@ -435,15 +442,6 @@ export const RecipeSheet: React.FC<{
               >
                 <Dices className="h-4 w-4" /> Put on the reel
               </Button>
-              {!photo && (
-                <IconButton
-                  label={current.isFavorite ? 'Remove from favourites' : 'Add to favourites'}
-                  active={current.isFavorite}
-                  onClick={() => toggleFavoriteMeal(current.id)}
-                >
-                  <Heart className={cx('h-4 w-4', current.isFavorite && 'fill-current')} />
-                </IconButton>
-              )}
               {!confirmReject ? (
                 <Button variant="quiet" size="sm" className="ml-auto text-ink-3 hover:text-tomato" onClick={() => setConfirmReject(true)}>
                   <ThumbsDown className="h-4 w-4" /> Not for us

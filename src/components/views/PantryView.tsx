@@ -9,6 +9,7 @@ import { useByLabel, useByStatus } from '../../utils/leftovers';
 import { ImportRecipe } from '../ImportRecipe';
 import { DeliverySheet } from '../DeliverySheet';
 import {
+  inferCuisine,
   normalizeIngredientsAndSteps,
   normalizeStepLines,
   parseIngredientInput,
@@ -18,7 +19,6 @@ import {
 import { mealFitsDiets } from '../../utils/diets';
 import { lovedCount } from '../../utils/taste';
 import { POPULAR_CUISINES } from '../../data/popularCuisines';
-import { CuisineFlag } from '../CuisineFlag';
 import { STORES, StoreId } from '../../utils/planner';
 import { inFreezer, usedUp, totalPortions, oldestFirst, frozenAgo, isEatSoon } from '../../utils/freezer';
 import {
@@ -53,13 +53,12 @@ import { FreshnessLevel, Meal, TimeStake, EffortLevel } from '../../types';
 import { RecipeSheet } from '../RecipeSheet';
 import { PageHeader } from '../ui';
 import { itemIcon } from '../../utils/itemIcon';
-import { photoFor } from '../../data/photos';
+import { cuisinePhotoUrl, resolveMealPhoto } from '../../data/photos';
 import { INITIAL_MEALS } from '../../data/initialData';
 import {
   Button,
   Card,
   Chip,
-  DishTile,
   FreshDot,
   IconButton,
   Notice,
@@ -210,6 +209,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
   const [customEffort, setCustomEffort] = useState<EffortLevel>('one-pot');
   const [customIngredients, setCustomIngredients] = useState('');
   const [customSteps, setCustomSteps] = useState('');
+  const [customImageUrl, setCustomImageUrl] = useState('');
 
   const addFormRef = useRef<HTMLDivElement | null>(null);
 
@@ -218,13 +218,18 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
     const cleaned = normalizeIngredientsAndSteps(r.ingredients || [], r.prepSteps || []);
     const mins = r.timeStake === '20m' ? 20 : r.timeStake === '30m' ? 30 : r.timeStake === '60m' ? 60 : 90;
     const stepsWithOffsets = cleaned.steps.length ? spreadOffsets(cleaned.steps, mins) : [];
+    const nextCuisine =
+      r.cuisine && r.cuisine.trim().toLowerCase() !== 'other'
+        ? r.cuisine
+        : inferCuisine(r.title, cleaned.ingredients);
     setCustomTitle(r.title);
     setCustomDesc(r.description);
-    setCustomCuisine(r.cuisine || 'Other');
+    setCustomCuisine(nextCuisine);
     setCustomTime(r.timeStake);
     setCustomEffort(r.effort);
     setCustomIngredients(cleaned.ingredients.join('\n'));
     setCustomSteps(stepsWithOffsets.join('\n'));
+    setCustomImageUrl(r.imageUrl || '');
     setShowAddRecipe(true);
     flash(note);
     requestAnimationFrame(() => addFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
@@ -458,6 +463,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
           : ['Prep and chop everything (-20m)', 'Cook the main (-12m)', 'Finish the sauce and season (-4m)', 'Serve (-0m)'],
       tags: ['Family recipe', customCuisine],
       source: 'own',
+      ...(customImageUrl ? { imageUrl: customImageUrl } : {}),
     });
     // A new recipe goes straight onto the spinner (unless tonight's dinner is already being voted on or cooked).
     const onSpinner = mode === 'single' && !proposedMeal && !agreedMeal && mealFitsDiets(saved.ingredients, diets);
@@ -467,6 +473,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
     setCustomDesc('');
     setCustomIngredients('');
     setCustomSteps('');
+    setCustomImageUrl('');
     setShowAddRecipe(false);
   };
 
@@ -1053,18 +1060,25 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
             ) : (
               <div className="space-y-2">
                 <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 scrollbar-none" role="radiogroup" aria-label="Cuisine">
-                  {[{ id: 'all', label: 'All', symbol: '🌍' }, ...POPULAR_CUISINES, { id: 'other', label: 'Other', symbol: '🍽️' }].map((c) => (
+                  {[{ id: 'all', label: 'All' }, ...POPULAR_CUISINES, { id: 'other', label: 'Other' }].map((c) => (
                     <button
                       key={c.id}
                       role="radio"
                       aria-checked={worldCuisine === c.id}
                       onClick={() => setWorldCuisine(c.id)}
                       className={cx(
-                        'flex h-10 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium transition-colors',
-                        worldCuisine === c.id ? 'border-ink bg-ink text-paper' : 'border-line text-ink-2 hover:border-line-strong'
+                        'flex h-10 shrink-0 items-center gap-2 rounded-full border pl-2 pr-3.5 text-[13px] font-medium transition-colors',
+                        worldCuisine === c.id ? 'border-ink bg-ink text-paper' : 'border-line bg-card/80 text-ink-2 hover:border-line-strong'
                       )}
                     >
-                      <CuisineFlag code={(c as { code?: string }).code} symbol={(c as { symbol?: string }).symbol} />
+                      <img
+                        src={cuisinePhotoUrl(c.id)}
+                        alt=""
+                        width={22}
+                        height={22}
+                        loading="lazy"
+                        className="h-[22px] w-[22px] shrink-0 rounded-full object-cover ring-1 ring-black/12"
+                      />
                       {c.label}
                     </button>
                   ))}
@@ -1087,7 +1101,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
                 {(recipeScope === 'ours' ? filteredVaultMeals : browsingPicks ? worldPicks : filteredWorld).map((meal) => {
                   const match = getMealPantryMatch(meal);
                   const added = recipeScope === 'world' && meals.some((m) => m.id === meal.id);
-                  const photo = meal.imageUrl || photoFor(meal.id);
+                  const resolvedPhoto = resolveMealPhoto(meal);
                   return (
                     <li key={meal.id} className="flex flex-col">
                       <div className="editorial-card group relative flex flex-1 flex-col overflow-hidden rounded-[20px] border border-line/90 bg-card transition-all hover:border-line-strong">
@@ -1096,18 +1110,17 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
                           className="flex flex-1 flex-col text-left"
                         >
                           <div className="relative aspect-[4/3] w-full overflow-hidden bg-sunk">
-                            {photo ? (
-                              <img
-                                src={photo}
-                                alt=""
-                                loading="lazy"
-                                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
-                              />
-                            ) : (
-                              <div className="flex h-full w-full items-center justify-center">
-                                <DishTile cuisine={meal.cuisine} size={60} className="rounded-2xl shadow-sm" />
-                              </div>
-                            )}
+                            <img
+                              src={resolvedPhoto.url}
+                              alt=""
+                              loading="lazy"
+                              onError={(e) => {
+                                if (!e.currentTarget.src.endsWith(resolvedPhoto.fallbackUrl)) {
+                                  e.currentTarget.src = resolvedPhoto.fallbackUrl;
+                                }
+                              }}
+                              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+                            />
                             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/52 via-transparent to-black/15" />
                             <span className="absolute bottom-2 left-2 rounded-full bg-black/58 px-2 py-0.5 text-[11px] font-semibold text-white backdrop-blur-xs">
                               {timeLabel(meal.timeStake)}

@@ -22,7 +22,7 @@ import { WelcomeSheet } from './components/WelcomeSheet';
 import { JoinSheet, JoinedBanner, LiveVoteBanner } from './components/LiveVote';
 import { VoteNewsBanner } from './components/VoteNotifications';
 import { FamilySheet } from './components/FamilySheet';
-import { photoFor } from './data/photos';
+import { resolveMealPhoto } from './data/photos';
 import { Card, FreshDot, Switch, cx } from './components/ui';
 import { ArrowRight, Check, ChevronLeft, Clock, Flame } from 'lucide-react';
 
@@ -43,7 +43,8 @@ const TonightPanel: React.FC = () => {
   const redItems = pantry.filter((p) => p.freshness === 'red');
   const nextStep = reverseTimers.find((s) => !s.done);
   const featured = agreedMeal || proposedMeal;
-  const featuredPhoto = featured ? featured.imageUrl || photoFor(featured.id) : undefined;
+  const featuredResolved = featured ? resolveMealPhoto(featured) : undefined;
+  const featuredPhoto = featuredResolved?.url;
 
   return (
     <aside aria-label="Tonight at a glance" className="hidden lg:block w-[340px] shrink-0">
@@ -51,9 +52,18 @@ const TonightPanel: React.FC = () => {
         <p className="eyebrow px-1">Tonight in the kitchen</p>
 
         <Card className="overflow-hidden">
-          {featuredPhoto && (
-            <div className="relative aspect-[16/9] w-full overflow-hidden">
-              <img src={featuredPhoto} alt="" className="h-full w-full object-cover" />
+          {featuredPhoto && featuredResolved && (
+            <div className="relative aspect-[16/9] w-full overflow-hidden bg-sunk">
+              <img
+                src={featuredPhoto}
+                alt=""
+                onError={(e) => {
+                  if (!e.currentTarget.src.endsWith(featuredResolved.fallbackUrl)) {
+                    e.currentTarget.src = featuredResolved.fallbackUrl;
+                  }
+                }}
+                className="h-full w-full object-cover"
+              />
               <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/15 to-transparent" />
               <span className="absolute bottom-2.5 left-3 inline-flex items-center gap-1 rounded-full bg-black/55 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-xs">
                 <Clock className="h-3 w-3" /> Dinner at {targetEatingTime}

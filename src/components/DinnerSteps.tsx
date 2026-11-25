@@ -1,7 +1,6 @@
 import React from 'react';
 import { ArrowRight, Check } from 'lucide-react';
 import { useDinner } from '../context/DinnerContext';
-import { photoFor } from '../data/photos';
 import { DishTile, cx } from './ui';
 
 export type DinnerStage = 'pick' | 'vote' | 'cook' | 'rate';
@@ -91,14 +90,21 @@ export const InProgressBanner: React.FC = () => {
   const meal = agreedMeal ?? proposedMeal;
   if (!meal) return null;
   const label = stage === 'vote' ? 'Waiting for a vote' : stage === 'cook' ? 'Agreed · Time to cook' : 'Eaten · Rate tonight’s dinner';
-  const photo = meal.imageUrl || photoFor(meal.id);
 
   return (
     <button
       onClick={() => setActiveView(3)}
       className="btn-primary-tactile fade-up flex w-full items-center gap-3 rounded-2xl p-3 text-left text-white"
     >
-      <DishTile cuisine={meal.cuisine} imageUrl={photo} size={46} className="ring-1 ring-white/25" />
+      <DishTile
+        id={meal.id}
+        title={meal.title}
+        cuisine={meal.cuisine}
+        ingredients={meal.ingredients}
+        imageUrl={meal.imageUrl}
+        size={46}
+        className="ring-1 ring-white/25"
+      />
       <span className="min-w-0 flex-1">
         <span className="block text-[11.5px] font-semibold tracking-wide uppercase opacity-85">{label}</span>
         <span className="block truncate font-display text-[18px] leading-snug font-semibold">{meal.title}</span>
