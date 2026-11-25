@@ -2,7 +2,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { HttpError } from '../server/store';
-import { extractRecipeFromHtml, isoMinutes, parseRecipeText, recipeFromJsonLd, spreadOffsets, timeStakeFor } from './recipeImport';
+import {
+  extractRecipeFromHtml,
+  htmlToText,
+  isPrepFragment,
+  isoMinutes,
+  looksLikeMethodSentence,
+  parseIngredientInput,
+  parseRecipeText,
+  recipeFromJsonLd,
+  repairImportedMeal,
+  splitIngredientDisplay,
+  spreadOffsets,
+  timeStakeFor,
+} from './recipeImport';
 import { DELIVERY_SHOPS, listText, searchTerm } from './delivery';
 
 process.env.NODE_ENV = 'test';
@@ -115,4 +128,86 @@ test('Delivery: every supermarket gets a search link for each item, and apps get
   const apps = DELIVERY_SHOPS.filter((s) => s.kind === 'app').map((s) => s.name);
   assert.deepEqual(apps.sort(), ['Just Eat', 'Uber Eats']);
   assert.equal(listText(['milk', 'eggs']), 'Shopping list:\n- milk\n- eggs');
+});
+
+test('Recipe import tightening: commas stay inside ingredients, sentences never become ingredient checkboxes, and existing broken imports self-heal', async () => {
+  const { WORLD_RECIPES } = await import('../data/worldRecipes');
+  const { INITIAL_MEALS } = await import('../data/initialData');
+
+  // 1. Multiline draft save never splits commas into separate checkboxes
+  assert.deepEqual(
+    parseIngredientInput('▢ 500g chicken thighs, boneless, diced\n1 tin kidney beans, drained and rinsed\n2 onions, finely chopped'),
+    ['500g chicken thighs, boneless, diced', '1 tin kidney beans, drained and rinsed', '2 onions, finely chopped']
+  );
+
+  // 2. HTML fallback keeps line breaks so parseRecipeText separates ingredients from method sentences
+  const html = `<html><body>
+    <h1>Sticky Honey Garlic Salmon</h1>
+    <p>Serves 4</p>
+    <h2>Ingredients (serves 4)</h2>
+    <ul><li>4 salmon fillets, skinless</li><li>2 tbsp soy sauce</li><li>2 tbsp honey</li></ul>
+    <h2>Instructions</h2>
+    <p>Heat a non-stick pan over medium heat and sear the salmon for 4 minutes.</p>
+    <p>Pour in the honey and soy sauce and simmer for 2 minutes until sticky.</p>
+    <h2>Nutrition</h2><p>420 kcal</p>
+  </body></html>`;
+  const parsedFromHtml = parseRecipeText(htmlToText(html));
+  assert.equal(parsedFromHtml.title, 'Sticky Honey Garlic Salmon');
+  assert.deepEqual(parsedFromHtml.ingredients, ['4 salmon fillets, skinless', '2 tbsp soy sauce', '2 tbsp honey']);
+  assert.equal(parsedFromHtml.prepSteps.length, 2);
+  assert.ok(!parsedFromHtml.prepSteps.some((s) => /420 kcal/i.test(s)), 'stops before nutrition footer');
+
+  // 3. Soft line-wraps in PDF/Word/text join back into whole sentences rather than broken checkboxes
+  const wrapped = parseRecipeText(`One-Pan Orzo\nIngredients\n300g orzo\n1 onion,\nfinely chopped\n2 garlic cloves\n1. Heat the oil in a deep frying pan over\nmedium heat and fry the onion for\n5 minutes until soft.\n2. Stir in the orzo and stock and simmer for 12 minutes.`);
+  assert.deepEqual(wrapped.ingredients, ['300g orzo', '1 onion, finely chopped', '2 garlic cloves']);
+  assert.equal(wrapped.prepSteps.length, 2);
+  assert.match(wrapped.prepSteps[0], /^Heat the oil in a deep frying pan over medium heat and fry the onion for 5 minutes until soft\./);
+
+  // 4. Self-heals already-saved recipes that were shredded by the old comma splitter or had leaked method clauses
+  const brokenMeal: any = {
+    id: 'meal_broken',
+    title: 'Imported Curry',
+    description: 'Test',
+    cuisine: 'Indian',
+    timeStake: '30m',
+    effort: 'one-pot',
+    source: 'own',
+    tags: ['Family recipe'],
+    ingredients: [
+      '▢ 500g chicken thighs',
+      'boneless and skinless',
+      'cut into chunks',
+      '1 large onion',
+      'finely chopped',
+      '1 tin chopped tomatoes',
+      'drained',
+      'Heat the oil in a large pan over medium heat',
+      'add the onion and cook for 5 minutes until softened',
+      'then stir in the chicken and tomatoes and simmer for 15 minutes.',
+    ],
+    prepSteps: ['Prep and chop everything (-20m)', 'Cook the main (-12m)', 'Finish the sauce and season (-4m)', 'Serve (-0m)'],
+  };
+  const healed = repairImportedMeal(brokenMeal);
+  assert.deepEqual(healed.ingredients, [
+    '500g chicken thighs, boneless and skinless, cut into chunks',
+    '1 large onion, finely chopped',
+    '1 tin chopped tomatoes, drained',
+  ]);
+  assert.equal(healed.prepSteps.length, 1);
+  assert.match(healed.prepSteps[0], /^Heat the oil in a large pan over medium heat, add the onion/);
+
+  // 5. Display splitter highlights leading quantities and prep notes cleanly
+  assert.deepEqual(splitIngredientDisplay('500g chicken thighs, boneless, diced'), {
+    qty: '500g',
+    item: 'chicken thighs',
+    prep: 'boneless, diced',
+  });
+
+  // 6. Zero false positives across all 120+ bundled ingredients
+  for (const m of [...INITIAL_MEALS, ...WORLD_RECIPES]) {
+    for (const ing of m.ingredients) {
+      assert.equal(isPrepFragment(ing), false, `Bundled ingredient falsely flagged as prep fragment: "${ing}" in ${m.id}`);
+      assert.equal(looksLikeMethodSentence(ing), false, `Bundled ingredient falsely flagged as method sentence: "${ing}" in ${m.id}`);
+    }
+  }
 });

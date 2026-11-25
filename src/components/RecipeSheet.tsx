@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useDinner } from '../context/DinnerContext';
 import { Meal, MealTweaks } from '../types';
 import { withTweaks } from '../utils/dinnerEngine';
+import { repairImportedMeal, splitIngredientDisplay } from '../utils/recipeImport';
 import { quantityFor, hasQuantities } from '../utils/quantities';
 import { photoFor, PHOTO_CREDITS } from '../data/photos';
 import { Check, Plus, X, Send, Dices, Star, ThumbsDown, Heart, ShoppingBasket, ImageDown, Clock } from 'lucide-react';
@@ -36,7 +37,8 @@ export const RecipeSheet: React.FC<{
     costEach,
   } = useDinner();
 
-  const current = meal ? meals.find((m) => m.id === meal.id) || meal : null;
+  const rawCurrent = meal ? meals.find((m) => m.id === meal.id) || meal : null;
+  const current = useMemo(() => (rawCurrent ? repairImportedMeal(rawCurrent) : null), [rawCurrent]);
   const inRotation = !!current && meals.some((m) => m.id === current.id);
 
   const [haveOverrides, setHaveOverrides] = useState<Record<string, boolean>>({});
@@ -170,36 +172,36 @@ export const RecipeSheet: React.FC<{
             />
           </div>
         )}
-        <ul className="editorial-card mt-2.5 divide-y divide-line overflow-hidden rounded-[18px] border border-line/90 bg-card">
+        <ul className="editorial-card mt-2 divide-y divide-line/80 overflow-hidden rounded-[18px] border border-line/90 bg-card">
           {effective.ingredients.map((ing) => {
             const have = has(ing);
             const mine = tweaks.extraIngredients.includes(ing);
+            const tableQty = quantityFor(current.id, ing, servings);
+            const parsed = tableQty ? { qty: tableQty, item: ing, prep: '' } : splitIngredientDisplay(ing);
             return (
               <li key={ing}>
                 <button
                   role="checkbox"
                   aria-checked={have}
                   onClick={() => toggleHave(ing)}
-                  className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left text-[14.5px] transition-colors hover:bg-sunk/60"
+                  className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[14px] leading-snug transition-colors hover:bg-sunk/60"
                 >
                   <span
                     className={cx(
-                      'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors',
+                      'flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[5px] border transition-colors',
                       have ? 'border-sage bg-sage text-white' : 'border-line-strong bg-paper'
                     )}
                   >
-                    {have && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
+                    {have && <Check className="h-3 w-3" strokeWidth={3} />}
                   </span>
-                  <span className={cx('flex-1', have && 'text-ink-2')}>
-                    {(() => {
-                      const qty = quantityFor(current.id, ing, servings);
-                      return qty ? <span className="mr-1.5 font-semibold text-ink tabular-nums">{qty}</span> : null;
-                    })()}
-                    {ing}
+                  <span className={cx('min-w-0 flex-1', have && 'text-ink-2')}>
+                    {parsed.qty && <span className="mr-1.5 font-semibold text-ink tabular-nums">{parsed.qty}</span>}
+                    <span className="font-medium">{parsed.item}</span>
+                    {parsed.prep && <span className="text-[12.5px] text-ink-3">, {parsed.prep}</span>}
                   </span>
                   {mine && <Chip tone="neutral">yours</Chip>}
                   {!have && onList(ing) && (
-                    <span className="flex items-center gap-1 rounded-full bg-tomato-soft px-2 py-0.5 text-[11.5px] font-semibold text-tomato">
+                    <span className="flex shrink-0 items-center gap-1 rounded-full bg-tomato-soft px-2 py-0.5 text-[11px] font-semibold text-tomato">
                       <ShoppingBasket className="h-3 w-3" /> on list
                     </span>
                   )}
@@ -224,24 +226,27 @@ export const RecipeSheet: React.FC<{
       </section>
 
       {/* Method */}
-      <section className="mt-6" aria-labelledby="method-h">
+      <section className="mt-5" aria-labelledby="method-h">
         <div className="flex items-baseline justify-between">
           <h3 id="method-h" className="font-display text-[19px] font-semibold">
             Method
           </h3>
-          <span className="text-[12px] text-ink-3">Minutes before eating</span>
+          <span className="text-[12px] text-ink-3">{steps.length} {steps.length === 1 ? 'step' : 'steps'} · before eating</span>
         </div>
-        <ol className="mt-2.5 space-y-2">
+        <ol className="editorial-card mt-2 divide-y divide-line/80 overflow-hidden rounded-[18px] border border-line/90 bg-card">
           {steps.map((step, i) => {
             const mins = stepMinutes(step);
             return (
-              <li key={i} className="editorial-card flex items-start gap-3 rounded-2xl border border-line/80 bg-card px-3.5 py-3 text-[14.5px]">
-                <span className="mt-0.5 inline-flex min-w-[3.4rem] shrink-0 items-center justify-center rounded-lg bg-sunk px-2 py-1 text-[11.5px] font-bold text-ink-2 tabular-nums">
-                  {mins === 0 ? 'Serve' : `-${mins}m`}
+              <li key={i} className="flex items-start gap-2.5 px-3.5 py-2.5 text-[14px]">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sunk text-[11px] font-bold text-ink-2 tabular-nums">
+                  {i + 1}
                 </span>
-                <span className="flex-1 leading-relaxed text-ink">
+                <span className="min-w-0 flex-1 leading-snug text-ink">
                   {stripTiming(step)}
                   {ownSteps.has(stripTiming(step)) && <span className="ml-1.5 text-[12px] font-medium text-tomato">(your step)</span>}
+                </span>
+                <span className="mt-0.5 shrink-0 rounded-md bg-sunk/85 px-1.5 py-0.5 text-[11px] font-semibold text-ink-3 tabular-nums">
+                  {mins === 0 ? 'Serve' : `-${mins}m`}
                 </span>
               </li>
             );

@@ -402,7 +402,9 @@ export const VotingView: React.FC = () => {
                   const qty = quantityFor(agreedMeal.id, ing, servings);
                   return (
                     <li key={i}>
-                      <Chip tone="outline">{qty ? `${qty} ${ing}` : ing}</Chip>
+                      <Chip tone="outline" className="whitespace-normal py-1.5 text-left leading-snug">
+                        {qty ? `${qty} ${ing}` : ing}
+                      </Chip>
                     </li>
                   );
                 })}

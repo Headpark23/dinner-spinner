@@ -8,7 +8,13 @@ import { MemberPrefs } from '../MemberPrefs';
 import { useByLabel, useByStatus } from '../../utils/leftovers';
 import { ImportRecipe } from '../ImportRecipe';
 import { DeliverySheet } from '../DeliverySheet';
-import type { ImportedRecipe } from '../../utils/recipeImport';
+import {
+  normalizeIngredientsAndSteps,
+  normalizeStepLines,
+  parseIngredientInput,
+  spreadOffsets,
+  type ImportedRecipe,
+} from '../../utils/recipeImport';
 import { mealFitsDiets } from '../../utils/diets';
 import { lovedCount } from '../../utils/taste';
 import { POPULAR_CUISINES } from '../../data/popularCuisines';
@@ -209,13 +215,16 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
 
   /** Fills the add-a-recipe form with something imported, so it can be checked and edited before saving. */
   const applyDraft = (r: ImportedRecipe, note: string) => {
+    const cleaned = normalizeIngredientsAndSteps(r.ingredients || [], r.prepSteps || []);
+    const mins = r.timeStake === '20m' ? 20 : r.timeStake === '30m' ? 30 : r.timeStake === '60m' ? 60 : 90;
+    const stepsWithOffsets = cleaned.steps.length ? spreadOffsets(cleaned.steps, mins) : [];
     setCustomTitle(r.title);
     setCustomDesc(r.description);
     setCustomCuisine(r.cuisine || 'Other');
     setCustomTime(r.timeStake);
     setCustomEffort(r.effort);
-    setCustomIngredients(r.ingredients.join('\n'));
-    setCustomSteps(r.prepSteps.join('\n'));
+    setCustomIngredients(cleaned.ingredients.join('\n'));
+    setCustomSteps(stepsWithOffsets.join('\n'));
     setShowAddRecipe(true);
     flash(note);
     requestAnimationFrame(() => addFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
@@ -431,15 +440,18 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
   const handleSaveManualRecipe = (e: React.FormEvent) => {
     e.preventDefault();
     if (!customTitle.trim()) return;
-    const ingList = customIngredients.split(/\n|,(?!\s*\d)/).map((s) => s.trim()).filter(Boolean);
-    const stepList = customSteps.split('\n').map((s) => s.trim()).filter(Boolean);
+    const rawIngs = parseIngredientInput(customIngredients);
+    const rawSteps = normalizeStepLines(customSteps.split(/\r?\n/));
+    const cleaned = normalizeIngredientsAndSteps(rawIngs, rawSteps);
+    const mins = customTime === '20m' ? 20 : customTime === '30m' ? 30 : customTime === '60m' ? 60 : 90;
+    const stepList = cleaned.steps.length > 0 ? spreadOffsets(cleaned.steps, mins) : [];
     const saved = addMeal({
       title: customTitle.trim(),
       description: customDesc.trim() || `A ${customCuisine} favourite, ready in ${timeLabel(customTime).toLowerCase()}.`,
       cuisine: customCuisine,
       timeStake: customTime,
       effort: customEffort,
-      ingredients: ingList,
+      ingredients: cleaned.ingredients,
       prepSteps:
         stepList.length > 0
           ? stepList
@@ -946,22 +958,44 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
                         <option value="chef-mode">Chef mode</option>
                       </Select>
                     </div>
-                    <textarea
-                      value={customIngredients}
-                      onChange={(e) => setCustomIngredients(e.target.value)}
-                      rows={4}
-                      placeholder={'Ingredients, one per line'}
-                      aria-label="Ingredients"
-                      className="w-full rounded-xl border border-line bg-card px-3.5 py-2.5 text-[15px] placeholder:text-ink-3 focus:border-ink-2 focus:outline-none"
-                    />
-                    <textarea
-                      value={customSteps}
-                      onChange={(e) => setCustomSteps(e.target.value)}
-                      rows={5}
-                      placeholder={'Steps, one per line. Add timing like (-15m)'}
-                      aria-label="Steps"
-                      className="w-full rounded-xl border border-line bg-card px-3.5 py-2.5 text-[15px] placeholder:text-ink-3 focus:border-ink-2 focus:outline-none"
-                    />
+                    <div className="space-y-1">
+                      <div className="flex items-baseline justify-between px-1 text-[12.5px]">
+                        <label htmlFor="draft-ingredients" className="font-semibold text-ink-2">
+                          Ingredients
+                        </label>
+                        <span className="text-ink-3 tabular-nums">
+                          {parseIngredientInput(customIngredients).length} items · one per line
+                        </span>
+                      </div>
+                      <textarea
+                        id="draft-ingredients"
+                        value={customIngredients}
+                        onChange={(e) => setCustomIngredients(e.target.value)}
+                        rows={5}
+                        placeholder={'500g chicken thighs, diced\n1 onion, finely chopped\n2 garlic cloves, crushed'}
+                        aria-label="Ingredients"
+                        className="w-full rounded-xl border border-line bg-card px-3.5 py-2.5 text-[14px] leading-relaxed placeholder:text-ink-3 focus:border-tomato/60 focus:outline-none"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-baseline justify-between px-1 text-[12.5px]">
+                        <label htmlFor="draft-steps" className="font-semibold text-ink-2">
+                          Method steps
+                        </label>
+                        <span className="text-ink-3 tabular-nums">
+                          {normalizeStepLines(customSteps.split(/\r?\n/)).length} steps · one per line
+                        </span>
+                      </div>
+                      <textarea
+                        id="draft-steps"
+                        value={customSteps}
+                        onChange={(e) => setCustomSteps(e.target.value)}
+                        rows={5}
+                        placeholder={'Fry the onion for 5 mins (-25m)\nBrown the chicken (-15m)\nSimmer and serve (-0m)'}
+                        aria-label="Steps"
+                        className="w-full rounded-xl border border-line bg-card px-3.5 py-2.5 text-[14px] leading-relaxed placeholder:text-ink-3 focus:border-tomato/60 focus:outline-none"
+                      />
+                    </div>
                     <Button type="submit" variant="primary" block disabled={!customTitle.trim()}>
                       Save recipe
                     </Button>

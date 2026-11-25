@@ -67,6 +67,7 @@ import { useSharedListsSync } from './useMirrorSync';
 import { guessShelf, newCupboardId, stockedCupboardNames } from '../utils/storeCupboard';
 import type { CupboardItem } from '../types';
 import { missingCost, costPerHead, costLimitValue, type CostLimit } from '../utils/cost';
+import { repairImportedMeal } from '../utils/recipeImport';
 import { buildReels, reelExtras, jackpotRecipeId, JACKPOT_FILL, type ComboMode } from '../utils/reelParts';
 
 interface DinnerContextType {
@@ -549,6 +550,27 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Sync to localStorage
   useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY}_meals`, JSON.stringify(meals));
+  }, [meals]);
+
+  // Self-heal any previously imported recipes whose comma clauses or method sentences landed in ingredient checkboxes.
+  useEffect(() => {
+    let changed = false;
+    const healed = meals.map((m) => {
+      const next = repairImportedMeal(m);
+      if (next !== m) changed = true;
+      return next;
+    });
+    if (changed) {
+      setMeals(healed);
+      setActiveMealResult((prev) => (prev ? repairImportedMeal(prev) : prev));
+      setProposedMeal((prev) => (prev ? repairImportedMeal(prev) : prev));
+      setAgreedMeal((prev) => {
+        if (!prev) return prev;
+        const fixed = repairImportedMeal(prev);
+        if (fixed !== prev) setReverseTimers(buildReverseTimerSteps(targetEatingTime, fixed));
+        return fixed;
+      });
+    }
   }, [meals]);
 
   useEffect(() => {
