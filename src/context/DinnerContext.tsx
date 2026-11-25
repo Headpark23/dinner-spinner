@@ -68,7 +68,7 @@ import { guessShelf, newCupboardId, stockedCupboardNames } from '../utils/storeC
 import type { CupboardItem } from '../types';
 import { missingCost, costPerHead, costLimitValue, type CostLimit } from '../utils/cost';
 import { repairImportedMeal } from '../utils/recipeImport';
-import { buildReels, reelExtras, jackpotRecipeId, JACKPOT_FILL, type ComboMode } from '../utils/reelParts';
+import { buildReels, reelExtras, type ComboMode } from '../utils/reelParts';
 
 interface DinnerContextType {
   // Machine State
@@ -1075,15 +1075,15 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const eligibleInfo = filterEligibleMeals(meals, timeStake, effort, effBanned, effDiets, costRule);
   const eligiblePoolCount = eligibleInfo.pool.length;
 
-  // Saved recipes feed the 3 and 4 reel spinner: their parts join the reels, and the whole dish can land on Main.
+  // Saved recipes feed their Base, Main, Sauce and Veg parts into the 3 and 4 reel plate builders.
   const reelAllowed = (label: string) =>
     mealFitsDiets([label], effDiets) &&
     !mentionsAny([label], effBanned);
   const extras = reelExtras(meals, reelAllowed);
-  // Nothing on the avoid list (or against the diets) stays on a reel, whether it is built in or from a saved recipe.
+  // Nothing on the avoid list (or against the diets) stays on a reel, whether built-in or from a saved recipe.
   const allowedOnly = (lists: ReelComboItem[][]) =>
     lists.map((list) => {
-      const ok = list.filter((i) => i.category === 'Our recipe' || reelAllowed(i.label));
+      const ok = list.filter((i) => reelAllowed(i.label));
       return ok.length > 0 ? ok : list;
     });
   const comboReels: Record<ComboMode, ReelComboItem[][]> = {
@@ -1091,13 +1091,11 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     '4-reel': allowedOnly(buildReels('4-reel', extras)),
     sunday: allowedOnly(buildReels('sunday', extras)),
   };
-  /** Settles a set of reel labels: a whole saved dish if Main landed on one, otherwise a plate built from the parts. */
-  const settleReels = (m: MachineMode, labels: string[]): { labels: string[]; meal: Meal } => {
-    const id = m === 'sunday' ? null : jackpotRecipeId(labels[1], extras);
-    const dish = id ? meals.find((x) => x.id === id) : undefined;
-    if (dish) return { labels: labels.map((l, i) => (i === 1 ? l : JACKPOT_FILL)), meal: dish };
-    return { labels, meal: buildComboMeal(m, labels, ...comboLimits(m)) };
-  };
+  /** Builds a plate from the settled reel labels (every reel always shows a real ingredient part). */
+  const settleReels = (m: MachineMode, labels: string[]): { labels: string[]; meal: Meal } => ({
+    labels,
+    meal: buildComboMeal(m, labels, ...comboLimits(m)),
+  });
   const exactEffortMatchCount = eligibleInfo.exactMatchCount;
   const costRelaxed = !!eligibleInfo.costRelaxed;
 
@@ -1123,11 +1121,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const currentVal = customReelResult[reelIndex];
       const currentIndex = list.findIndex((i) => i.label === currentVal);
       const nextReels = [...customReelResult];
-      // Nudging a reel that is showing "Part of the recipe" starts again from the top of that reel.
       nextReels[reelIndex] = list[(currentIndex + 1) % list.length].label;
-      for (let i = 0; i < nextReels.length; i++) {
-        if (nextReels[i] === JACKPOT_FILL && i !== reelIndex) nextReels[i] = comboReels[mode][i][0].label;
-      }
       const settled = settleReels(mode, nextReels);
       setCustomReelResult(settled.labels);
       setActiveMealResult(settled.meal);
@@ -1166,9 +1160,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       } else {
         const newRes = [...customReelResult];
         comboReels[mode].forEach((list, i) => {
-          // A reel that was only showing "Part of the recipe" has nothing real to hold on to.
-          const holding = heldReels[i] && newRes[i] !== JACKPOT_FILL;
-          if (!holding) newRes[i] = list[Math.floor(Math.random() * list.length)].label;
+          if (!heldReels[i]) newRes[i] = list[Math.floor(Math.random() * list.length)].label;
         });
         const settled = settleReels(mode, newRes);
         setCustomReelResult(settled.labels);
