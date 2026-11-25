@@ -11,6 +11,7 @@ import { cleanLog, unionLog } from './src/utils/history';
 import { DEFAULT_RADIUS_M, MAX_RADIUS_M, chainOf, cleanHub, distanceM, emptyHub, mergeHub, placeFromHtml, sameSpot, type SharedSpot } from './src/utils/takeaways';
 import { createPlaces, type Places } from './src/server/places';
 import { createPhotoSearch } from './src/server/photoSearch';
+import { createChefRecommender } from './src/server/chefRecommend';
 import { createDealsService } from './src/server/dealsFeed';
 import { cleanDealPin, pruneDealPins } from './src/utils/deliveryDeals';
 import { fetchPublicPage } from './src/server/fetchPage';
@@ -1134,6 +1135,88 @@ app.get('/api/photos/find', rateLimit('photo', 60, 10 * 60_000), async (req, res
   const found = await photoSearch.findPhoto(title);
   res.set('Cache-Control', 'public, max-age=86400');
   res.json({ photo: found });
+});
+
+// AI Chef recipe maker: recommends 3 top-chef-inspired dishes from the household's logged ingredients,
+// enriched with dish & step photography from Wikimedia Commons.
+let chefRecommenderOverride: ReturnType<typeof createChefRecommender> | null = null;
+export const useChefRecommender = (next: ReturnType<typeof createChefRecommender> | null) => {
+  chefRecommenderOverride = next;
+};
+app.post('/api/chef/recommend', smallJson, rateLimit('chef', 15, 10 * 60_000), async (req, res) => {
+  try {
+    const body = req.body || {};
+    const fridge = Array.isArray(body.fridge)
+      ? body.fridge
+          .filter((x: any) => x && typeof x.name === 'string' && x.name.trim())
+          .slice(0, 60)
+          .map((x: any) => ({
+            name: x.name.trim().slice(0, 80),
+            freshness: (['green', 'amber', 'red'].includes(x.freshness) ? x.freshness : 'green') as 'green' | 'amber' | 'red',
+            quantity: typeof x.quantity === 'string' ? x.quantity.trim().slice(0, 40) : undefined,
+          }))
+      : [];
+    const cleanArr = (raw: unknown, max = 60) =>
+      Array.isArray(raw)
+        ? raw
+            .filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+            .map((x) => x.trim().slice(0, 80))
+            .slice(0, max)
+        : [];
+    const cupboard = cleanArr(body.cupboard, 80);
+    const freezer = cleanArr(body.freezer, 40);
+    const staples = cleanArr(body.staples, 60);
+    const focusIngredients = cleanArr(body.focusIngredients, 8);
+    const avoid = cleanArr(body.avoid, 40);
+    const diets = cleanArr(body.diets, 10) as any[];
+    const excludeTitles = cleanArr(body.excludeTitles, 20);
+    const mealSlot = ['breakfast', 'lunch', 'dinner', 'snack', 'any'].includes(body.mealSlot) ? body.mealSlot : 'dinner';
+    const style = ['any', 'quick', 'comfort', 'chef-special', 'healthy'].includes(body.style) ? body.style : 'any';
+    const servings = Math.max(1, Math.min(10, Number(body.servings) || 4));
+
+    if (fridge.length === 0 && cupboard.length === 0 && freezer.length === 0 && staples.length === 0) {
+      return res.status(400).json({ error: 'Add a few items to your fridge, cupboard or staples first.' });
+    }
+
+    if (!chefRecommenderOverride && !ai) {
+      return res.status(503).json({
+        aiUnavailable: true,
+        error: 'AI Chef isn’t switched on for this server yet.',
+      });
+    }
+
+    const recommender =
+      chefRecommenderOverride ||
+      createChefRecommender({
+        generate: generateWithFallback,
+        findPhoto: (q) => photoSearch.findPhoto(q),
+      });
+
+    const result = await recommender({
+      fridge,
+      cupboard,
+      freezer,
+      staples,
+      focusIngredients,
+      mealSlot,
+      style,
+      diets,
+      avoid,
+      servings,
+      excludeTitles,
+    });
+
+    if (!result.recommendations.length) {
+      return res.status(502).json({ error: 'The AI Chef came back empty-handed. Try again in a moment.' });
+    }
+    res.json({ recommendations: result.recommendations });
+  } catch (error: any) {
+    console.warn('AI Chef error:', error?.message);
+    if (isBusyError(error)) {
+      return res.status(503).json({ busy: true, error: 'The AI Chef is busy right now. Give it a moment and try again.' });
+    }
+    return res.status(502).json({ error: 'The AI Chef couldn’t put a menu together just now. Try again.' });
+  }
 });
 
 // Daily UK delivery deals (day-of-week calendar + optional live Awin affiliate feed) and household-pinned codes.

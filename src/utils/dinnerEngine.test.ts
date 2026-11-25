@@ -482,7 +482,7 @@ test('React UI Component Suite: renders every screen and modal cleanly without e
   const views = [
     { name: 'MachineView', el: React.createElement(MachineView), expectedText: 'What’s for dinner?' },
     { name: 'TakeawayView', el: React.createElement(TakeawayView), expectedText: 'Spin for takeaway' },
-    { name: 'Fridge', el: React.createElement(PantryView, { scope: 'fridge' }), expectedText: '>Fridge</h1>' },
+    { name: 'Kitchen', el: React.createElement(PantryView, { scope: 'fridge' }), expectedText: '>Kitchen</h1>' },
     { name: 'Recipes', el: React.createElement(PantryView, { scope: 'recipes' }), expectedText: '>Recipes</h1>' },
     { name: 'Shopping', el: React.createElement(PantryView, { scope: 'shop' }), expectedText: '>Shopping</h1>' },
     {

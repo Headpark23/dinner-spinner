@@ -21,7 +21,11 @@ import {
   EffortFilter,
   LiveVote,
   FreezerItem,
+  DailyLogEntry,
+  MealSlot,
+  UsedStockItem,
 } from '../types';
+import { computeRestockSuggestions, newDailyLogId, todayDayKey, type RestockSuggestion } from '../utils/dailyLog';
 import { createFreezerItem, applyFreezerOp, sanitizeFreezer, FreezerOp } from '../utils/freezer';
 import { withOpIds } from '../utils/opIds';
 import { WORLD_RECIPES } from '../data/worldRecipes';
@@ -302,6 +306,20 @@ interface DinnerContextType {
   addCupboardItems: (items: { name: string; shelf?: string; quantity?: string }[]) => void;
   setCupboardLow: (id: string, low: boolean) => void;
   removeCupboardItem: (id: string) => void;
+  // Daily food & ingredient usage log (breakfast/lunch/dinner/snack + stock deduction + restock)
+  dailyLog: DailyLogEntry[];
+  logDailyEntry: (input: {
+    slot: MealSlot;
+    kind: 'meal' | 'ingredients';
+    title: string;
+    mealId?: string;
+    cuisine?: string;
+    usedItems: UsedStockItem[];
+    note?: string;
+    date?: string;
+  }) => DailyLogEntry;
+  deleteDailyEntry: (id: string) => void;
+  restockSuggestions: RestockSuggestion[];
   /** Whether recipes, the cupboard and likes/dislikes are reaching the family group (null: not shared, or not yet known). */
   listsOnline: boolean | null;
   removeShoppingByName: (name: string) => void;
@@ -699,7 +717,11 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const shared = useSharedTakeaways(household, STORAGE_KEY, authHeaders);
 
-  // ---------- Recipes, shelved, hidden dishes, cupboard, likes, dislikes and staples: one calm batched sync ----------
+  // ---------- Recipes, shelved, hidden dishes, cupboard, likes, dislikes, staples and dailyLog: one calm batched sync ----------
+  const [dailyLog, setDailyLog] = useState<DailyLogEntry[]>(() => loadStored<DailyLogEntry[]>('dailyLog', []));
+  useEffect(() => {
+    localStorage.setItem(`${STORAGE_KEY}_dailyLog`, JSON.stringify(dailyLog));
+  }, [dailyLog]);
   useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY}_cupboard`, JSON.stringify(cupboard));
   }, [cupboard]);
@@ -741,6 +763,14 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       liked: { value: likedIngredients, setValue: setLikedIngredients, joinOps: unionJoin },
       avoid: { value: bannedIngredients, setValue: setBannedIngredients, joinOps: unionJoin },
       staples: { value: staples, setValue: setStaples, joinOps: unionJoin },
+      dailyLog: {
+        value: dailyLog,
+        setValue: setDailyLog,
+        joinOps: (server: DailyLogEntry[], local: DailyLogEntry[]) => {
+          const ids = new Set(server.map((d) => d.id));
+          return local.filter((d) => !ids.has(d.id)).map((item) => ({ type: 'upsert' as const, item }));
+        },
+      },
     },
   });
   const listsOnline = !household ? null : sharedListsSync.online;
@@ -1774,6 +1804,64 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     queueFridge([{ type: 'remove', id }]);
   };
 
+  const logDailyEntry: DinnerContextType['logDailyEntry'] = (input) => {
+    const iso = input.date || new Date().toISOString();
+    const entry: DailyLogEntry = {
+      id: newDailyLogId(),
+      date: iso,
+      day: todayDayKey(new Date(iso)),
+      slot: input.slot,
+      kind: input.kind,
+      title: input.title.trim() || (input.kind === 'ingredients' ? 'Used ingredients' : 'Meal'),
+      ...(input.mealId ? { mealId: input.mealId } : {}),
+      ...(input.cuisine ? { cuisine: input.cuisine } : {}),
+      usedItems: input.usedItems,
+      loggedBy: meName(),
+      ...(input.note?.trim() ? { note: input.note.trim() } : {}),
+    };
+
+    setDailyLog((prev) => [entry, ...prev].slice(0, 300));
+
+    // Apply stock deductions across Fridge, Cupboard, and Freezer.
+    const toRestock: string[] = [];
+    for (const item of input.usedItems) {
+      if (item.source === 'fridge' && item.sourceId) {
+        removePantryItem(item.sourceId);
+      } else if (item.source === 'cupboard' && item.sourceId) {
+        if (item.action === 'removed') {
+          removeCupboardItem(item.sourceId);
+        } else {
+          setCupboard((prev) => prev.map((c) => (c.id === item.sourceId ? { ...c, low: true } : c)));
+        }
+      } else if (item.source === 'freezer' && item.sourceId) {
+        useFreezerPortionById(item.sourceId);
+      }
+      if (item.addedToShop && item.name.trim()) {
+        toRestock.push(item.name.trim());
+      }
+    }
+    if (toRestock.length > 0) {
+      addShoppingItems(toRestock, 'Restock');
+    }
+    return entry;
+  };
+
+  const deleteDailyEntry = (id: string) => {
+    setDailyLog((prev) => prev.filter((e) => e.id !== id));
+  };
+
+  const restockSuggestions = useMemo(
+    () =>
+      computeRestockSuggestions({
+        dailyLog,
+        pantry,
+        cupboard,
+        freezer,
+        shoppingList,
+      }),
+    [dailyLog, pantry, cupboard, freezer, shoppingList]
+  );
+
   const addStaple = (name: string) => {
     if (!name.trim()) return;
     setStaples((prev) => Array.from(new Set([...prev, name.trim()])));
@@ -2614,6 +2702,10 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         addCupboardItems,
         setCupboardLow,
         removeCupboardItem,
+        dailyLog,
+        logDailyEntry,
+        deleteDailyEntry,
+        restockSuggestions,
         listsOnline,
         removeStaple,
         likedIngredients,

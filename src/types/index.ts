@@ -193,3 +193,59 @@ export interface CupboardItem {
   low?: boolean;
   addedBy?: string;
 }
+
+export type MealSlot = 'breakfast' | 'lunch' | 'dinner' | 'snack';
+
+export interface UsedStockItem {
+  name: string;
+  source: 'fridge' | 'cupboard' | 'freezer' | 'other';
+  sourceId?: string;
+  action: 'removed' | 'marked-low' | 'portion-used';
+  addedToShop?: boolean;
+}
+
+/** One entry in the household's daily food & ingredient usage log. */
+export interface DailyLogEntry {
+  id: string;
+  date: string; // ISO timestamp
+  day: string; // YYYY-MM-DD local date key
+  slot: MealSlot;
+  kind: 'meal' | 'ingredients';
+  title: string;
+  mealId?: string;
+  cuisine?: string;
+  usedItems: UsedStockItem[];
+  loggedBy?: string;
+  note?: string;
+}
+
+export interface ChefStep {
+  title: string;
+  instruction: string;
+  minutesBefore: number;
+  visualCue?: string;
+  photoQuery?: string;
+  imageUrl?: string;
+  photoCredit?: { author: string; license: string; licenseUrl: string; source: string };
+}
+
+export interface ChefRecommendation {
+  id: string;
+  title: string;
+  description: string;
+  cuisine: string;
+  chefInspiration: string;
+  whyItWorks: string;
+  chefTip: string;
+  timeStake: TimeStake;
+  effort: EffortLevel;
+  servings: number;
+  ingredients: string[];
+  usesFromKitchen: string[];
+  rescues: string[];
+  optionalExtras: string[];
+  steps: ChefStep[];
+  tags: string[];
+  imageUrl?: string;
+  photoCredit?: { author: string; license: string; licenseUrl: string; source: string };
+}

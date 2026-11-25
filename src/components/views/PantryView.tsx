@@ -48,9 +48,14 @@ import {
   LoaderCircle,
   ExternalLink,
   ChevronLeft,
+  ChefHat,
+  Utensils,
 } from 'lucide-react';
 import { FreshnessLevel, Meal, TimeStake, EffortLevel } from '../../types';
 import { RecipeSheet } from '../RecipeSheet';
+import { CupboardSheet } from '../CupboardSheet';
+import { UsedTodaySheet, type UsedTodayInitialMeal } from '../UsedTodaySheet';
+import { findExistingStockMatches, type StockMatchCandidate } from '../../utils/dailyLog';
 import { PageHeader } from '../ui';
 import { itemIcon } from '../../utils/itemIcon';
 import { cuisinePhotoUrl, resolveMealPhoto } from '../../data/photos';
@@ -151,6 +156,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
     clearUsedFreezer,
     store,
     setStore,
+    restockSuggestions,
   } = useDinner();
   const storeInfo = STORES.find((x) => x.id === store) || STORES[0];
 
@@ -168,6 +174,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [sheetMeal, setSheetMeal] = useState<Meal | null>(null);
   const [newShopName, setNewShopName] = useState('');
+  const [shopNudge, setShopNudge] = useState<{ name: string; matches: StockMatchCandidate[] } | null>(null);
   const [freezeName, setFreezeName] = useState('');
   const [freezePortions, setFreezePortions] = useState(4);
   const stocked = oldestFirst(inFreezer(freezer));
@@ -197,6 +204,9 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
 
   const [copiedShopping, setCopiedShopping] = useState(false);
   const [deliveryOpen, setDeliveryOpen] = useState(false);
+  const [usedTodayOpen, setUsedTodayOpen] = useState(false);
+  const [usedTodayInitial, setUsedTodayInitial] = useState<UsedTodayInitialMeal | null>(null);
+  const [aiChefOpen, setAiChefOpen] = useState(false);
 
   // Vault
   const [vaultSearch, setVaultSearch] = useState('');
@@ -614,11 +624,23 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
 
       {scope === 'fridge' && (
         <PageHeader
-          title="Fridge"
+          title="Kitchen"
           subtitle={
             redCount > 0
               ? `${redCount} ${redCount === 1 ? 'thing needs' : 'things need'} using up. Turn on “use up first” on the Dinner tab and the spinner favours them.`
-              : 'Tell the app what you have and it picks dinners that use it.'
+              : 'Your fridge, cupboard and freezer in one place — so the app cooks from what you have.'
+          }
+          action={
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setUsedTodayInitial(null);
+                setUsedTodayOpen(true);
+              }}
+            >
+              <Utensils className="h-3.5 w-3.5 text-tomato" /> Used today
+            </Button>
           }
         />
       )}
@@ -642,7 +664,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
       )}
 
       {tabs.length > 0 && (
-        <div className="space-y-2" role="tablist" aria-label="Fridge sections">
+        <div className="space-y-2" role="tablist" aria-label="Kitchen sections">
           {/* Primary 3-way Kitchen Storage Switcher */}
           <div className="grid grid-cols-3 gap-1 rounded-2xl border border-line/80 bg-sunk/85 p-1 shadow-[inset_0_1px_2px_rgba(28,22,17,0.06)]">
             {tabs.slice(0, 3).map((tab) => {
@@ -787,6 +809,23 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
               </Card>
             ) : (
               <>
+                <button
+                  type="button"
+                  onClick={() => setAiChefOpen(true)}
+                  className="editorial-card flex w-full items-center gap-3 rounded-[20px] border border-saffron/35 bg-gradient-to-r from-card via-card to-saffron-soft/55 px-3.5 py-3 text-left transition-all hover:border-saffron/60"
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-saffron-soft text-saffron ring-1 ring-saffron/25">
+                    <ChefHat className="h-5 w-5" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-display text-[15.5px] leading-tight font-semibold text-ink">
+                      Ask AI Chef what to cook
+                    </span>
+                    <span className="mt-0.5 block text-[12px] text-ink-2">
+                      Top-chef dishes from your fridge &amp; cupboard with step photos
+                    </span>
+                  </span>
+                </button>
                 {renderFreshnessGroup('red', 'Use next')}
                 {renderFreshnessGroup('amber', 'Eat soon')}
                 {renderFreshnessGroup('green', 'Fresh')}
@@ -1298,16 +1337,110 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
               className="flex gap-2"
               onSubmit={(e) => {
                 e.preventDefault();
-                if (!newShopName.trim()) return;
-                addShoppingItems([newShopName.trim()]);
+                const clean = newShopName.trim();
+                if (!clean) return;
+                const matches = findExistingStockMatches(clean, { pantry, cupboard, freezer });
+                if (matches.length > 0) {
+                  setShopNudge({ name: clean, matches });
+                  return;
+                }
+                addShoppingItems([clean]);
                 setNewShopName('');
+                setShopNudge(null);
               }}
             >
-              <TextInput value={newShopName} onChange={(e) => setNewShopName(e.target.value)} placeholder="Add to the list" aria-label="Add to the shopping list" />
+              <TextInput
+                value={newShopName}
+                onChange={(e) => {
+                  setNewShopName(e.target.value);
+                  if (shopNudge) setShopNudge(null);
+                }}
+                placeholder="Add to the list"
+                aria-label="Add to the shopping list"
+              />
               <Button type="submit" variant="primary" disabled={!newShopName.trim()} aria-label="Add" className="!px-3">
                 <Plus className="h-5 w-5" />
               </Button>
             </form>
+
+            {/* Live subtle heads-up while typing */}
+            {!shopNudge &&
+              newShopName.trim().length >= 3 &&
+              (() => {
+                const live = findExistingStockMatches(newShopName, { pantry, cupboard, freezer });
+                if (live.length === 0) return null;
+                return (
+                  <p className="fade-up flex items-center gap-1.5 px-1 text-[12.5px] font-medium text-saffron">
+                    <CircleAlert className="h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      Already in your kitchen:{' '}
+                      {live
+                        .slice(0, 3)
+                        .map((m) => `${m.name} (${m.source})`)
+                        .join(', ')}
+                    </span>
+                  </p>
+                );
+              })()}
+
+            {/* Confirm nudge when submitting an item already in Fridge, Cupboard, or Freezer */}
+            {shopNudge && (
+              <Card
+                role="alertdialog"
+                aria-labelledby="shop-nudge-title"
+                className="fade-up space-y-3 border-saffron/45 bg-gradient-to-br from-card to-saffron-soft/45 p-4"
+              >
+                <div className="flex items-start gap-2.5">
+                  <CircleAlert className="mt-0.5 h-5 w-5 shrink-0 text-saffron" />
+                  <div className="min-w-0 flex-1">
+                    <p id="shop-nudge-title" className="text-[14.5px] font-semibold text-ink">
+                      You already have “{shopNudge.name}” in your kitchen
+                    </p>
+                    <ul className="mt-1.5 space-y-1">
+                      {shopNudge.matches.map((m) => (
+                        <li key={`${m.source}:${m.id}`} className="flex flex-wrap items-center gap-1.5 text-[13px] text-ink-2">
+                          <span className="font-medium text-ink">{m.name}</span>
+                          <span className="rounded-full bg-sunk px-2 py-0.5 text-[11px] font-semibold capitalize text-ink-2">
+                            {m.source}
+                          </span>
+                          {m.freshness && (
+                            <span className="text-[11.5px] text-ink-3">{freshnessLabel(m.freshness)}</span>
+                          )}
+                          {m.detail && !m.freshness && (
+                            <span className="text-[11.5px] text-ink-3">{m.detail}</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => {
+                      setShopNudge(null);
+                      setNewShopName('');
+                    }}
+                  >
+                    Skip, we have it
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => {
+                      addShoppingItems([shopNudge.name]);
+                      setShopNudge(null);
+                      setNewShopName('');
+                    }}
+                  >
+                    Buy anyway
+                  </Button>
+                </div>
+              </Card>
+            )}
 
             {shoppingList.length === 0 ? (
               <Card className="p-6 text-center">
@@ -1449,6 +1582,41 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
                 </p>
                 <DeliverySheet isOpen={deliveryOpen} onClose={() => setDeliveryOpen(false)} items={toBuy.map((i) => i.name)} />
               </>
+            )}
+            {restockSuggestions.length > 0 && (
+              <Card className="space-y-3 p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="font-display text-[16.5px] leading-tight font-semibold">Needs restocking</p>
+                    <p className="mt-0.5 text-[12px] text-ink-2">
+                      Recently used up or marked low in your kitchen.
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => addShoppingItems(restockSuggestions.map((r) => r.name), 'Restock')}
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Add all ({restockSuggestions.length})
+                  </Button>
+                </div>
+                <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-paper/60">
+                  {restockSuggestions.slice(0, 8).map((item) => (
+                    <li key={item.name} className="flex items-center justify-between gap-2 px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-[14px] font-medium">{item.name}</p>
+                        <p className="text-[11.5px] text-ink-3">
+                          {item.reason}
+                          {item.usedCount > 1 ? ` · used ${item.usedCount}×` : ''}
+                        </p>
+                      </div>
+                      <Button size="sm" variant="secondary" onClick={() => addShoppingItems([item.name], 'Restock')}>
+                        <Plus className="h-3.5 w-3.5" /> Add
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
             )}
           </>
         )}
@@ -1601,6 +1769,24 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
                 : `“${gone.title}” is hidden for good.`
             )
           }
+        />
+      )}
+      <CupboardSheet
+        isOpen={aiChefOpen}
+        onClose={() => setAiChefOpen(false)}
+        onLogMeal={(meal) => {
+          setUsedTodayInitial(meal);
+          setUsedTodayOpen(true);
+        }}
+      />
+      {usedTodayOpen && (
+        <UsedTodaySheet
+          isOpen={usedTodayOpen}
+          onClose={() => {
+            setUsedTodayOpen(false);
+            setUsedTodayInitial(null);
+          }}
+          initialMeal={usedTodayInitial}
         />
       )}
     </div>

@@ -11,7 +11,7 @@ import { alreadyApplied, cleanOpId, remember } from './opIds';
  */
 
 export type SharedKind = 'list' | 'set';
-export type SharedName = 'recipes' | 'shelved' | 'hidden' | 'cupboard' | 'liked' | 'avoid' | 'staples';
+export type SharedName = 'recipes' | 'shelved' | 'hidden' | 'cupboard' | 'liked' | 'avoid' | 'staples' | 'dailyLog';
 
 export const SHARED: Record<SharedName, { kind: SharedKind; max: number }> = {
   recipes: { kind: 'list', max: 400 },
@@ -21,6 +21,7 @@ export const SHARED: Record<SharedName, { kind: SharedKind; max: number }> = {
   liked: { kind: 'set', max: 200 },
   avoid: { kind: 'set', max: 200 },
   staples: { kind: 'set', max: 300 },
+  dailyLog: { kind: 'list', max: 300 },
 };
 
 export const SHARED_NAMES = Object.keys(SHARED) as SharedName[];

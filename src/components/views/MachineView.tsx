@@ -22,12 +22,16 @@ import {
   Trophy,
   Package,
   Clock,
+  ChefHat,
+  Utensils,
 } from 'lucide-react';
 import { PlannerSheet } from '../PlannerSheet';
 import { DinnerSteps } from '../DinnerSteps';
 import { FamilyPrompt } from '../FamilyPrompt';
 import { CupboardSheet } from '../CupboardSheet';
+import { UsedTodaySheet, type UsedTodayInitialMeal } from '../UsedTodaySheet';
 import { FreezerCard } from '../FreezerCard';
+import { MEAL_SLOTS, todayDayKey } from '../../utils/dailyLog';
 import { costLabel, type CostLimit } from '../../utils/cost';
 import { Card, Chip, Notice, Segmented, Switch, Button, IconButton, Sheet, cx, timeLabel, effortLabel } from '../ui';
 
@@ -89,6 +93,8 @@ export const MachineView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFam
     weekPlan,
     likedIngredients: likesForRow,
     bannedIngredients: dislikesForRow,
+    dailyLog,
+    restockSuggestions,
   } = useDinner();
   const leagueTop = householdCode ? shared.league.find((r) => r.votes > 0) : undefined;
 
@@ -102,6 +108,10 @@ export const MachineView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFam
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [plannerOpen, setPlannerOpen] = useState(false);
   const [cupboardOpen, setCupboardOpen] = useState(false);
+  const [usedTodayOpen, setUsedTodayOpen] = useState(false);
+  const [usedTodayInitial, setUsedTodayInitial] = useState<UsedTodayInitialMeal | null>(null);
+  const todayKey = todayDayKey();
+  const todayLogged = dailyLog.filter((e) => e.day === todayKey);
   const { surpriseStep, setSurpriseStep } = useDinner();
   useEffect(() => {
     if (surpriseStep === 'spin') {
@@ -177,7 +187,7 @@ export const MachineView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFam
 
       {mode === 'single' && eligiblePoolCount === 0 && diets.length > 0 && (
         <Notice tone="tomato">
-          None of your saved dishes suit the household’s diets. Try “World Kitchen” below, or adjust diets in Fridge → Likes &amp; dislikes.
+          None of your saved dishes suit the household’s diets. Try “World Kitchen” below, or adjust diets in Kitchen → Likes &amp; dislikes.
         </Notice>
       )}
 
@@ -333,15 +343,22 @@ export const MachineView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFam
         <div className="grid grid-cols-2 gap-2.5">
           <button
             onClick={() => setCupboardOpen(true)}
-            className="editorial-card group flex flex-col justify-between rounded-[20px] border border-saffron/25 bg-gradient-to-br from-card via-card to-saffron-soft/55 p-3.5 text-left transition-all hover:border-saffron/45"
+            className="editorial-card group flex flex-col justify-between rounded-[20px] border border-saffron/30 bg-gradient-to-br from-card via-card to-saffron-soft/65 p-3.5 text-left transition-all hover:border-saffron/55"
           >
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-saffron-soft text-saffron ring-1 ring-saffron/20">
-              <Refrigerator className="h-5 w-5" strokeWidth={1.8} />
-            </span>
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-saffron-soft text-saffron ring-1 ring-saffron/25">
+                <ChefHat className="h-5 w-5" strokeWidth={1.8} />
+              </span>
+              <span className="rounded-full bg-brass/25 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.06em] text-saffron">
+                AI Chef
+              </span>
+            </div>
             <div className="mt-3">
               <span className="block font-display text-[16.5px] leading-tight font-semibold text-ink">Cook what we have</span>
               <span className="mt-1 block text-[12px] leading-snug text-ink-2">
-                {redItems.length > 0 ? `Rescues ${redItems.length} use-next ${redItems.length === 1 ? 'item' : 'items'}` : 'Fridge, tins & staples only'}
+                {redItems.length > 0
+                  ? `Top chef dishes · rescues ${redItems.length} use-next`
+                  : 'Top chef recipes & step photos'}
               </span>
             </div>
           </button>
@@ -395,6 +412,54 @@ export const MachineView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFam
           </button>
         </div>
       </section>
+
+      {/* What was used today: daily food & stock tracker */}
+      <Card as="div" className="p-3.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="font-display text-[16.5px] leading-tight font-semibold text-ink">What was used today?</p>
+            <p className="mt-0.5 text-[12px] text-ink-2">
+              {todayLogged.length > 0
+                ? `${todayLogged.length} logged today${restockSuggestions.length > 0 ? ` · ${restockSuggestions.length} to restock` : ''}`
+                : 'Log breakfast, lunch, dinner or ingredients to update stock'}
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              setUsedTodayInitial(null);
+              setUsedTodayOpen(true);
+            }}
+          >
+            <Utensils className="h-3.5 w-3.5 text-tomato" /> Log
+          </Button>
+        </div>
+        <div className="mt-2.5 grid grid-cols-4 gap-1.5">
+          {MEAL_SLOTS.map((s) => {
+            const count = todayLogged.filter((e) => e.slot === s.id).length;
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => {
+                  setUsedTodayInitial({ title: '', ingredients: [], slot: s.id });
+                  setUsedTodayOpen(true);
+                }}
+                className={cx(
+                  'rounded-xl border px-2 py-1.5 text-center text-[11.5px] font-semibold transition-colors',
+                  count > 0
+                    ? 'border-sage/35 bg-sage-soft/75 text-sage'
+                    : 'border-line bg-sunk/60 text-ink-2 hover:border-line-strong hover:text-ink'
+                )}
+              >
+                {s.short}
+                {count > 0 ? ` ✓` : ''}
+              </button>
+            );
+          })}
+        </div>
+      </Card>
 
       <FreezerCard
         onOpen={() => {
@@ -460,7 +525,24 @@ export const MachineView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFam
         </button>
       </Card>
 
-      <CupboardSheet isOpen={cupboardOpen} onClose={() => setCupboardOpen(false)} />
+      <CupboardSheet
+        isOpen={cupboardOpen}
+        onClose={() => setCupboardOpen(false)}
+        onLogMeal={(meal) => {
+          setUsedTodayInitial(meal);
+          setUsedTodayOpen(true);
+        }}
+      />
+      {usedTodayOpen && (
+        <UsedTodaySheet
+          isOpen={usedTodayOpen}
+          onClose={() => {
+            setUsedTodayOpen(false);
+            setUsedTodayInitial(null);
+          }}
+          initialMeal={usedTodayInitial}
+        />
+      )}
       <PlannerSheet isOpen={plannerOpen} onClose={() => setPlannerOpen(false)} />
       {onOpenFamily && <FamilyPrompt onOpen={onOpenFamily} />}
 

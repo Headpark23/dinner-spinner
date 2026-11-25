@@ -1,6 +1,6 @@
 import React from 'react';
 import { useDinner } from '../context/DinnerContext';
-import { UtensilsCrossed, BookOpen, ShoppingBasket, Refrigerator, Menu } from 'lucide-react';
+import { UtensilsCrossed, BookOpen, ShoppingBasket, CookingPot, Menu } from 'lucide-react';
 import { cx } from './ui';
 
 /** Which tab owns each internal view id. Takeaway (1) and Stats (4) live under More. */
@@ -34,8 +34,8 @@ export const ArcadeNavBar: React.FC = () => {
     },
     {
       key: 'fridge',
-      label: 'Fridge',
-      icon: Refrigerator,
+      label: 'Kitchen',
+      icon: CookingPot,
       go: () => setActiveView(2),
       dot: redPantryCount > 0 ? 'tomato' : undefined,
       hint: redPantryCount > 0 ? `${redPantryCount} to use up` : undefined,

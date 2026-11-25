@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useDinner } from '../../context/DinnerContext';
-import { Snowflake, Search } from 'lucide-react';
+import { Snowflake, Search, Utensils, Plus, ShoppingBasket } from 'lucide-react';
 import { Button, Card, FreshDot, Sheet, TextInput, cx, cuisineColor } from '../ui';
 import { DishRow, RateStars } from '../DishRows';
+import { UsedTodaySheet } from '../UsedTodaySheet';
+import { groupDailyLogByDay, slotLabel, topConsumedIngredients } from '../../utils/dailyLog';
 import { cookingStreak, homeCookedThisWeek, milestones, statsFrom, dayKey } from '../../utils/milestones';
 
 const TAKEAWAY_COST_GBP = 24; // assumed average household takeaway, used only for the savings estimate
@@ -24,11 +26,17 @@ export const ScorecardView: React.FC = () => {
     cookLog,
     takeawayLog,
     sendToVote,
+    dailyLog,
+    restockSuggestions,
+    addShoppingItems,
   } = useDinner();
   const [showAllHistory, setShowAllHistory] = useState(false);
   const [openRow, setOpenRow] = useState<string | null>(null);
   const [rateAnotherOpen, setRateAnotherOpen] = useState(false);
   const [rateSearch, setRateSearch] = useState('');
+  const [usedTodayOpen, setUsedTodayOpen] = useState(false);
+  const dailyGroups = useMemo(() => groupDailyLogByDay(dailyLog, 10), [dailyLog]);
+  const topUsed = useMemo(() => topConsumedIngredients(dailyLog, 8), [dailyLog]);
   const history = [
     ...cookLog.map((c) => ({ id: c.id, date: c.date, title: c.title, kind: 'cooked' as const, mealId: c.mealId })),
     ...takeawayLog.map((t) => ({ id: t.id, date: t.date, title: t.name, kind: 'takeaway' as const, mealId: '' })),
@@ -126,14 +134,19 @@ export const ScorecardView: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <p className="eyebrow">Kitchen journal</p>
-        <h1 className="mt-0.5 font-display text-[30px] leading-[1.08] font-semibold">History</h1>
-        <p className="mt-1 text-[14px] text-ink-2">
-          {cookLog.length === 0
-            ? 'Log a dinner from the Dinner tab and this page fills in with your real week.'
-            : `Built from ${cookLog.length} logged ${cookLog.length === 1 ? 'dinner' : 'dinners'}.`}
-        </p>
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <p className="eyebrow">Kitchen journal</p>
+          <h1 className="mt-0.5 font-display text-[30px] leading-[1.08] font-semibold">History</h1>
+          <p className="mt-1 text-[14px] text-ink-2">
+            {cookLog.length === 0 && dailyLog.length === 0
+              ? 'Log meals or ingredients used today and this page builds your real food journal.'
+              : `${cookLog.length} ${cookLog.length === 1 ? 'dinner' : 'dinners'} cooked · ${dailyLog.length} daily ${dailyLog.length === 1 ? 'log' : 'logs'}.`}
+          </p>
+        </div>
+        <Button size="sm" variant="secondary" onClick={() => setUsedTodayOpen(true)}>
+          <Utensils className="h-3.5 w-3.5 text-tomato" /> Log today
+        </Button>
       </div>
 
       {/* This week */}
@@ -231,6 +244,113 @@ export const ScorecardView: React.FC = () => {
           <button onClick={() => setRateAnotherOpen(true)} className="mt-1 min-h-11 px-1 text-[14px] font-semibold text-ink-2 hover:text-ink">
             Rate a different dish
           </button>
+        </section>
+      )}
+
+      {/* Daily food log over time (Breakfast / Lunch / Dinner / Snack) */}
+      <section aria-labelledby="daily-journal-h">
+        <div className="mb-2 flex items-baseline justify-between px-1">
+          <h2 id="daily-journal-h" className="text-[15px] font-semibold">
+            What you’ve been eating
+          </h2>
+          <button
+            type="button"
+            onClick={() => setUsedTodayOpen(true)}
+            className="text-[12.5px] font-semibold text-tomato hover:underline"
+          >
+            + Log meal or ingredients
+          </button>
+        </div>
+        {dailyGroups.length === 0 ? (
+          <Card className="p-4 text-[14px] text-ink-2">
+            Log breakfast, lunch, dinner or ingredients used today to track your eating habits over time and see what needs restocking.
+          </Card>
+        ) : (
+          <div className="space-y-2.5">
+            {dailyGroups.slice(0, 7).map((group) => {
+              const label = new Date(group.day + 'T12:00:00').toLocaleDateString('en-GB', {
+                weekday: 'short',
+                day: 'numeric',
+                month: 'short',
+              });
+              return (
+                <Card key={group.day} as="div" className="overflow-hidden">
+                  <p className="border-b border-line bg-sunk/60 px-3.5 py-1.5 text-[11.5px] font-semibold uppercase tracking-[0.06em] text-ink-3">
+                    {label}
+                  </p>
+                  <ul className="divide-y divide-line">
+                    {group.entries.map((entry) => (
+                      <li key={entry.id} className="px-3.5 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="shrink-0 rounded-full bg-sunk px-2 py-0.5 text-[11px] font-semibold text-ink-2">
+                            {slotLabel(entry.slot)}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-ink">{entry.title}</span>
+                          {entry.loggedBy && <span className="shrink-0 text-[11.5px] text-ink-3">{entry.loggedBy}</span>}
+                        </div>
+                        {entry.usedItems.length > 0 && (
+                          <p className="mt-1 text-[12px] text-ink-2">
+                            Used: {entry.usedItems.map((u) => u.name).join(', ')}
+                          </p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* Most-used ingredients & Restock radar */}
+      {(restockSuggestions.length > 0 || topUsed.length > 0) && (
+        <section aria-labelledby="restock-history-h" className="space-y-3">
+          {restockSuggestions.length > 0 && (
+            <Card className="space-y-2.5 p-4">
+              <div className="flex items-center justify-between gap-2">
+                <h2 id="restock-history-h" className="text-[15px] font-semibold">
+                  Needs restocking
+                </h2>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => addShoppingItems(restockSuggestions.map((r) => r.name), 'Restock')}
+                >
+                  <ShoppingBasket className="h-3.5 w-3.5 text-tomato" /> Restock all
+                </Button>
+              </div>
+              <ul className="divide-y divide-line">
+                {restockSuggestions.slice(0, 6).map((item) => (
+                  <li key={item.name} className="flex items-center justify-between gap-2 py-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-[14px] font-medium">{item.name}</p>
+                      <p className="text-[12px] text-ink-3">{item.reason}</p>
+                    </div>
+                    <Button size="sm" variant="secondary" onClick={() => addShoppingItems([item.name], 'Restock')}>
+                      <Plus className="h-3.5 w-3.5" /> Shop
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+          {topUsed.length > 0 && (
+            <Card className="p-4">
+              <h3 className="text-[14px] font-semibold">Most-used ingredients</h3>
+              <ul className="mt-2.5 flex flex-wrap gap-1.5">
+                {topUsed.map((t) => (
+                  <li
+                    key={t.name}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-line bg-sunk/60 px-3 py-1 text-[12.5px] font-medium"
+                  >
+                    <span>{t.name}</span>
+                    <span className="text-[11px] font-semibold text-ink-3 tabular-nums">{t.count}×</span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
         </section>
       )}
 
@@ -471,6 +591,10 @@ export const ScorecardView: React.FC = () => {
           </Button>
         </div>
       </Sheet>
+
+      {usedTodayOpen && (
+        <UsedTodaySheet isOpen={usedTodayOpen} onClose={() => setUsedTodayOpen(false)} />
+      )}
     </div>
   );
 };
