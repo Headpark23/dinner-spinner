@@ -4,7 +4,7 @@ import http from 'node:http';
 import { buildChefPrompt, chefRecipeToMeal, normalizeChefRecommendations } from './chefMaker';
 import { createChefRecommender } from '../server/chefRecommend';
 
-test('buildChefPrompt highlights use-next fridge items, spotlight choices, and dietary limits', () => {
+test('buildChefPrompt highlights use-next fridge items, spotlight choices, 5 UK top chefs, and dietary limits', () => {
   const prompt = buildChefPrompt({
     fridge: [
       { name: 'Spinach', freshness: 'red' },
@@ -22,6 +22,11 @@ test('buildChefPrompt highlights use-next fridge items, spotlight choices, and d
     excludeTitles: ['Old Dish'],
   });
 
+  assert.match(prompt, /Jamie Oliver/);
+  assert.match(prompt, /Gordon Ramsay/);
+  assert.match(prompt, /Nigella Lawson/);
+  assert.match(prompt, /Tom Kerridge/);
+  assert.match(prompt, /Nadiya Hussain/);
   assert.match(prompt, /URGENT USE-NEXT FRIDGE ITEMS.*Spinach/);
   assert.match(prompt, /MUST SPOTLIGHT THESE INGREDIENTS: Halloumi/);
   assert.match(prompt, /vegetarian/);
@@ -36,7 +41,7 @@ test('normalizeChefRecommendations infers red rescues, sorts steps descending, a
         title: 'Charred Halloumi & Harissa Chickpeas',
         description: 'Crisp golden halloumi over smoky braised chickpeas.',
         cuisine: 'Middle Eastern',
-        chefInspiration: 'Yotam Ottolenghi-style charred veg',
+        chefInspiration: 'Nadiya Hussain — spiced weeknight shortcut',
         whyItWorks: 'Uses your spinach before it wilts.',
         chefTip: 'Finish with lemon zest right before serving.',
         timeStake: '20m',
@@ -68,7 +73,7 @@ test('normalizeChefRecommendations infers red rescues, sorts steps descending, a
   assert.match(meal.prepSteps[0], /\(-15m\)$/);
 });
 
-test('createChefRecommender enriches dish hero and step photos via photoSearch', async () => {
+test('createChefRecommender returns fast structured chef dishes without external photo lookups', async () => {
   const recommender = createChefRecommender({
     generate: async () => ({
       text: JSON.stringify({
@@ -77,13 +82,12 @@ test('createChefRecommender enriches dish hero and step photos via photoSearch',
             title: 'Pan-Seared Chicken Piccata',
             description: 'Bright lemon-caper pan sauce.',
             cuisine: 'Italian',
-            chefInspiration: 'J. Kenji López-Alt pan sauce method',
+            chefInspiration: 'Gordon Ramsay — crispy-skin pan sauce',
             whyItWorks: 'Turns fridge chicken thighs into a 20-minute classic.',
             chefTip: 'Swirl cold butter off the heat to emulsify.',
             timeStake: '20m',
             effort: 'one-pot',
             servings: 4,
-            photoQuery: 'chicken piccata lemon',
             ingredients: ['600g chicken thighs', '2 tbsp capers'],
             usesFromKitchen: ['Chicken thighs'],
             optionalExtras: ['Capers'],
@@ -93,28 +97,17 @@ test('createChefRecommender enriches dish hero and step photos via photoSearch',
                 instruction: 'Brown skin-side down for 6 minutes.',
                 minutesBefore: 15,
                 visualCue: 'Deep mahogany crust',
-                photoQuery: 'pan seared chicken',
               },
               {
                 title: 'Finish pan sauce',
                 instruction: 'Deglaze with lemon juice and butter.',
                 minutesBefore: 0,
                 visualCue: 'Glossy sauce coating the spoon',
-                photoQuery: 'lemon butter pan sauce',
               },
             ],
           },
         ],
       }),
-    }),
-    findPhoto: async (q) => ({
-      url: `https://upload.wikimedia.org/mock/${encodeURIComponent(q)}.jpg`,
-      credit: {
-        author: 'Test Chef',
-        license: 'CC BY-SA 4.0',
-        licenseUrl: 'https://creativecommons.org/licenses/by-sa/4.0/',
-        source: 'https://commons.wikimedia.org/',
-      },
     }),
   });
 
@@ -126,12 +119,11 @@ test('createChefRecommender enriches dish hero and step photos via photoSearch',
   });
 
   assert.equal(recommendations.length, 1);
-  assert.match(recommendations[0].imageUrl || '', /chicken%20piccata%20lemon/);
-  assert.match(recommendations[0].steps[0].imageUrl || '', /pan%20seared%20chicken/);
-  assert.match(recommendations[0].steps[1].imageUrl || '', /lemon%20butter%20pan%20sauce/);
+  assert.equal(recommendations[0].chefInspiration, 'Gordon Ramsay — crispy-skin pan sauce');
+  assert.equal(recommendations[0].steps.length, 2);
 });
 
-test('Server: POST /api/chef/recommend validates inventory and returns photo-enriched chef dishes', async () => {
+test('Server: POST /api/chef/recommend validates inventory and returns fast chef dishes', async () => {
   process.env.NODE_ENV = 'test';
   const { app, useChefRecommender } = await import('../../server');
   const server = http.createServer(app);
@@ -158,13 +150,12 @@ test('Server: POST /api/chef/recommend validates inventory and returns photo-enr
                 title: 'Crispy Courgette Carbonara',
                 description: 'Silky egg & parmesan sauce with caramelised courgettes.',
                 cuisine: 'Italian',
-                chefInspiration: 'Nigella Lawson courgette pasta',
+                chefInspiration: 'Nigella Lawson — cosy one-pan pasta',
                 whyItWorks: 'Rescues courgettes with store-cupboard spaghetti.',
                 chefTip: 'Toss off the heat so the eggs turn glossy, never scrambled.',
                 timeStake: '20m',
                 effort: 'one-pot',
                 servings: 4,
-                photoQuery: 'courgette pasta',
                 ingredients: ['2 courgettes', '400g spaghetti', '3 eggs'],
                 usesFromKitchen: ['Courgettes', 'Spaghetti', 'Eggs'],
                 steps: [
@@ -173,7 +164,6 @@ test('Server: POST /api/chef/recommend validates inventory and returns photo-enr
                     instruction: 'Cook sliced courgettes slowly in olive oil until sweet.',
                     minutesBefore: 12,
                     visualCue: 'Golden edges and jammy centres',
-                    photoQuery: 'sauteed courgettes',
                   },
                   {
                     title: 'Emulsify sauce',
@@ -186,15 +176,6 @@ test('Server: POST /api/chef/recommend validates inventory and returns photo-enr
             ],
           }),
         }),
-        findPhoto: async (q) => ({
-          url: `https://upload.wikimedia.org/mock/${encodeURIComponent(q)}.jpg`,
-          credit: {
-            author: 'Wikimedia Cook',
-            license: 'CC0',
-            licenseUrl: 'https://creativecommons.org/publicdomain/zero/1.0/',
-            source: 'https://commons.wikimedia.org/',
-          },
-        }),
       })
     );
 
@@ -206,6 +187,7 @@ test('Server: POST /api/chef/recommend validates inventory and returns photo-enr
         cupboard: ['Spaghetti'],
         freezer: [],
         staples: ['Eggs'],
+        chefFocus: 'Nigella Lawson',
       }),
     });
     assert.equal(okRes.status, 200);
@@ -213,7 +195,6 @@ test('Server: POST /api/chef/recommend validates inventory and returns photo-enr
     assert.equal(body.recommendations.length, 1);
     assert.equal(body.recommendations[0].title, 'Crispy Courgette Carbonara');
     assert.deepEqual(body.recommendations[0].rescues, ['Courgettes']);
-    assert.match(body.recommendations[0].imageUrl, /courgette%20pasta/);
   } finally {
     useChefRecommender(null);
     await new Promise<void>((resolve) => server.close(() => resolve()));

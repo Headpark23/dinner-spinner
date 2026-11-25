@@ -5,6 +5,14 @@ import { resolveMealPhoto } from '../data/photos';
 
 export type ChefStyle = 'any' | 'quick' | 'comfort' | 'chef-special' | 'healthy';
 
+export const TOP_CHEFS = [
+  'Jamie Oliver',
+  'Gordon Ramsay',
+  'Nigella Lawson',
+  'Tom Kerridge',
+  'Nadiya Hussain',
+] as const;
+
 export interface ChefRecommendRequest {
   fridge: { name: string; freshness: 'green' | 'amber' | 'red'; quantity?: string }[];
   cupboard: string[];
@@ -13,6 +21,7 @@ export interface ChefRecommendRequest {
   focusIngredients?: string[];
   mealSlot?: MealSlot | 'any';
   style?: ChefStyle;
+  chefFocus?: string;
   diets?: DietId[];
   avoid?: string[];
   servings?: number;
@@ -54,8 +63,14 @@ export function buildChefPrompt(req: ChefRecommendRequest): string {
     healthy: 'vibrant, fresh, lighter dishes with herbs, citrus, and crisp textures',
   };
 
-  return `You are an acclaimed UK executive chef and recipe editor for "Dinner Spinner".
-Your job: turn the household's ACTUAL kitchen inventory into 3 genuinely standout ${slot} recipes inspired by real top chefs (such as Yotam Ottolenghi, J. Kenji López-Alt, Nigella Lawson, Jamie Oliver, Rick Stein, Nadiya Hussain, Thomasina Miers, Gordon Ramsay, Samin Nosrat, Mob Kitchen, Dishoom, or classic French/Italian/Japanese bistros).
+  const chefGuidance =
+    req.chefFocus && req.chefFocus !== 'all'
+      ? `Channel ${req.chefFocus}'s signature cooking style, flavour pairings, and techniques across all 3 dishes.`
+      : `Draw inspiration from 3 different chefs among: Jamie Oliver (vibrant 15/30-min traybakes & pastas), Gordon Ramsay (crisp searing, bright pan sauces, punchy seasoning), Nigella Lawson (cosy, indulgent, low-fuss home cooking), Tom Kerridge (proper British pub-style comfort & bold flavour), and Nadiya Hussain (clever shortcuts, warm spices, family crowd-pleasers).`;
+
+  return `You are an acclaimed UK executive chef for "Dinner Spinner".
+Turn the household's ACTUAL kitchen inventory into 3 standout ${slot} recipes.
+${chefGuidance}
 
 HOUSEHOLD INVENTORY:
 - URGENT USE-NEXT FRIDGE ITEMS (prioritise rescuing these!): ${redItems.length ? redItems.join(', ') : 'None flagged'}
@@ -66,23 +81,21 @@ HOUSEHOLD INVENTORY:
 ${req.focusIngredients?.length ? `- MUST SPOTLIGHT THESE INGREDIENTS: ${req.focusIngredients.join(', ')}` : ''}
 
 CONSTRAINTS:
-- Servings: ${servings} people (include realistic UK metric quantities in the ingredients list, e.g. "400g chicken thighs", "2 cloves garlic, finely sliced").
+- Servings: ${servings} people (UK metric quantities in ingredients, e.g. "400g chicken thighs").
 - Style: ${styleText[req.style || 'any']}.
 - Dietary requirements (STRICT — never violate): ${req.diets?.length ? req.diets.join(', ') : 'None'}.
 - Never-eat ingredients (STRICT — never include): ${req.avoid?.length ? req.avoid.join(', ') : 'None'}.
-${req.excludeTitles?.length ? `- Do NOT repeat any of these dishes: ${req.excludeTitles.join(', ')}.` : ''}
+${req.excludeTitles?.length ? `- Do NOT repeat: ${req.excludeTitles.join(', ')}.` : ''}
 
 QUALITY RULES:
-1. Build dishes primarily from the ingredients they ALREADY have. At most 1-2 small optional extras if it elevates the dish, clearly listed in optionalExtras.
-2. Each dish must cite a genuine culinary inspiration in chefInspiration (e.g. "Yotam Ottolenghi-style charred veg & yoghurt", "Kenji López-Alt's crispy-skin pan technique", "Classic Roman trattoria method").
-3. Give exactly 4 concise, high-impact chronological cooking steps in "steps". Each step needs:
-   - title: short 2-4 word stage header (e.g. "Sear until golden")
-   - instruction: 1-2 crisp sentences with heat level, timing, and technique
-   - minutesBefore: integer minutes before serving (descending to 0 for plating)
+1. Build dishes primarily from ingredients they ALREADY have. At most 1-2 small optional extras in optionalExtras.
+2. Cite the chef & signature technique in chefInspiration (e.g. "Jamie Oliver — 15-min traybake method", "Gordon Ramsay — crispy-skin pan sauce", "Nigella Lawson — cosy one-pan simmer", "Tom Kerridge — pub-style rich glaze", "Nadiya Hussain — spiced weeknight shortcut").
+3. Give exactly 4 concise, high-impact chronological steps in "steps":
+   - title: 2-4 word stage header
+   - instruction: 1-2 crisp sentences with heat, timing, and technique
+   - minutesBefore: integer minutes before serving (descending to 0)
    - visualCue: short visual check (e.g. "Deep golden crust, fragrant garlic")
-   - photoQuery: clean 2-3 word food photo search phrase (e.g. "seared chicken pan", "simmering tomato sauce")
-4. Also provide a dish-level "photoQuery" (2-3 clean words of the finished dish, e.g. "shakshuka eggs", "chicken piccata") so we can fetch a real dish photo.
-5. Keep every string concise and punchy. Use UK English (courgette, aubergine, coriander, spring onion, tin, hob).`;
+4. Keep every string concise and punchy. Use UK English (courgette, aubergine, coriander, spring onion, tin, hob).`;
 }
 
 export function normalizeChefRecommendations(

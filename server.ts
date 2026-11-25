@@ -944,7 +944,7 @@ function withTimeout<T>(promise: Promise<T>, ms = GEMINI_TIMEOUT_MS): Promise<T>
 // The newest flash models are often swamped or over quota (Nov 2026: 3.6-3.8 failed every scan), so the default is a
 // steadier one, with fast "lite" models as the first fallbacks. They answer in 1-4 seconds and read photos fine.
 const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
-const PREFERRED_FALLBACKS = ['gemini-3.5-flash-lite', 'gemini-flash-lite-latest', 'gemini-3.1-flash-lite'];
+const PREFERRED_FALLBACKS = ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'gemini-flash-lite-latest'];
 const GEMINI_BUDGET_MS = 26000;
 const isBusyError = (e: any) =>
   /\b(503|429|404|UNAVAILABLE|RESOURCE_EXHAUSTED|NOT_FOUND|overloaded|high demand|timed out|abort)/i.test(String(e?.message || e));
@@ -1179,6 +1179,7 @@ app.post('/api/chef/recommend', smallJson, rateLimit('chef', 15, 10 * 60_000), a
     const excludeTitles = cleanArr(body.excludeTitles, 20);
     const mealSlot = ['breakfast', 'lunch', 'dinner', 'snack', 'any'].includes(body.mealSlot) ? body.mealSlot : 'dinner';
     const style = ['any', 'quick', 'comfort', 'chef-special', 'healthy'].includes(body.style) ? body.style : 'any';
+    const chefFocus = typeof body.chefFocus === 'string' ? body.chefFocus.trim().slice(0, 60) : undefined;
     const servings = Math.max(1, Math.min(10, Number(body.servings) || 4));
 
     if (fridge.length === 0 && cupboard.length === 0 && freezer.length === 0 && staples.length === 0) {
@@ -1196,7 +1197,6 @@ app.post('/api/chef/recommend', smallJson, rateLimit('chef', 15, 10 * 60_000), a
       chefRecommenderOverride ||
       createChefRecommender({
         generate: generateWithFallback,
-        findPhoto: (q) => photoSearch.findPhoto(q),
       });
 
     const result = await recommender({
@@ -1207,6 +1207,7 @@ app.post('/api/chef/recommend', smallJson, rateLimit('chef', 15, 10 * 60_000), a
       focusIngredients,
       mealSlot,
       style,
+      chefFocus,
       diets,
       avoid,
       servings,

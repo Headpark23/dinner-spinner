@@ -22,6 +22,7 @@ import { useDinner } from '../context/DinnerContext';
 import type { ChefRecommendation, MealSlot } from '../types';
 import {
   CHEF_STYLES,
+  TOP_CHEFS,
   buildOfflineChefFallback,
   chefRecipeToMeal,
   type ChefStyle,
@@ -60,6 +61,7 @@ export const CupboardSheet: React.FC<{
   const [tab, setTab] = useState<StudioTab>('ai');
   const [mealSlot, setMealSlot] = useState<'dinner' | 'lunch' | 'breakfast'>('dinner');
   const [style, setStyle] = useState<ChefStyle>('any');
+  const [chefFocus, setChefFocus] = useState<string>('all');
   const [focusIngredients, setFocusIngredients] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -141,6 +143,7 @@ export const CupboardSheet: React.FC<{
           focusIngredients,
           mealSlot,
           style,
+          chefFocus,
           diets: restrictions.diets,
           avoid: restrictions.avoid,
           servings,
@@ -255,7 +258,7 @@ export const CupboardSheet: React.FC<{
       subtitle={
         selectedRec
           ? `${selectedRec.chefInspiration} · Serves ${selectedRec.servings}`
-          : 'Top-chef dishes crafted from your fridge, cupboard & freezer — with illustrated steps.'
+          : 'Dishes inspired by Jamie Oliver, Gordon Ramsay, Nigella Lawson, Tom Kerridge & Nadiya Hussain.'
       }
       labelledBy="cupboard-title"
       tall
@@ -376,59 +379,44 @@ export const CupboardSheet: React.FC<{
                 )}
               </section>
 
-              {/* Illustrated Step-by-Step Instructions */}
+              {/* Step-by-Step Instructions */}
               <section className="space-y-3" aria-labelledby="chef-steps-h">
                 <div className="flex items-baseline justify-between">
                   <h3 id="chef-steps-h" className="font-display text-[19px] font-semibold">
-                    Step-by-step guide
+                    Step-by-step method
                   </h3>
-                  <span className="text-[12px] text-ink-3">{selectedRec.steps.length} illustrated stages</span>
+                  <span className="text-[12px] text-ink-3">{selectedRec.steps.length} steps</span>
                 </div>
-                <ol className="space-y-3">
-                  {selectedRec.steps.map((step, i) => {
-                    const stepImg = step.imageUrl || hero.url;
-                    return (
-                      <li
-                        key={i}
-                        className="editorial-card overflow-hidden rounded-[20px] border border-line/90 bg-card"
-                      >
-                        <div className="relative aspect-[16/9] w-full overflow-hidden bg-sunk">
-                          <img
-                            src={stepImg}
-                            alt={`${step.title} — step ${i + 1}`}
-                            loading="lazy"
-                            onError={(e) => {
-                              if (!e.currentTarget.src.endsWith(hero.fallbackUrl)) {
-                                e.currentTarget.src = hero.fallbackUrl;
-                              }
-                            }}
-                            className="h-full w-full object-cover"
-                          />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-black/15" />
-                          <span className="absolute top-2.5 left-3 inline-flex h-7 items-center gap-1 rounded-full bg-enamel/85 px-2.5 text-[11.5px] font-bold text-white backdrop-blur-xs tabular-nums">
-                            Step {i + 1}
+                <ol className="space-y-2.5">
+                  {selectedRec.steps.map((step, i) => (
+                    <li
+                      key={i}
+                      className="editorial-card rounded-[18px] border border-line/90 bg-card p-3.5"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-enamel text-[11.5px] font-bold text-white tabular-nums">
+                            {i + 1}
                           </span>
-                          <span className="absolute top-2.5 right-3 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-xs tabular-nums">
-                            {step.minutesBefore === 0 ? 'Serve' : `-${step.minutesBefore}m`}
-                          </span>
-                          <p className="absolute right-3 bottom-2.5 left-3 font-display text-[17px] leading-tight font-semibold text-white drop-shadow-xs">
+                          <p className="font-display text-[16px] leading-snug font-semibold text-ink">
                             {step.title}
                           </p>
                         </div>
-                        <div className="space-y-2 p-3.5">
-                          <p className="text-[14px] leading-relaxed text-ink">{step.instruction}</p>
-                          {step.visualCue && (
-                            <p className="flex items-start gap-1.5 rounded-xl bg-sage-soft/65 px-2.5 py-1.5 text-[12.5px] font-medium text-sage">
-                              <Eye className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                              <span>
-                                <strong>Look for:</strong> {step.visualCue}
-                              </span>
-                            </p>
-                          )}
-                        </div>
-                      </li>
-                    );
-                  })}
+                        <span className="shrink-0 rounded-full bg-sunk px-2.5 py-0.5 text-[11px] font-semibold text-ink-2 tabular-nums">
+                          {step.minutesBefore === 0 ? 'Serve' : `-${step.minutesBefore}m`}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-[14px] leading-relaxed text-ink-2">{step.instruction}</p>
+                      {step.visualCue && (
+                        <p className="mt-2 flex items-start gap-1.5 rounded-xl bg-sage-soft/65 px-2.5 py-1.5 text-[12.5px] font-medium text-sage">
+                          <Eye className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                          <span>
+                            <strong>Look for:</strong> {step.visualCue}
+                          </span>
+                        </p>
+                      )}
+                    </li>
+                  ))}
                 </ol>
               </section>
 
@@ -587,6 +575,26 @@ export const CupboardSheet: React.FC<{
                     </button>
                   ))}
                 </div>
+                <div className="space-y-1">
+                  <p className="px-0.5 text-[12px] font-semibold text-ink-2">Chef inspiration</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(['all', ...TOP_CHEFS] as const).map((chef) => (
+                      <button
+                        key={chef}
+                        type="button"
+                        onClick={() => setChefFocus(chef)}
+                        className={cx(
+                          'h-8 rounded-full border px-3 text-[12px] font-semibold transition-colors',
+                          chefFocus === chef
+                            ? 'border-saffron bg-saffron-soft text-saffron'
+                            : 'border-line bg-card text-ink-2 hover:border-line-strong hover:text-ink'
+                        )}
+                      >
+                        {chef === 'all' ? 'All 5 chefs' : chef}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               <div className="flex gap-2">
@@ -632,7 +640,7 @@ export const CupboardSheet: React.FC<{
                     <Sparkles className="h-4 w-4 text-saffron" /> Crafting your menu…
                   </p>
                   <p className="text-[13px] text-ink-2">
-                    Matching your ingredients with top-chef techniques, scaling quantities for {servings}, and gathering dish &amp; step photography.
+                    Matching your ingredients with {chefFocus === 'all' ? 'Jamie Oliver, Gordon Ramsay, Nigella Lawson, Tom Kerridge & Nadiya Hussain' : chefFocus} techniques for {servings}.
                   </p>
                 </Card>
               )}
@@ -709,7 +717,7 @@ export const CupboardSheet: React.FC<{
                           </div>
                           <div className="flex items-center gap-2 pt-0.5">
                             <Button variant="primary" size="sm" className="flex-1" onClick={() => setSelectedRec(rec)}>
-                              Open illustrated steps ({rec.steps.length})
+                              Open full method ({rec.steps.length} steps)
                             </Button>
                             <Button
                               variant="secondary"
