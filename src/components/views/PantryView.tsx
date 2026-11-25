@@ -178,6 +178,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
   const [shopNudge, setShopNudge] = useState<{ name: string; matches: StockMatchCandidate[] } | null>(null);
   const [freezeName, setFreezeName] = useState('');
   const [freezePortions, setFreezePortions] = useState(4);
+  const [freezeNote, setFreezeNote] = useState('');
   const stocked = oldestFirst(inFreezer(freezer));
   const finished = usedUp(freezer);
   const freezerPortions = totalPortions(freezer);
@@ -850,28 +851,42 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
         {/* FREEZER */}
         {activeTab === 'freezer' && (
           <>
+            <Card className="p-3.5">
             <form
               className="space-y-2"
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!freezeName.trim()) return;
                 const match = meals.find((m) => m.title.toLowerCase() === freezeName.trim().toLowerCase());
-                addFreezerItem({ name: freezeName, portions: freezePortions, mealId: match?.id });
+                addFreezerItem({ name: freezeName, portions: freezePortions, mealId: match?.id, note: freezeNote });
                 setFreezeName('');
+                setFreezeNote('');
               }}
             >
+              <div>
+                <h2 className="font-display text-[16.5px] font-semibold text-ink">Type what’s going in</h2>
+                <p className="text-[12.5px] text-ink-2">For tubs, bags and anything a photo can’t read.</p>
+              </div>
               <TextInput
                 value={freezeName}
                 onChange={(e) => setFreezeName(e.target.value)}
-                placeholder="What did you batch cook?"
-                aria-label="Batch-cooked meal to freeze"
+                placeholder="e.g. Chilli, bolognese, frozen peas"
+                aria-label="What's going in the freezer"
                 list="freezer-dish-suggestions"
+                enterKeyHint="done"
               />
               <datalist id="freezer-dish-suggestions">
                 {meals.map((m) => (
                   <option key={m.id} value={m.title} />
                 ))}
               </datalist>
+              <TextInput
+                value={freezeNote}
+                onChange={(e) => setFreezeNote(e.target.value)}
+                placeholder="Container or label (optional), e.g. blue tub"
+                aria-label="Container or label (optional)"
+                maxLength={120}
+              />
               <div className="flex items-center gap-2">
                 <div className="flex h-11 items-center rounded-xl border border-line bg-card" role="group" aria-label="Portions">
                   <button
@@ -895,10 +910,11 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
                   </button>
                 </div>
                 <Button type="submit" variant="primary" disabled={!freezeName.trim()} className="flex-1">
-                  <Snowflake className="h-4 w-4" /> Put in freezer
+                  <Snowflake className="h-4 w-4" /> Add
                 </Button>
               </div>
             </form>
+            </Card>
 
             {stocked.length === 0 && finished.length === 0 ? (
               <Card className="p-6 text-center">
@@ -925,6 +941,7 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
                             <p className="truncate text-[15px]">{item.name}</p>
                             <p className="flex flex-wrap items-center gap-x-2 text-[12px] text-ink-3">
                               <span>{frozenAgo(item)}</span>
+                              {item.note && <span className="truncate">· {item.note}</span>}
                               {isEatSoon(item) && <Chip tone="saffron">Eat soon</Chip>}
                             </p>
                           </div>
