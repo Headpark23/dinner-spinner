@@ -112,8 +112,10 @@ export const CupboardSheet: React.FC<{
       const rank = (f: string) => (f === 'red' ? 0 : f === 'amber' ? 1 : 2);
       return rank(a.freshness) - rank(b.freshness);
     });
-    return sortedFridge.slice(0, 10);
-  }, [pantry]);
+    const fridgeChoices = sortedFridge.slice(0, 10).map((p) => ({ id: `fridge-${p.id}`, name: p.name, freshness: p.freshness, frozen: false }));
+    const freezerChoices = stockedFreezer.slice(0, 6).map((f) => ({ id: `freezer-${f.id}`, name: f.name, freshness: 'green' as const, frozen: true }));
+    return [...fridgeChoices, ...freezerChoices];
+  }, [pantry, stockedFreezer]);
 
   const toggleFocus = (name: string) => {
     setFocusIngredients((prev) =>
@@ -178,7 +180,7 @@ export const CupboardSheet: React.FC<{
           const fallback = buildOfflineChefFallback({
             meals,
             pantry,
-            inStock,
+            inStock: [...inStock, ...stockedFreezer.map((f) => f.name)],
             avoid: restrictions.avoid,
             diets: restrictions.diets,
             servings,
@@ -208,7 +210,7 @@ export const CupboardSheet: React.FC<{
       const fallback = buildOfflineChefFallback({
         meals,
         pantry,
-        inStock,
+        inStock: [...inStock, ...stockedFreezer.map((f) => f.name)],
         avoid: restrictions.avoid,
         diets: restrictions.diets,
         servings,
@@ -560,6 +562,7 @@ export const CupboardSheet: React.FC<{
                           )}
                         >
                           {item.freshness === 'red' && !active && <FreshDot level="red" />}
+                          {item.frozen && !active && <Snowflake className="h-3 w-3 text-sky-500" />}
                           {active && <Check className="h-3 w-3" strokeWidth={2.8} />}
                           {item.name}
                         </button>

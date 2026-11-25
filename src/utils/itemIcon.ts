@@ -15,6 +15,8 @@ const ICONS: Array<[RegExp, string]> = [
   [/\b(croissants?|pastries)\b/, '🥐'],
   [/\b(pancakes?|waffles?|crumpets?)\b/, '🥞'],
   [/\b(sandwiches?|panini|toastie)\b/, '🥪'],
+  // Cooked dishes (batch-cooked freezer meals, leftovers)
+  [/\b(soups?|stews?|casseroles?|bolognese|rag[uù]|dh?als?|dahl|chilli\s*con\s*carne|tagines?|goulash|hotpot|broth|bourguignon)\b/, '🍲'],
   [/\b(cakes?|muffins?|brownies?|cupcakes?|flapjacks?|donuts?|doughnuts?)\b/, '🍰'],
   [/\b(biscuits?|cookies?|crackers?|digestives?|shortbread)\b/, '🍪'],
   [/\b(chocolate|cocoa|sweets?|candy|haribo|marshmallows?)\b/, '🍫'],
@@ -107,4 +109,10 @@ export const itemIcon = (name: string): string => {
   const n = name.toLowerCase();
   for (const [re, icon] of ICONS) if (re.test(n)) return icon;
   return '🛒';
+};
+
+/** Same icons for the freezer, but an unrecognised tub or bag shows as a frozen dish rather than a trolley. */
+export const freezerIcon = (name: string): string => {
+  const icon = itemIcon(name);
+  return icon === '🛒' ? '🧊' : icon;
 };

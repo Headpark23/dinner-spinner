@@ -58,7 +58,7 @@ import { KitchenRecipesSheet } from '../KitchenRecipesSheet';
 import { UsedTodaySheet, type UsedTodayInitialMeal } from '../UsedTodaySheet';
 import { findExistingStockMatches, type StockMatchCandidate } from '../../utils/dailyLog';
 import { PageHeader } from '../ui';
-import { itemIcon } from '../../utils/itemIcon';
+import { freezerIcon, itemIcon } from '../../utils/itemIcon';
 import { cuisinePhotoUrl, resolveMealPhoto } from '../../data/photos';
 import { INITIAL_MEALS } from '../../data/initialData';
 import {
@@ -936,9 +936,15 @@ export const PantryView: React.FC<{ scope: PantryScope }> = ({ scope }) => {
                     </h3>
                     <ul className="divide-y divide-line rounded-2xl border border-line bg-card">
                       {stocked.map((item) => (
-                        <li key={item.id} className="flex items-center gap-2 py-1 pr-1 pl-3">
-                          <div className="min-w-0 flex-1 py-1.5">
-                            <p className="truncate text-[15px]">{item.name}</p>
+                        <li key={item.id} className="flex items-center gap-2.5 py-1.5 pr-1 pl-3">
+                          <span
+                            aria-hidden="true"
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sunk text-[18px] leading-none"
+                          >
+                            {freezerIcon(item.name)}
+                          </span>
+                          <div className="min-w-0 flex-1 py-1">
+                            <p className="truncate text-[15px] font-medium">{item.name}</p>
                             <p className="flex flex-wrap items-center gap-x-2 text-[12px] text-ink-3">
                               <span>{frozenAgo(item)}</span>
                               {item.note && <span className="truncate">· {item.note}</span>}

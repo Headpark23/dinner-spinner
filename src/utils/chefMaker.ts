@@ -88,7 +88,8 @@ CONSTRAINTS:
 ${req.excludeTitles?.length ? `- Do NOT repeat: ${req.excludeTitles.join(', ')}.` : ''}
 
 QUALITY RULES:
-1. Build dishes primarily from ingredients they ALREADY have. At most 1-2 small optional extras in optionalExtras.
+1. Build dishes primarily from ingredients they ALREADY have — fridge, cupboard AND freezer. At most 1-2 small optional extras in optionalExtras.
+${req.freezer.length ? `   The freezer counts as stock: use frozen items (veg, meat, fish, batch-cooked sauces) wherever they fit, so at least one dish uses something from the FREEZER. List those items in usesFromKitchen and start the first step with defrosting if needed.` : ''}
 2. Cite the chef & signature technique in chefInspiration (e.g. "Jamie Oliver — 15-min traybake method", "Gordon Ramsay — crispy-skin pan sauce", "Nigella Lawson — cosy one-pan simmer", "Tom Kerridge — pub-style rich glaze", "Nadiya Hussain — spiced weeknight shortcut").
 3. Give exactly 4 concise chronological steps in "steps" (1 short sentence per instruction, 3-5 word visualCue).
 4. Keep the entire response compact (under 400 words total) and use UK English (courgette, aubergine, coriander, spring onion, tin, hob).

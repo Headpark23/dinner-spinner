@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { kitchenRecipeMatches } from './cupboard';
+import { isBatchOf, kitchenRecipeMatches } from './cupboard';
 import type { Meal, PantryItem } from '../types';
 
 const NOW = new Date(2026, 10, 25).getTime();
@@ -53,4 +53,33 @@ test('the avoid list is respected and dishes cooked lately drop to the end', () 
   const r = kitchenRecipeMatches({ meals, pantry, staples, banned: ['mushroom'], diets: [], nowMs: NOW });
   assert.deepEqual(r.map((m) => m.meal.title), ['Cheesy rice', 'Chicken rice']);
   assert.equal(r[1].coolingOff, true);
+});
+
+test('freezer items count as ingredients, and a frozen batch of a dish comes first', () => {
+  const freezer = [
+    { id: 'f1', name: 'Frozen prawns', portions: 2, totalPortions: 2, frozenDate: new Date(NOW).toISOString() },
+    { id: 'f2', name: 'Bolognese', portions: 3, totalPortions: 4, frozenDate: new Date(NOW).toISOString() },
+    { id: 'f3', name: 'Peas', portions: 0, totalPortions: 2, frozenDate: new Date(NOW).toISOString(), usedDate: new Date(NOW).toISOString() },
+  ];
+  const meals = [
+    meal('p', 'Prawn fried rice', ['Prawns', 'Rice', 'Peas', 'Soy sauce']),
+    meal('b', 'Bolognese', ['Beef mince', 'Tinned tomatoes', 'Onion', 'Spaghetti']),
+    meal('c', 'Cheesy rice', ['Rice', 'Cheddar']),
+  ];
+  const r = kitchenRecipeMatches({ meals, pantry, staples, freezer, banned: [], diets: [], nowMs: NOW });
+  assert.equal(r[0].meal.title, 'Bolognese');
+  assert.equal(r[0].frozenPortions, 3);
+  const prawn = r.find((m) => m.meal.title === 'Prawn fried rice')!;
+  assert.deepEqual(prawn.fromFreezer, ['Prawns']);
+  assert.ok(prawn.missing.includes('Peas'), 'used-up freezer items do not count');
+});
+
+test('a freezer batch matches a recipe whose title contains its name', () => {
+  assert.equal(isBatchOf('Chilli con carne', 'Smoky Beef Shin Chilli Con Carne'), true);
+  assert.equal(isBatchOf('Shepherd’s pie', 'Traditional Shepherd’s Pie with Cheddar Crust'), true);
+  assert.equal(isBatchOf('Dal', 'Dal'), true);
+  assert.equal(isBatchOf('Pie', 'Fish pie'), false);
+  assert.equal(isBatchOf('Bolognese', 'Spaghetti Bolognese'), true);
+  assert.equal(isBatchOf('Chilli', 'Chilli con carne'), false);
+  assert.equal(isBatchOf('Curry', 'Thai Green Prawn Curry'), false);
 });

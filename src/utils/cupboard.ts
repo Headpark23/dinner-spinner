@@ -551,14 +551,38 @@ export function pickSurprise(
 
 export interface KitchenRecipeMatch {
   meal: Meal;
-  /** Recipe ingredients found in the fridge, cupboard or staples. */
+  /** Recipe ingredients found in the fridge, cupboard, freezer or staples. */
   uses: string[];
+  /** Of those, the ones that come out of the freezer. */
+  fromFreezer: string[];
   /** Recipe ingredients that would need buying. */
   missing: string[];
   /** Fridge items marked "use next" that it uses up. */
   rescues: string[];
   /** Cooked in the last few days: still shown, but ranked after the rest. */
   coolingOff: boolean;
+  /** Set when a ready-made batch of this dish is in the freezer: how many portions are left. */
+  frozenPortions?: number;
+}
+
+const words = (s: string) =>
+  s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+/** True when a freezer batch's name is this dish: the same name, or its words inside the title ("Chilli con carne" in "Smoky Beef Shin Chilli Con Carne"). */
+export function isBatchOf(freezerName: string, mealTitle: string): boolean {
+  const f = words(freezerName);
+  const t = words(mealTitle);
+  if (!f || !t) return false;
+  if (f === t) return true;
+  // Short or generic single words ("dal", "curry", "soup") are too vague to claim a whole recipe.
+  if (f.length < 5) return false;
+  if (!f.includes(' ') && /^(curry|curries|chilli|stew|soup|sauce|pasta|roast|casserole|leftovers|mince|chicken|beef|pork|lamb|fish|rice|noodles)$/.test(f)) return false;
+  return ` ${t} `.includes(` ${f} `);
 }
 
 export interface KitchenRecipeOptions {
@@ -566,6 +590,8 @@ export interface KitchenRecipeOptions {
   pantry: PantryItem[];
   /** Staples plus stocked store-cupboard names. */
   staples: string[];
+  /** The freezer: its items count as ingredients, and a frozen batch of a dish puts that dish first. */
+  freezer?: FreezerItem[];
   banned: string[];
   diets: DietId[];
   nowMs?: number;
@@ -576,20 +602,42 @@ export interface KitchenRecipeOptions {
  * Using more of what's in the house ranks higher, "use next" fridge items count extra, and each thing
  * left to buy counts against it. Recipes that need nothing from the house are left out.
  */
-export function kitchenRecipeMatches({ meals, pantry, staples, banned, diets, nowMs }: KitchenRecipeOptions): KitchenRecipeMatch[] {
+export function kitchenRecipeMatches({ meals, pantry, staples, freezer = [], banned, diets, nowMs }: KitchenRecipeOptions): KitchenRecipeMatch[] {
   const lowerBanned = banned.map((b) => b.toLowerCase()).filter(Boolean);
+  const frozen = inFreezer(freezer);
+  const frozenNames = frozen.map((f) => f.name);
+  const stock = [...staples, ...frozenNames];
+  const sameItem = (a: string, b: string) => {
+    const x = a.toLowerCase();
+    const y = b.toLowerCase();
+    return x.includes(y) || y.includes(x);
+  };
   const out: (KitchenRecipeMatch & { score: number })[] = [];
   for (const meal of meals) {
     if (meal.ingredients.length === 0) continue;
     if (!mealFitsDiets(meal.ingredients, diets)) continue;
     if (mentionsAny([meal.title, ...meal.ingredients], lowerBanned)) continue;
-    const match = calculateMealPantryMatch(meal, pantry, staples);
+    // A batch of this very dish in the freezer: ready to heat, so it goes first.
+    const batch = frozen.find((f) => f.mealId === meal.id || isBatchOf(f.name, meal.title));
+    if (batch) {
+      out.push({ meal, uses: [], fromFreezer: [], missing: [], rescues: [], coolingOff: false, frozenPortions: batch.portions, score: 1000 + batch.portions });
+      continue;
+    }
+    const match = calculateMealPantryMatch(meal, pantry, stock);
     if (match.matchedCount === 0) continue;
     const missing = new Set(match.missingItems);
     const uses = withTweaks(meal).ingredients.filter((i) => !missing.has(i));
+    const fromFreezer = uses.filter(
+      (u) => frozenNames.some((f) => sameItem(u, f)) && !pantry.some((p) => sameItem(u, p.name)) && !staples.some((s) => sameItem(u, s))
+    );
     const coolingOff = isMealCoolingOff(meal, nowMs);
-    const score = match.matchedCount + match.redMatchedItems.length * 1.5 - match.missingItems.length * 0.75 - (coolingOff ? 100 : 0);
-    out.push({ meal, uses, missing: match.missingItems, rescues: match.redMatchedItems, coolingOff, score });
+    const score =
+      match.matchedCount +
+      match.redMatchedItems.length * 1.5 +
+      fromFreezer.length * 0.5 -
+      match.missingItems.length * 0.75 -
+      (coolingOff ? 100 : 0);
+    out.push({ meal, uses, fromFreezer, missing: match.missingItems, rescues: match.redMatchedItems, coolingOff, score });
   }
   out.sort(
     (a, b) =>
