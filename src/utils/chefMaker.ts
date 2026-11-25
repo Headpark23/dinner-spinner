@@ -90,12 +90,11 @@ ${req.excludeTitles?.length ? `- Do NOT repeat: ${req.excludeTitles.join(', ')}.
 QUALITY RULES:
 1. Build dishes primarily from ingredients they ALREADY have. At most 1-2 small optional extras in optionalExtras.
 2. Cite the chef & signature technique in chefInspiration (e.g. "Jamie Oliver — 15-min traybake method", "Gordon Ramsay — crispy-skin pan sauce", "Nigella Lawson — cosy one-pan simmer", "Tom Kerridge — pub-style rich glaze", "Nadiya Hussain — spiced weeknight shortcut").
-3. Give exactly 4 concise, high-impact chronological steps in "steps":
-   - title: 2-4 word stage header
-   - instruction: 1-2 crisp sentences with heat, timing, and technique
-   - minutesBefore: integer minutes before serving (descending to 0)
-   - visualCue: short visual check (e.g. "Deep golden crust, fragrant garlic")
-4. Keep every string concise and punchy. Use UK English (courgette, aubergine, coriander, spring onion, tin, hob).`;
+3. Give exactly 4 concise chronological steps in "steps" (1 short sentence per instruction, 3-5 word visualCue).
+4. Keep the entire response compact (under 400 words total) and use UK English (courgette, aubergine, coriander, spring onion, tin, hob).
+
+RETURN STRICT JSON ONLY matching this exact shape (no markdown fences):
+{"recommendations":[{"title":"string","description":"1 short sentence","cuisine":"string","chefInspiration":"string","whyItWorks":"1 short sentence","chefTip":"1 short sentence","timeStake":"20m"|"30m"|"60m"|"all-day","effort":"one-pot"|"standard"|"chef-mode","servings":${servings},"ingredients":["400g item"],"usesFromKitchen":["item"],"rescues":["use-next item"],"optionalExtras":["item"],"tags":["tag"],"steps":[{"title":"2-4 words","instruction":"1 crisp sentence","minutesBefore":20,"visualCue":"short cue"}]}]}`;
 }
 
 export function normalizeChefRecommendations(

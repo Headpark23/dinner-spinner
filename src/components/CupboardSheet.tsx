@@ -64,6 +64,7 @@ export const CupboardSheet: React.FC<{
   const [chefFocus, setChefFocus] = useState<string>('all');
   const [focusIngredients, setFocusIngredients] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [tryNum, setTryNum] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [offlineNote, setOfflineNote] = useState<string | null>(null);
   const [recs, setRecs] = useState<ChefRecommendation[]>([]);
@@ -122,39 +123,58 @@ export const CupboardSheet: React.FC<{
 
   const askAiChef = async (freshBatch = false) => {
     setLoading(true);
+    setTryNum(1);
     setError(null);
     setOfflineNote(null);
     setSelectedRec(null);
 
     const excludeTitles = freshBatch ? seenTitles.current.slice(-12) : [];
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 35000);
+    const payload = JSON.stringify({
+      fridge: pantry.map((p) => ({ name: p.name, freshness: p.freshness, quantity: p.quantity })),
+      cupboard: stockedCupboard.map((c) => c.name),
+      freezer: stockedFreezer.map((f) => `${f.name} (${f.portions} portions)`),
+      staples,
+      focusIngredients,
+      mealSlot,
+      style,
+      chefFocus,
+      diets: restrictions.diets,
+      avoid: restrictions.avoid,
+      servings,
+      excludeTitles,
+    });
 
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const res = await fetch('/api/chef/recommend', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        signal: controller.signal,
-        body: JSON.stringify({
-          fridge: pantry.map((p) => ({ name: p.name, freshness: p.freshness, quantity: p.quantity })),
-          cupboard: stockedCupboard.map((c) => c.name),
-          freezer: stockedFreezer.map((f) => `${f.name} (${f.portions} portions)`),
-          staples,
-          focusIngredients,
-          mealSlot,
-          style,
-          chefFocus,
-          diets: restrictions.diets,
-          avoid: restrictions.avoid,
-          servings,
-          excludeTitles,
-        }),
-      });
-      clearTimeout(timer);
-      const data = await res.json().catch(() => ({}));
+      // Transient Gemini 503 spikes or serverless timeouts clear within a couple of seconds — retry up to 3 times.
+      let res!: Response;
+      let data: any = {};
+      for (let n = 1; n <= 3; n++) {
+        setTryNum(n);
+        const controller = new AbortController();
+        timer = setTimeout(() => controller.abort(), 28000);
+        try {
+          res = await fetch('/api/chef/recommend', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...authHeaders() },
+            signal: controller.signal,
+            body: payload,
+          });
+          clearTimeout(timer);
+          data = await res.json().catch(() => ({}));
+        } catch (fetchErr) {
+          clearTimeout(timer);
+          if (n === 3) throw fetchErr;
+          await new Promise((r) => setTimeout(r, 2000));
+          continue;
+        }
+        const retryable = (res.status === 503 && data.busy) || res.status === 504 || res.status === 502;
+        if (!retryable || n === 3) break;
+        await new Promise((r) => setTimeout(r, 2500));
+      }
 
       if (!res.ok) {
-        if (data.aiUnavailable || res.status === 503) {
+        if (data.aiUnavailable || res.status === 503 || res.status === 504) {
           const fallback = buildOfflineChefFallback({
             meals,
             pantry,
@@ -168,8 +188,10 @@ export const CupboardSheet: React.FC<{
             setRecs(fallback);
             setOfflineNote(
               data.aiUnavailable
-                ? 'Live AI Chef needs a Gemini API key on the server — showing top kitchen matches from your stock instead.'
-                : 'AI Chef is busy right now — showing instant matches from your stock while you wait.'
+                ? 'Live AI Chef needs a Gemini API key in Vercel Environment Variables — showing matches from your stock instead.'
+                : data.reason === 'quota'
+                  ? 'Gemini API quota reached for right now — showing matches from your kitchen stock instead.'
+                  : 'Google’s AI servers are overloaded after 3 tries — showing instant matches from your stock while they recover.'
             );
             return;
           }
@@ -196,14 +218,16 @@ export const CupboardSheet: React.FC<{
         setRecs(fallback);
         setOfflineNote(
           err?.name === 'AbortError'
-            ? 'AI Chef took too long — showing instant stock matches instead.'
+            ? 'AI Chef timed out — showing instant stock matches instead.'
             : 'Couldn’t reach AI Chef just now — showing instant matches from your kitchen stock.'
         );
       } else {
         setError(err?.message || 'Something went wrong. Please try again.');
       }
     } finally {
+      clearTimeout(timer);
       setLoading(false);
+      setTryNum(1);
     }
   };
 
@@ -637,7 +661,8 @@ export const CupboardSheet: React.FC<{
               {loading && (
                 <Card className="fade-up space-y-2 border-brass/35 bg-gradient-to-br from-card to-saffron-soft/35 p-4">
                   <p className="flex items-center gap-2 text-[14px] font-semibold text-ink">
-                    <Sparkles className="h-4 w-4 text-saffron" /> Crafting your menu…
+                    <Sparkles className="h-4 w-4 text-saffron" />
+                    {tryNum > 1 ? `Chef kitchen busy, trying again (attempt ${tryNum} of 3)…` : 'Crafting your menu…'}
                   </p>
                   <p className="text-[13px] text-ink-2">
                     Matching your ingredients with {chefFocus === 'all' ? 'Jamie Oliver, Gordon Ramsay, Nigella Lawson, Tom Kerridge & Nadiya Hussain' : chefFocus} techniques for {servings}.

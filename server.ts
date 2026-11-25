@@ -944,10 +944,12 @@ function withTimeout<T>(promise: Promise<T>, ms = GEMINI_TIMEOUT_MS): Promise<T>
 // The newest flash models are often swamped or over quota (Nov 2026: 3.6-3.8 failed every scan), so the default is a
 // steadier one, with fast "lite" models as the first fallbacks. They answer in 1-4 seconds and read photos fine.
 const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
-const PREFERRED_FALLBACKS = ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'gemini-flash-lite-latest'];
+const PREFERRED_FALLBACKS = ['gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-3.1-flash-lite'];
 const GEMINI_BUDGET_MS = 26000;
 const isBusyError = (e: any) =>
   /\b(503|429|404|UNAVAILABLE|RESOURCE_EXHAUSTED|NOT_FOUND|overloaded|high demand|timed out|abort)/i.test(String(e?.message || e));
+const isQuotaError = (e: any) =>
+  /\b(429|RESOURCE_EXHAUSTED|exceeded your current quota)\b/i.test(String(e?.message || e));
 
 let fallbackCache: { at: number; models: string[] } | null = null;
 async function fallbackModels(): Promise<string[]> {
@@ -986,15 +988,10 @@ async function generateWithFallback(request: any): Promise<any> {
   // (main, a fallback, main, the other fallback, ...) with a short pause, until the time budget is spent.
   for (let round = 0; ; round++) {
     if (round === 1) fallbacks = await fallbackModels();
-    const aliveFallbacks = (fallbacks || []).filter((m) => !dead.has(m));
-    const model =
-      round === 0
-        ? PRIMARY_MODEL
-        : aliveFallbacks.length > 0
-          ? aliveFallbacks[(round - 1) % aliveFallbacks.length]
-          : PRIMARY_MODEL;
+    const pool = Array.from(new Set([PRIMARY_MODEL, ...(fallbacks || [])])).filter((m) => !dead.has(m));
+    const model = pool[round % Math.max(1, pool.length)] || PRIMARY_MODEL;
     if (model && !dead.has(model)) {
-      const ms = Math.min(round === 0 ? 18000 : 10000, left() - 300);
+      const ms = Math.min(round === 0 ? 15000 : 10000, left() - 300);
       if (ms < 2500) throw last || new Error('Gemini timed out');
       const isLite = /lite/i.test(model);
       const reqConfig = { ...(request.config || {}) };
@@ -1018,6 +1015,66 @@ async function generateWithFallback(request: any): Promise<any> {
     if (left() < 3500) throw last || new Error('Gemini timed out');
     await new Promise((r) => setTimeout(r, 600));
   }
+}
+
+/**
+ * Dedicated fast path for AI Chef text-to-JSON: skips `models.list()` latency and walks
+ * proven low-latency models (`gemini-3.5-flash`, `gemini-3.6-flash`, `gemini-3.1-flash-lite`)
+ * with minimal/zero thinking so responses finish in ~5-7s (inside Vercel Hobby's 10s cap).
+ */
+async function generateChefFast(request: any): Promise<any> {
+  const started = Date.now();
+  const budgetMs = 24000;
+  const left = () => budgetMs - (Date.now() - started);
+  const candidates = Array.from(
+    new Set(
+      [
+        process.env.GEMINI_MODEL?.trim(),
+        'gemini-3.5-flash',
+        'gemini-3.6-flash',
+        'gemini-3.1-flash-lite',
+        'gemini-3-flash-preview',
+      ].filter((x): x is string => Boolean(x))
+    )
+  );
+  const dead = new Set<string>();
+  let last: any;
+
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const alive = candidates.filter((m) => !dead.has(m));
+    if (alive.length === 0) break;
+    const model = alive[attempt % alive.length];
+    const ms = Math.min(11500, left() - 250);
+    if (ms < 2500) break;
+
+    const reqConfig: Record<string, any> = { ...(request.config || {}) };
+    if (/3\.1.*lite/i.test(model)) {
+      reqConfig.thinkingConfig = { thinkingLevel: 'MINIMAL' };
+    } else if (!/lite/i.test(model)) {
+      reqConfig.thinkingConfig = { thinkingBudget: 0 };
+    }
+
+    try {
+      return await withTimeout(
+        ai!.models.generateContent({
+          ...request,
+          model,
+          config: { ...reqConfig, abortSignal: AbortSignal.timeout(ms) },
+        }),
+        ms
+      );
+    } catch (e: any) {
+      last = e;
+      const msg = String(e?.message || e);
+      if (/\b404\b|NOT_FOUND|INVALID_ARGUMENT/i.test(msg)) dead.add(model);
+      console.warn(`AI Chef ${model} failed (attempt ${attempt + 1}):`, msg.slice(0, 160));
+      if (!isBusyError(e) && !/INVALID_ARGUMENT/i.test(msg)) throw e;
+    }
+
+    if (left() < 3000) break;
+    await new Promise((r) => setTimeout(r, 350));
+  }
+  throw last || new Error('Gemini timed out');
 }
 
 // Realistic UK Kitchen Demo Fallbacks when GEMINI_API_KEY is not configured
@@ -1196,7 +1253,7 @@ app.post('/api/chef/recommend', smallJson, rateLimit('chef', 15, 10 * 60_000), a
     const recommender =
       chefRecommenderOverride ||
       createChefRecommender({
-        generate: generateWithFallback,
+        generate: generateChefFast,
       });
 
     const result = await recommender({
@@ -1220,8 +1277,19 @@ app.post('/api/chef/recommend', smallJson, rateLimit('chef', 15, 10 * 60_000), a
     res.json({ recommendations: result.recommendations });
   } catch (error: any) {
     console.warn('AI Chef error:', error?.message);
+    if (isQuotaError(error)) {
+      return res.status(503).json({
+        busy: false,
+        reason: 'quota',
+        error: 'Gemini API quota reached right now.',
+      });
+    }
     if (isBusyError(error)) {
-      return res.status(503).json({ busy: true, error: 'The AI Chef is busy right now. Give it a moment and try again.' });
+      return res.status(503).json({
+        busy: true,
+        reason: 'busy',
+        error: 'The AI Chef is busy right now. Give it a moment and try again.',
+      });
     }
     return res.status(502).json({ error: 'The AI Chef couldn’t put a menu together just now. Try again.' });
   }
