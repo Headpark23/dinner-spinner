@@ -3,6 +3,7 @@ import { useDinner } from '../../context/DinnerContext';
 import { Copy, Check, Plus, Pencil, Dices, DoorOpen, Star } from 'lucide-react';
 import { Button, Card, Notice, Select, TextInput, cx, cuisineColor } from '../ui';
 import { LocalTakeaways, RatePanel, SpotContact } from '../TakeawayLeague';
+import { TakeawayDealsCard } from '../DealsStrip';
 
 export const TakeawayView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFamily }) => {
   const {
@@ -130,6 +131,8 @@ export const TakeawayView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFa
         <Dices className={cx('h-5 w-5', isTakeawaySpinning && 'animate-spin')} />
         {isTakeawaySpinning ? 'Spinning…' : 'Spin for takeaway'}
       </Button>
+
+      <TakeawayDealsCard />
 
       {winningTakeaway && !isTakeawaySpinning && (
         <Card className="fade-up p-4">

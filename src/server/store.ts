@@ -34,6 +34,8 @@ export type Household = {
   cookLog?: unknown[];
   /** Local takeaways, the family's scores and notes. Merged by id from every phone. */
   takeaways?: TakeawayHub;
+  /** Targeted delivery promo codes pinned by family members for tonight/today. */
+  dealPins?: import('../utils/deliveryDeals').HouseholdDealPin[];
   /** Small lists kept in step across phones: hidden dishes, cupboard, likes, dislikes, staples (plus recipes on file store). */
   shared?: Record<string, SharedListRecord>;
   /** Version/seeded pointers for heavy recipe lists stored in `hh:${id}:meals` on Redis. */

@@ -11,6 +11,8 @@ import { cleanLog, unionLog } from './src/utils/history';
 import { DEFAULT_RADIUS_M, MAX_RADIUS_M, chainOf, cleanHub, distanceM, emptyHub, mergeHub, placeFromHtml, sameSpot, type SharedSpot } from './src/utils/takeaways';
 import { createPlaces, type Places } from './src/server/places';
 import { createPhotoSearch } from './src/server/photoSearch';
+import { createDealsService } from './src/server/dealsFeed';
+import { cleanDealPin, pruneDealPins } from './src/utils/deliveryDeals';
 import { fetchPublicPage } from './src/server/fetchPage';
 import { extractRecipeFromHtml, htmlToText } from './src/utils/recipeImport';
 import { Household, HttpError, MealsBook, Store, UserLink, createFileStore, createStoreFromEnv, mutate, mutateMealsBook } from './src/server/store';
@@ -1132,6 +1134,63 @@ app.get('/api/photos/find', rateLimit('photo', 60, 10 * 60_000), async (req, res
   const found = await photoSearch.findPhoto(title);
   res.set('Cache-Control', 'public, max-age=86400');
   res.json({ photo: found });
+});
+
+// Daily UK delivery deals (day-of-week calendar + optional live Awin affiliate feed) and household-pinned codes.
+let dealsService = createDealsService();
+export const useDealsService = (next: ReturnType<typeof createDealsService>) => {
+  dealsService = next;
+};
+app.get('/api/deals/today', rateLimit('deals', 60, 10 * 60_000), async (_req, res) => {
+  try {
+    const snapshot = await dealsService.getTodayDeals();
+    res.set('Cache-Control', 'public, max-age=1800');
+    res.json(snapshot);
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+app.get('/api/deals/pins', requireHousehold, (req, res) => {
+  const h = (req as any).household as Household;
+  const pins = pruneDealPins(h.dealPins || []);
+  res.json({ pins });
+});
+
+app.post('/api/deals/pins', smallJson, requireHousehold, async (req, res) => {
+  try {
+    const id: string = (req as any).householdId;
+    const raw = req.body || {};
+    const pin = cleanDealPin({
+      ...raw,
+      id: typeof raw.id === 'string' && raw.id.trim() ? raw.id : `pin_${crypto.randomBytes(6).toString('hex')}`,
+    });
+    if (!pin) return res.status(400).json({ error: 'Pick a delivery firm and enter the offer.' });
+    let nextPins = [] as ReturnType<typeof pruneDealPins>;
+    await mutate(store, id, (h) => {
+      const existing = pruneDealPins(h.dealPins || []).filter((p) => p.id !== pin.id);
+      nextPins = pruneDealPins([pin, ...existing]);
+      h.dealPins = nextPins;
+    });
+    res.json({ pin, pins: nextPins });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+app.delete('/api/deals/pins/:pinId', requireHousehold, async (req, res) => {
+  try {
+    const id: string = (req as any).householdId;
+    const pinId = String(req.params.pinId || '').trim();
+    let nextPins = [] as ReturnType<typeof pruneDealPins>;
+    await mutate(store, id, (h) => {
+      nextPins = pruneDealPins((h.dealPins || []).filter((p) => p.id !== pinId));
+      h.dealPins = nextPins;
+    });
+    res.json({ pins: nextPins });
+  } catch (err) {
+    fail(res, err);
+  }
 });
 
 // Recipe from a web address. Most recipe sites embed structured recipe data, which we read directly (no AI needed).

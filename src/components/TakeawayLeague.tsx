@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ChevronDown, Plus, MapPin, Phone, Globe, Star, Search, UsersRound, ThumbsUp, ThumbsDown, EyeOff, Navigation, RefreshCw } from 'lucide-react';
 import { useDinner } from '../context/DinnerContext';
 import { orderLinks, ratingId, type LeagueRow } from '../utils/takeaways';
+import { useDeliveryDeals } from '../utils/useDeliveryDeals';
 import { Button, Card, Select, TextInput, cx } from './ui';
 
 const Stars: React.FC<{ value: number; className?: string }> = ({ value, className }) => (
@@ -131,6 +132,7 @@ const hostOf = (url: string) => {
 /** Tap-to-call, the shop's own website, directions, and a search for it on the delivery apps. */
 export const SpotContact: React.FC<{ spot: { name: string; address?: string; phone?: string; website?: string; lat?: number; lon?: number }; town?: string }> = ({ spot, town }) => {
   const links = orderLinks(spot, town);
+  const { topPick } = useDeliveryDeals('takeaway');
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
@@ -152,15 +154,34 @@ export const SpotContact: React.FC<{ spot: { name: string; address?: string; pho
       <div>
         <p className="mb-1 text-[12px] text-ink-3">Order online (opens a search for this shop)</p>
         <div className="flex flex-wrap gap-2">
-          {[
-            ['Just Eat', links.justEat],
-            ['Uber Eats', links.uberEats],
-            ['Deliveroo', links.deliveroo],
-          ].map(([label, href]) => (
-            <a key={label} href={href} target="_blank" rel="noopener noreferrer" className={LINK}>
-              {label}
-            </a>
-          ))}
+          {(
+            [
+              ['justeat', 'Just Eat', links.justEat],
+              ['ubereats', 'Uber Eats', links.uberEats],
+              ['deliveroo', 'Deliveroo', links.deliveroo],
+            ] as const
+          ).map(([id, label, href]) => {
+            const isBest = topPick?.activeToday && topPick.providerId === id;
+            return (
+              <a
+                key={id}
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cx(
+                  LINK,
+                  isBest && 'border-tomato/40 bg-tomato-soft/65 text-tomato'
+                )}
+              >
+                <span>{label}</span>
+                {isBest && (
+                  <span className="rounded-full bg-tomato px-1.5 py-0.5 text-[10px] font-bold text-white leading-none">
+                    Best deal
+                  </span>
+                )}
+              </a>
+            );
+          })}
         </div>
       </div>
     </div>
