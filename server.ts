@@ -13,7 +13,22 @@ import { createPlaces, type Places } from './src/server/places';
 import { createPhotoSearch } from './src/server/photoSearch';
 import { createChefRecommender } from './src/server/chefRecommend';
 import { createDealsService } from './src/server/dealsFeed';
-import { cleanDealPin, pruneDealPins } from './src/utils/deliveryDeals';
+import { cleanDealPin, isAllowedAffiliateUrl, pruneDealPins } from './src/utils/deliveryDeals';
+import {
+  incrementAiUsage,
+  isOwnerHousehold,
+  PRO_PLANS,
+  resolveEntitlement,
+  type BillingInterval,
+} from './src/utils/billing';
+import {
+  applyStripeWebhookEvent,
+  createStripeCheckoutSession,
+  createStripePortalSession,
+  isStripeConfigured,
+  readStripeConfig,
+  verifyStripeWebhookSignature,
+} from './src/server/billing';
 import { fetchPublicPage } from './src/server/fetchPage';
 import { extractRecipeFromHtml, htmlToText } from './src/utils/recipeImport';
 import { Household, HttpError, MealsBook, Store, UserLink, createFileStore, createStoreFromEnv, mutate, mutateMealsBook } from './src/server/store';
@@ -159,10 +174,116 @@ app.get('/api/health', (_req, res) => {
     status: 'ok',
     appName: 'Dinner Spinner',
     aiEnabled: hasRealGeminiKey,
+    billingConfigured: isStripeConfigured(readStripeConfig()),
     // The Google client id is public by design; the page needs it to show the button.
     googleClientId: GOOGLE_CLIENT_ID || null,
     timestamp: new Date().toISOString(),
   });
+});
+
+// ---------------------------------------------------------------------------
+// Household Pro Billing (Stripe Checkout, Customer Portal, Webhooks & Owner Bypass)
+// ---------------------------------------------------------------------------
+let billingFetchImpl: typeof fetch = fetch;
+export const useBillingFetch = (fn: typeof fetch) => {
+  billingFetchImpl = fn;
+};
+
+function entitlementForHousehold(id: string | null, household?: Household) {
+  const cfg = readStripeConfig();
+  const billingConfigured = isStripeConfigured(cfg);
+  const emails = (household?.google || []).map((g) => g.email).filter(Boolean);
+  const isOwner = isOwnerHousehold({
+    householdId: id,
+    googleEmails: emails,
+    ownerEmailsEnv: process.env.PRO_OWNER_EMAILS,
+    ownerHouseholdsEnv: process.env.PRO_OWNER_HOUSEHOLDS,
+  });
+  return resolveEntitlement({
+    billing: household?.billing,
+    isOwner,
+    billingConfigured,
+  });
+}
+
+app.get('/api/billing/status', async (req, res) => {
+  try {
+    const auth = await authenticate(req);
+    const entitlement = entitlementForHousehold(auth?.id ?? null, auth?.household);
+    res.json({
+      entitlement,
+      plans: PRO_PLANS,
+      signedInHousehold: Boolean(auth),
+    });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+app.post('/api/billing/checkout', smallJson, requireHousehold, rateLimit('checkout', 15, 10 * 60_000), async (req, res) => {
+  try {
+    const interval = String(req.body?.interval || 'annual') as BillingInterval;
+    if (!['monthly', 'annual', 'lifetime'].includes(interval)) {
+      return res.status(400).json({ error: 'Choose monthly, annual, or lifetime.' });
+    }
+    const id = (req as AuthedRequest).householdId!;
+    const h = (req as AuthedRequest).household!;
+    const entitlement = entitlementForHousehold(id, h);
+    if (entitlement.isOwner) {
+      return res.json({ alreadyFreeForOwner: true, entitlement });
+    }
+    const cfg = readStripeConfig();
+    const originUrl = `${req.protocol}://${req.get('host')}`;
+    const session = await createStripeCheckoutSession({
+      cfg,
+      householdId: id,
+      interval,
+      customerId: h.billing?.stripeCustomerId,
+      customerEmail: h.google?.[0]?.email,
+      originUrl,
+      fetchImpl: billingFetchImpl,
+    });
+    res.json({ url: session.url, sessionId: session.id });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+app.post('/api/billing/portal', smallJson, requireHousehold, rateLimit('portal', 15, 10 * 60_000), async (req, res) => {
+  try {
+    const h = (req as AuthedRequest).household!;
+    const customerId = h.billing?.stripeCustomerId;
+    if (!customerId) {
+      return res.status(400).json({ error: 'No Stripe billing account is linked to this household yet.' });
+    }
+    const cfg = readStripeConfig();
+    const originUrl = `${req.protocol}://${req.get('host')}`;
+    const portal = await createStripePortalSession({
+      cfg,
+      customerId,
+      originUrl,
+      fetchImpl: billingFetchImpl,
+    });
+    res.json({ url: portal.url });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+app.post('/api/billing/webhook', express.raw({ type: 'application/json', limit: '1mb' }), async (req, res) => {
+  try {
+    const cfg = readStripeConfig();
+    const rawBody = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : String(req.body || '');
+    const sig = req.header('stripe-signature');
+    if (!verifyStripeWebhookSignature(rawBody, sig, cfg.webhookSecret)) {
+      return res.status(400).json({ error: 'Invalid Stripe webhook signature.' });
+    }
+    const event = JSON.parse(rawBody);
+    const result = await applyStripeWebhookEvent(event, store);
+    res.json({ received: true, ...result });
+  } catch (err) {
+    fail(res, err);
+  }
 });
 
 app.post('/api/households', rateLimit('household', 10, 60 * 60_000), async (_req, res) => {
@@ -1209,6 +1330,15 @@ export const useChefRecommender = (next: ReturnType<typeof createChefRecommender
 };
 app.post('/api/chef/recommend', smallJson, rateLimit('chef', 15, 10 * 60_000), async (req, res) => {
   try {
+    const auth = await authenticate(req);
+    const entitlement = entitlementForHousehold(auth?.id ?? null, auth?.household);
+    if (!entitlement.canUseAiChef) {
+      return res.status(402).json({
+        upgradeRequired: true,
+        feature: 'ai-chef',
+        error: 'AI Chef Kitchen Studio is part of Household Pro. Start your 7-day free trial to unlock it.',
+      });
+    }
     const body = req.body || {};
     const fridge = Array.isArray(body.fridge)
       ? body.fridge
@@ -1310,6 +1440,21 @@ app.get('/api/deals/today', rateLimit('deals', 60, 10 * 60_000), async (_req, re
   }
 });
 
+const affiliateClicks = new Map<string, number>();
+
+app.get('/api/deals/click', rateLimit('deal click', 120, 10 * 60_000), (req, res) => {
+  const target = String(req.query.url || '').trim();
+  const provider = String(req.query.provider || 'unknown').trim().slice(0, 32);
+  const channel = String(req.query.channel || 'unknown').trim().slice(0, 24);
+  if (!target || !isAllowedAffiliateUrl(target)) {
+    return res.status(400).json({ error: 'Invalid or unsupported partner link.' });
+  }
+  const key = `${channel}:${provider}`;
+  affiliateClicks.set(key, (affiliateClicks.get(key) || 0) + 1);
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.redirect(302, target);
+});
+
 app.get('/api/deals/pins', requireHousehold, (req, res) => {
   const h = (req as any).household as Household;
   const pins = pruneDealPins(h.dealPins || []);
@@ -1389,6 +1534,25 @@ app.post('/api/pantry/analyze', imageJson, rateLimit('scan', 20, 10 * 60_000), a
     // always labelled as sample data. They ignore any text the user typed.
     if (demo === true) {
       return res.json(getSimulatedVisionResponse(type));
+    }
+
+    const auth = await authenticate(req);
+    const entitlement = entitlementForHousehold(auth?.id ?? null, auth?.household);
+    if (!entitlement.canUseAiScan) {
+      return res.status(402).json({
+        upgradeRequired: true,
+        feature: 'ai-scan',
+        aiScansUsed: entitlement.aiScansUsed,
+        aiScansLimit: entitlement.aiScansLimit,
+        error: `You’ve used all ${entitlement.aiScansLimit ?? 3} AI scans for this month. Upgrade to Household Pro for unlimited scans.`,
+      });
+    }
+    if (auth && entitlement.billingConfigured && !entitlement.isOwner) {
+      await mutate(store, auth.id, (h) => {
+        h.billing = incrementAiUsage(h.billing);
+      }).catch(() => {
+        // Non-fatal: never block a valid scan on usage counter contention.
+      });
     }
 
     if (!imageBase64 && !textPrompt) {

@@ -23,6 +23,9 @@ const MERCHANT_MATCHERS: [RegExp, DeliveryProviderId, DealChannel][] = [
   [/\basda\b/i, 'asda', 'grocery'],
   [/\bmorrisons?\b/i, 'morrisons', 'grocery'],
   [/\bwaitrose\b/i, 'waitrose', 'grocery'],
+  [/\bgousto\b/i, 'gousto', 'mealkit'],
+  [/\bhello\s*fresh\b/i, 'hellofresh', 'mealkit'],
+  [/\bmindful\s*chef\b/i, 'mindfulchef', 'mealkit'],
 ];
 
 const FIRST_ORDER_RE = /\b(new\s+customer|first\s+order|1st\s+order|first\s+shop|1st\s+shop|new\s+users?)\b/i;

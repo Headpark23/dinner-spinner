@@ -1,9 +1,11 @@
 import React from 'react';
 import { VoteNotificationsCard } from '../VoteNotifications';
-import { Bike, BarChart3, UsersRound, HardDriveDownload, CircleHelp, Volume2, VolumeX, ChevronRight, Leaf } from 'lucide-react';
+import { Bike, BarChart3, UsersRound, HardDriveDownload, CircleHelp, Volume2, VolumeX, ChevronRight, Leaf, Crown } from 'lucide-react';
 import { useDinner } from '../../context/DinnerContext';
+import { useBilling } from '../../utils/useBilling';
 import { Card, PageHeader, cx } from '../ui';
 import { InstallCard } from '../InstallUpdate';
+import { MealKitDealsCard } from '../DealsStrip';
 
 interface Row {
   key: string;
@@ -16,10 +18,16 @@ interface Row {
 }
 
 /** Everything that isn't part of tonight's dinner, grouped into clean editorial cards. */
-export const MoreView: React.FC<{ onOpenProfile: () => void; onOpenRules: () => void; onOpenFamily: () => void }> = ({
+export const MoreView: React.FC<{
+  onOpenProfile: () => void;
+  onOpenRules: () => void;
+  onOpenFamily: () => void;
+  onOpenPro?: () => void;
+}> = ({
   onOpenProfile,
   onOpenRules,
   onOpenFamily,
+  onOpenPro = () => {},
 }) => {
   const {
     setActiveView,
@@ -35,8 +43,36 @@ export const MoreView: React.FC<{ onOpenProfile: () => void; onOpenRules: () => 
     householdCode,
     familyNames,
   } = useDinner();
+  const { entitlement } = useBilling();
+
+  const proFlag = entitlement.isOwner
+    ? 'Owner · Free'
+    : entitlement.plan === 'lifetime'
+      ? 'Lifetime'
+      : entitlement.plan === 'pro'
+        ? entitlement.status === 'trialing'
+          ? 'Trial'
+          : 'Active'
+        : '7-day trial';
+
+  const proBody = entitlement.isOwner
+    ? 'Unlimited Pro access unlocked free forever for your household.'
+    : entitlement.plan === 'lifetime'
+      ? `Lifetime Founder Pass active (${entitlement.aiScansUsed}/${entitlement.aiScansLimit} AI scans this month).`
+      : entitlement.plan === 'pro'
+        ? 'Unlimited AI scans, AI Chef Studio, family sync & Week Planner.'
+        : '£2.99/mo, £24.99/yr, or £39.99 Lifetime — one plan covers the whole family.';
 
   const rows: Row[] = [
+    {
+      key: 'pro',
+      icon: <Crown className="h-5 w-5" />,
+      iconTone: 'bg-saffron-soft text-saffron',
+      title: 'Household Pro',
+      body: proBody,
+      onClick: onOpenPro,
+      flag: proFlag,
+    },
     {
       key: 'family',
       icon: <UsersRound className="h-5 w-5" />,
@@ -91,6 +127,7 @@ export const MoreView: React.FC<{ onOpenProfile: () => void; onOpenRules: () => 
 
       <InstallCard />
       <VoteNotificationsCard />
+      <MealKitDealsCard />
 
       <Card as="div" className="divide-y divide-line overflow-hidden">
         {rows.map((row) => (

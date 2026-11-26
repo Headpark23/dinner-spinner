@@ -22,6 +22,7 @@ import { WelcomeSheet } from './components/WelcomeSheet';
 import { JoinSheet, JoinedBanner, LiveVoteBanner } from './components/LiveVote';
 import { VoteNewsBanner } from './components/VoteNotifications';
 import { FamilySheet } from './components/FamilySheet';
+import { ProUpgradeModal } from './components/ProUpgradeModal';
 import { resolveMealPhoto } from './data/photos';
 import { Card, FreshDot, Switch, cx } from './components/ui';
 import { ArrowRight, Check, ChevronLeft, Clock, Flame } from 'lucide-react';
@@ -208,6 +209,7 @@ const MainCabinet: React.FC = () => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isRulesOpen, setIsRulesOpen] = useState(false);
   const [isFamilyOpen, setIsFamilyOpen] = useState(false);
+  const [isProOpen, setIsProOpen] = useState(false);
 
   const stage = useDinnerStage();
   useEffect(() => {
@@ -253,6 +255,7 @@ const MainCabinet: React.FC = () => {
                 onOpenProfile={() => setIsProfileOpen(true)}
                 onOpenRules={() => setIsRulesOpen(true)}
                 onOpenFamily={() => setIsFamilyOpen(true)}
+                onOpenPro={() => setIsProOpen(true)}
               />
             )}
           </div>
@@ -265,6 +268,11 @@ const MainCabinet: React.FC = () => {
 
       <ProfileSyncModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
       <FamilySheet isOpen={isFamilyOpen} onClose={() => setIsFamilyOpen(false)} />
+      <ProUpgradeModal
+        isOpen={isProOpen}
+        onClose={() => setIsProOpen(false)}
+        onOpenFamily={() => setIsFamilyOpen(true)}
+      />
       <RulesModal isOpen={isRulesOpen} onClose={() => setIsRulesOpen(false)} />
       <WelcomeSheet />
       <JoinSheet />

@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx --test src/utils/sharedSync.test.ts src/utils/dinnerEngine.test.ts src/utils/takeaways.test.ts src/utils/deliveryDeals.test.ts src/utils/recipeImport.test.ts src/utils/docText.test.ts src/utils/reelParts.test.ts src/utils/photoSearch.test.ts src/utils/avoid.test.ts src/utils/cost.test.ts src/utils/stepAlerts.test.ts src/utils/installUpdate.test.ts src/utils/memberDiets.test.ts src/utils/leftovers.test.ts src/utils/stores.test.ts src/utils/recipeCard.test.ts src/utils/freezerSurprise.test.ts src/utils/seasons.test.ts src/utils/milestones.test.ts src/utils/followUps.test.ts src/utils/dailyLog.test.ts src/utils/chefMaker.test.ts src/utils/kitchenRecipes.test.ts src/utils/kitchenSearch.test.ts"
+    "test": "tsx --test src/utils/sharedSync.test.ts src/utils/dinnerEngine.test.ts src/utils/takeaways.test.ts src/utils/deliveryDeals.test.ts src/utils/billing.test.ts src/utils/recipeImport.test.ts src/utils/docText.test.ts src/utils/reelParts.test.ts src/utils/photoSearch.test.ts src/utils/avoid.test.ts src/utils/cost.test.ts src/utils/stepAlerts.test.ts src/utils/installUpdate.test.ts src/utils/memberDiets.test.ts src/utils/leftovers.test.ts src/utils/stores.test.ts src/utils/recipeCard.test.ts src/utils/freezerSurprise.test.ts src/utils/seasons.test.ts src/utils/milestones.test.ts src/utils/followUps.test.ts src/utils/dailyLog.test.ts src/utils/chefMaker.test.ts src/utils/kitchenRecipes.test.ts src/utils/kitchenSearch.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

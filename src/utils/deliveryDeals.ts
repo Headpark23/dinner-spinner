@@ -13,9 +13,12 @@ export type DeliveryProviderId =
   | 'asda'
   | 'morrisons'
   | 'ocado'
-  | 'waitrose';
+  | 'waitrose'
+  | 'gousto'
+  | 'hellofresh'
+  | 'mindfulchef';
 
-export type DealChannel = 'takeaway' | 'grocery';
+export type DealChannel = 'takeaway' | 'grocery' | 'mealkit';
 
 export type DealEligibility = 'everyone' | 'first-order' | 'perk' | 'household';
 
@@ -60,6 +63,9 @@ export const PROVIDER_NAMES: Record<DeliveryProviderId, string> = {
   morrisons: 'Morrisons',
   ocado: 'Ocado',
   waitrose: 'Waitrose',
+  gousto: 'Gousto',
+  hellofresh: 'HelloFresh',
+  mindfulchef: 'Mindful Chef',
 };
 
 export const TAKEAWAY_PROVIDERS: DeliveryProviderId[] = ['justeat', 'deliveroo', 'ubereats'];
@@ -73,6 +79,46 @@ export const GROCERY_PROVIDERS: DeliveryProviderId[] = [
   'ubereats',
   'justeat',
 ];
+export const MEALKIT_PROVIDERS: DeliveryProviderId[] = ['gousto', 'hellofresh', 'mindfulchef'];
+
+const ALLOWED_AFFILIATE_HOST_SUFFIXES = [
+  'awin1.com',
+  'tidd.ly',
+  'just-eat.co.uk',
+  'deliveroo.co.uk',
+  'ubereats.com',
+  'tesco.com',
+  'sainsburys.co.uk',
+  'asda.com',
+  'morrisons.com',
+  'ocado.com',
+  'waitrose.com',
+  'gousto.co.uk',
+  'hellofresh.co.uk',
+  'mindfulchef.com',
+];
+
+/** Validates outbound affiliate/partner redirect URLs against a strict UK merchant + Awin host allowlist. */
+export function isAllowedAffiliateUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== 'https:') return false;
+    const host = u.hostname.toLowerCase();
+    return ALLOWED_AFFILIATE_HOST_SUFFIXES.some((suffix) => host === suffix || host.endsWith('.' + suffix));
+  } catch {
+    return false;
+  }
+}
+
+export function buildAffiliateClickUrl(deal: Pick<DeliveryDeal, 'providerId' | 'channel' | 'url'>): string | undefined {
+  if (!deal.url || !isAllowedAffiliateUrl(deal.url)) return undefined;
+  const params = new URLSearchParams({
+    provider: deal.providerId,
+    channel: deal.channel,
+    url: deal.url,
+  });
+  return `/api/deals/click?${params.toString()}`;
+}
 
 const VALID_PROVIDERS = new Set<string>(Object.keys(PROVIDER_NAMES));
 
@@ -85,7 +131,8 @@ export function cleanDealPin(raw: unknown, now = new Date()): HouseholdDealPin |
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
   if (!isProviderId(r.providerId)) return null;
-  const channel: DealChannel = r.channel === 'grocery' ? 'grocery' : 'takeaway';
+  const channel: DealChannel =
+    r.channel === 'grocery' ? 'grocery' : r.channel === 'mealkit' ? 'mealkit' : 'takeaway';
   const headline = String(r.headline || '').trim().slice(0, 90);
   if (!headline) return null;
   const code = String(r.code || '')
@@ -334,6 +381,46 @@ export function calendarDealsForDate(date = new Date()): DeliveryDeal[] {
       activeToday: false,
       score: 56,
       url: 'https://www.ubereats.com/gb',
+    },
+    // --- UK Meal-kit channel (high-payout affiliate partners) ---
+    {
+      id: 'cal_gousto_first',
+      providerId: 'gousto',
+      providerName: 'Gousto',
+      channel: 'mealkit',
+      headline: 'Intro discount on your first recipe box',
+      detail: 'Skip the supermarket run with pre-measured UK family recipes delivered to your door.',
+      eligibility: 'first-order',
+      source: 'calendar',
+      activeToday: true,
+      score: 70,
+      url: 'https://www.gousto.co.uk/',
+    },
+    {
+      id: 'cal_hellofresh_first',
+      providerId: 'hellofresh',
+      providerName: 'HelloFresh',
+      channel: 'mealkit',
+      headline: 'First-box family offer + free delivery',
+      detail: 'Pick 3–5 midweek dinners online; pause or cancel anytime after your intro box.',
+      eligibility: 'first-order',
+      source: 'calendar',
+      activeToday: true,
+      score: 68,
+      url: 'https://www.hellofresh.co.uk/',
+    },
+    {
+      id: 'cal_mindfulchef_first',
+      providerId: 'mindfulchef',
+      providerName: 'Mindful Chef',
+      channel: 'mealkit',
+      headline: 'Intro savings on healthy recipe boxes',
+      detail: '100% gluten-free and dairy-free UK recipe boxes with quick 20-minute options.',
+      eligibility: 'first-order',
+      source: 'calendar',
+      activeToday: false,
+      score: 62,
+      url: 'https://www.mindfulchef.com/',
     }
   );
 

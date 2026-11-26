@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Check, ChevronDown, Copy, Plus, Tag, Trash2, X } from 'lucide-react';
+import { Check, ChevronDown, Copy, ExternalLink, Package, Plus, Tag, Trash2, X } from 'lucide-react';
 import {
+  buildAffiliateClickUrl,
   eligibilityLabel,
   GROCERY_PROVIDERS,
   PROVIDER_NAMES,
@@ -100,6 +101,16 @@ export const TakeawayDealsCard: React.FC = () => {
         <DealBadges deal={topPick} />
         <div className="flex items-center gap-1.5">
           {topPick.code && <CodeCopyButton code={topPick.code} />}
+          {topPick.url && buildAffiliateClickUrl(topPick) && (
+            <a
+              href={buildAffiliateClickUrl(topPick)}
+              target="_blank"
+              rel="noopener noreferrer sponsored"
+              className="inline-flex h-8 items-center gap-1 rounded-lg border border-line bg-paper px-2.5 text-[12px] font-semibold text-ink hover:border-line-strong"
+            >
+              Open <ExternalLink className="h-3 w-3" />
+            </a>
+          )}
           {topPick.source === 'household' && (
             <button
               type="button"
@@ -298,5 +309,58 @@ export const GroceryDealBanner: React.FC<{
         </form>
       )}
     </div>
+  );
+};
+
+/**
+ * Compact UK meal-kit partner strip (Gousto, HelloFresh, Mindful Chef) with ASA "Ad" disclosure
+ * and server-tracked outbound partner links.
+ */
+export const MealKitDealsCard: React.FC = () => {
+  const { ranked } = useDeliveryDeals('mealkit');
+  if (ranked.length === 0) return null;
+
+  return (
+    <Card className="p-4" aria-label="UK recipe box offers">
+      <div className="flex items-center justify-between gap-2">
+        <p className="eyebrow flex items-center gap-1.5 text-sage">
+          <Package className="h-3.5 w-3.5" /> Skip the supermarket run
+        </p>
+        <Chip tone="outline">Partner links</Chip>
+      </div>
+      <p className="mt-1 font-display text-[17.5px] font-semibold leading-snug text-ink">
+        UK recipe box intro offers
+      </p>
+      <ul className="mt-3 divide-y divide-line/80">
+        {ranked.map((deal) => {
+          const href = buildAffiliateClickUrl(deal);
+          return (
+            <li key={deal.id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+              <div className="min-w-0 flex-1">
+                <p className="text-[14px] font-semibold text-ink">
+                  {deal.providerName} · <span className="font-medium text-ink-2">{deal.headline}</span>
+                </p>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                  <DealBadges deal={deal} />
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
+                {deal.code && <CodeCopyButton code={deal.code} compact />}
+                {href && (
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer sponsored"
+                    className="inline-flex h-8 items-center gap-1 rounded-full border border-line bg-paper px-3 text-[12px] font-semibold text-ink hover:border-line-strong"
+                  >
+                    View <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
   );
 };

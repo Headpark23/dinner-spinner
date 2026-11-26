@@ -1,6 +1,7 @@
 import fs from 'fs';
 import type { ShoppingItem } from '../types';
 import type { TakeawayHub } from '../utils/takeaways';
+import type { HouseholdBilling } from '../utils/billing';
 
 export type Snapshot = { syncedAt: string; syncId: string; data: any };
 
@@ -36,6 +37,8 @@ export type Household = {
   takeaways?: TakeawayHub;
   /** Targeted delivery promo codes pinned by family members for tonight/today. */
   dealPins?: import('../utils/deliveryDeals').HouseholdDealPin[];
+  /** Household Pro subscription, lifetime pass, and monthly AI scan usage. */
+  billing?: HouseholdBilling;
   /** Small lists kept in step across phones: hidden dishes, cupboard, likes, dislikes, staples (plus recipes on file store). */
   shared?: Record<string, SharedListRecord>;
   /** Version/seeded pointers for heavy recipe lists stored in `hh:${id}:meals` on Redis. */
