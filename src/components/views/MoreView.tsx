@@ -1,6 +1,6 @@
 import React from 'react';
 import { VoteNotificationsCard } from '../VoteNotifications';
-import { Bike, BarChart3, UsersRound, HardDriveDownload, CircleHelp, Volume2, VolumeX, ChevronRight, Leaf, Crown } from 'lucide-react';
+import { Bike, BarChart3, UsersRound, HardDriveDownload, CircleHelp, Volume2, VolumeX, ChevronRight, Leaf, Crown, Shield } from 'lucide-react';
 import { useDinner } from '../../context/DinnerContext';
 import { useBilling } from '../../utils/useBilling';
 import { Card, PageHeader, cx } from '../ui';
@@ -23,11 +23,13 @@ export const MoreView: React.FC<{
   onOpenRules: () => void;
   onOpenFamily: () => void;
   onOpenPro?: () => void;
+  onOpenPrivacy?: () => void;
 }> = ({
   onOpenProfile,
   onOpenRules,
   onOpenFamily,
   onOpenPro = () => {},
+  onOpenPrivacy = () => {},
 }) => {
   const {
     setActiveView,
@@ -118,6 +120,14 @@ export const MoreView: React.FC<{
       title: 'How it works',
       body: 'The house rules in under a minute.',
       onClick: onOpenRules,
+    },
+    {
+      key: 'privacy',
+      icon: <Shield className="h-5 w-5" />,
+      iconTone: 'bg-sage-soft text-sage',
+      title: 'Privacy, terms & data',
+      body: 'UK GDPR notice, subscription terms, allergy disclaimer & erase data.',
+      onClick: onOpenPrivacy,
     },
   ];
 

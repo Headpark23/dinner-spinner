@@ -6,6 +6,7 @@ import { COMBO_HEADERS } from '../data/initialData';
 import { resolveMealPhoto } from '../data/photos';
 import { Button, DishTile, cx, timeLabel, effortLabel } from './ui';
 import { costText, costPerHeadText } from '../utils/cost';
+import { itemIcon } from '../utils/itemIcon';
 
 interface ReelWindowProps {
   onSpin: () => void;
@@ -16,6 +17,13 @@ const REEL_HEADERS = COMBO_HEADERS;
 const prefersReducedMotion = () =>
   typeof window !== 'undefined' &&
   window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+/** Returns a food/ingredient picture symbol for a reel item (never a shopping trolley). */
+const reelSymbol = (label: string, reelIndex: number): string => {
+  const icon = itemIcon(label);
+  if (icon !== '🛒') return icon;
+  return ['🍽️', '🍖', '🫙', '🥗'][reelIndex % 4];
+};
 
 /** A vertical strip of labels that rolls while spinning. */
 const RollingStrip: React.FC<{ labels: string[]; className?: string; itemClass?: string }> = ({
@@ -29,6 +37,34 @@ const RollingStrip: React.FC<{ labels: string[]; className?: string; itemClass?:
       {doubled.map((label, i) => (
         <div key={i} className={cx('flex items-center justify-center truncate', itemClass)}>
           {label}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/** A classic fruit-machine vertical strip of bold ingredient pictures that rolls while spinning. */
+const RollingSymbolStrip: React.FC<{ labels: string[]; reelIndex: number; compact?: boolean }> = ({
+  labels,
+  reelIndex,
+  compact,
+}) => {
+  const doubled = [...labels, ...labels];
+  return (
+    <div className="reel-rolling px-1" aria-hidden="true">
+      {doubled.map((label, i) => (
+        <div key={i} className="flex h-[58px] flex-col items-center justify-center gap-0.5 text-center">
+          <span
+            className={cx(
+              'leading-none drop-shadow-[0_2px_6px_rgba(0,0,0,0.45)]',
+              compact ? 'text-[26px]' : 'text-[30px]'
+            )}
+          >
+            {reelSymbol(label, reelIndex)}
+          </span>
+          <span className="max-w-full truncate px-1 text-[10px] font-medium text-on-enamel/70">
+            {label}
+          </span>
         </div>
       ))}
     </div>
@@ -236,40 +272,88 @@ export const ReelWindow: React.FC<ReelWindowProps> = ({ onSpin }) => {
               </div>
             ) : (
               <div
-                className="grid h-[142px] divide-x divide-brass/20"
+                className="grid h-[168px] divide-x divide-brass/25"
                 style={{ gridTemplateColumns: `repeat(${reelLists.length}, minmax(0, 1fr))` }}
               >
                 {reelLists.map((list, idx) => {
                   const isHeld = heldReels[idx];
                   const rolling = isSpinning && !isHeld;
+                  const currentLabel = customReelResult[idx] || list[0]?.label || '';
+                  const currentPos = Math.max(
+                    0,
+                    list.findIndex((i) => i.label === currentLabel)
+                  );
+                  const prevLabel = list.length > 1 ? list[(currentPos - 1 + list.length) % list.length]?.label : '';
+                  const nextLabel = list.length > 1 ? list[(currentPos + 1) % list.length]?.label : '';
+                  const compact = reelLists.length >= 4;
+                  const tilePhoto = currentLabel
+                    ? resolveMealPhoto({ id: '', title: currentLabel, cuisine: '' })
+                    : undefined;
+
                   return (
                     <div key={idx} className="reel-fade relative overflow-hidden">
+                      {/* Soft dish-photo glow behind each settled reel drum */}
+                      {!rolling && tilePhoto && (
+                        <img
+                          src={tilePhoto.url}
+                          alt=""
+                          aria-hidden="true"
+                          onError={(e) => {
+                            if (!e.currentTarget.src.endsWith(tilePhoto.fallbackUrl)) {
+                              e.currentTarget.src = tilePhoto.fallbackUrl;
+                            }
+                          }}
+                          className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-[0.14] blur-xs"
+                        />
+                      )}
                       {isHeld && (
-                        <span className="absolute top-2 left-1/2 z-20 -translate-x-1/2 rounded-full bg-brass px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-enamel shadow-sm">
+                        <span className="absolute top-1.5 left-1/2 z-20 -translate-x-1/2 rounded-full bg-brass px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-wider text-enamel shadow-sm">
                           Held
                         </span>
                       )}
                       {rolling ? (
-                        <RollingStrip
+                        <RollingSymbolStrip
                           labels={list.map((i) => i.label)}
-                          className="px-1.5"
-                          itemClass="h-12 text-center font-display text-[14px] leading-tight text-on-enamel/80 whitespace-normal"
+                          reelIndex={idx}
+                          compact={compact}
                         />
                       ) : (
                         <div
-                          key={customReelResult[idx]}
-                          className="reel-settle relative z-1 flex h-full flex-col items-center justify-center px-1.5 text-center"
+                          key={currentLabel}
+                          className="reel-settle relative z-1 flex h-full flex-col items-center justify-between px-1 py-2 text-center"
                         >
-                          <span className="text-[10px] font-semibold uppercase tracking-[0.09em] text-brass/90">
-                            {REEL_HEADERS[mode][idx]}
+                          {/* Upper neighbour symbol on the drum */}
+                          <span className="text-[18px] leading-none opacity-25 select-none" aria-hidden="true">
+                            {prevLabel ? reelSymbol(prevLabel, idx) : ''}
                           </span>
-                          <span
-                            className={cx(
-                              'mt-1.5 font-display font-semibold leading-tight text-on-enamel line-clamp-3',
-                              mode === '3-reel' ? 'text-[15px]' : 'text-[12.5px]'
-                            )}
-                          >
-                            {customReelResult[idx]}
+
+                          {/* Illuminated fruit-machine symbol medallion on the payline */}
+                          <div className="flex flex-col items-center">
+                            <span
+                              aria-hidden="true"
+                              className={cx(
+                                'flex items-center justify-center rounded-2xl bg-gradient-to-b from-white/16 to-black/30 ring-1 ring-brass/45 shadow-[inset_0_1px_2px_rgba(255,255,255,0.28),0_4px_10px_rgba(0,0,0,0.45)]',
+                                compact ? 'h-12 w-12 text-[28px]' : 'h-14 w-14 text-[34px]'
+                              )}
+                            >
+                              {reelSymbol(currentLabel, idx)}
+                            </span>
+                            <span className="mt-1 text-[9px] font-semibold uppercase tracking-[0.09em] text-brass/90">
+                              {REEL_HEADERS[mode][idx]}
+                            </span>
+                            <span
+                              className={cx(
+                                'mt-0.5 font-display font-semibold leading-[1.12] text-on-enamel line-clamp-2',
+                                compact ? 'text-[11px]' : 'text-[12.5px]'
+                              )}
+                            >
+                              {currentLabel}
+                            </span>
+                          </div>
+
+                          {/* Lower neighbour symbol on the drum */}
+                          <span className="text-[18px] leading-none opacity-25 select-none" aria-hidden="true">
+                            {nextLabel ? reelSymbol(nextLabel, idx) : ''}
                           </span>
                         </div>
                       )}

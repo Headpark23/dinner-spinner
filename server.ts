@@ -313,6 +313,39 @@ app.get('/api/households/me', requireHousehold, (req, res) => {
   });
 });
 
+// UK GDPR Right to Erasure: wipes all synced kitchen, personal, push and billing data for this household.
+app.delete('/api/households/me', requireHousehold, async (req, res) => {
+  try {
+    const id = (req as AuthedRequest).householdId!;
+    await mutate(store, id, (h) => {
+      h.google = [];
+      h.joined = [];
+      h.shopping = { version: (h.shopping?.version || 0) + 1, items: [] };
+      h.fridge = { version: (h.fridge?.version || 0) + 1, seeded: false, items: [] };
+      h.freezer = { version: (h.freezer?.version || 0) + 1, seeded: false, items: [] };
+      h.tonight = undefined;
+      h.cookLog = [];
+      h.takeaways = undefined;
+      h.dealPins = [];
+      h.shared = {};
+      h.sharedMeta = {};
+      h.push = [];
+      h.snapshotAt = null;
+      h.snapshot = null;
+      h.billing = undefined;
+    });
+    if (store.putMealsBook) {
+      await mutateMealsBook(store, id, (book) => {
+        book.recipes = emptyShared();
+        book.shelved = emptyShared();
+      });
+    }
+    res.json({ ok: true, deleted: true });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
 // A phone that joined with a code (no Google) says so, so whoever invited it can be told.
 app.post('/api/households/joined', smallJson, requireHousehold, async (req, res) => {
   try {

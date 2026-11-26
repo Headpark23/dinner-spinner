@@ -23,6 +23,7 @@ import { JoinSheet, JoinedBanner, LiveVoteBanner } from './components/LiveVote';
 import { VoteNewsBanner } from './components/VoteNotifications';
 import { FamilySheet } from './components/FamilySheet';
 import { ProUpgradeModal } from './components/ProUpgradeModal';
+import { PrivacyModal } from './components/PrivacyModal';
 import { resolveMealPhoto } from './data/photos';
 import { Card, FreshDot, Switch, cx } from './components/ui';
 import { ArrowRight, Check, ChevronLeft, Clock, Flame } from 'lucide-react';
@@ -210,6 +211,7 @@ const MainCabinet: React.FC = () => {
   const [isRulesOpen, setIsRulesOpen] = useState(false);
   const [isFamilyOpen, setIsFamilyOpen] = useState(false);
   const [isProOpen, setIsProOpen] = useState(false);
+  const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
 
   const stage = useDinnerStage();
   useEffect(() => {
@@ -256,6 +258,7 @@ const MainCabinet: React.FC = () => {
                 onOpenRules={() => setIsRulesOpen(true)}
                 onOpenFamily={() => setIsFamilyOpen(true)}
                 onOpenPro={() => setIsProOpen(true)}
+                onOpenPrivacy={() => setIsPrivacyOpen(true)}
               />
             )}
           </div>
@@ -273,6 +276,7 @@ const MainCabinet: React.FC = () => {
         onClose={() => setIsProOpen(false)}
         onOpenFamily={() => setIsFamilyOpen(true)}
       />
+      <PrivacyModal isOpen={isPrivacyOpen} onClose={() => setIsPrivacyOpen(false)} />
       <RulesModal isOpen={isRulesOpen} onClose={() => setIsRulesOpen(false)} />
       <WelcomeSheet />
       <JoinSheet />
