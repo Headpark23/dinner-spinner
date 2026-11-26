@@ -18,7 +18,7 @@ export interface StripeConfig {
 
 export function readStripeConfig(env: NodeJS.ProcessEnv = process.env): StripeConfig {
   return {
-    secretKey: (env.STRIPE_SECRET_KEY || '').trim(),
+    secretKey: (env.STRIPE_SECRET_KEY || env.STRIPE_SECRETKEY || '').trim(),
     webhookSecret: (env.STRIPE_WEBHOOK_SECRET || '').trim(),
     priceMonthly: (env.STRIPE_PRICE_MONTHLY || '').trim(),
     priceAnnual: (env.STRIPE_PRICE_ANNUAL || '').trim(),

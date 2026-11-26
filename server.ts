@@ -196,7 +196,7 @@ function entitlementForHousehold(id: string | null, household?: Household) {
   const isOwner = isOwnerHousehold({
     householdId: id,
     googleEmails: emails,
-    ownerEmailsEnv: process.env.PRO_OWNER_EMAILS,
+    ownerEmailsEnv: [process.env.PRO_OWNER_EMAILS, process.env.PRO_OWNER_EMAIL].filter(Boolean).join(','),
     ownerHouseholdsEnv: process.env.PRO_OWNER_HOUSEHOLDS,
   });
   return resolveEntitlement({
