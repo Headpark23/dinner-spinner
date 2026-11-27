@@ -574,11 +574,39 @@ test('Item icons: keywords map to graphics with a basket fallback', async () => 
   assert.equal(itemIcon('Pineapple'), '🍍');
   assert.equal(itemIcon('Corn Tortillas'), '🫓');
   assert.equal(itemIcon('Mystery thing'), '🛒');
+  const household = new Set(['🧻', '🪥', '🫧', '🍽️', '🧺', '🩹', '💊', '🌡️', '👶', '🩸', '🪒', '🧼', '🧴', '🧽', '🧤', '🧹', '🗑️', '📜', '🌸', '🕯️', '🔥', '🔋', '💡', '🐱', '🐶', '🐾', '✉️']);
   for (const meal of [...INITIAL_MEALS, ...WORLD_RECIPES]) {
     for (const ing of meal.ingredients) {
       assert.notEqual(itemIcon(ing), '🛒', `Bundled ingredient "${ing}" (${meal.id}) should not fall back to trolley`);
+      assert.ok(!household.has(itemIcon(ing)), `Bundled ingredient "${ing}" (${meal.id}) got a household icon ${itemIcon(ing)}`);
     }
   }
+});
+
+test('Item icons: non-food shopping gets its own household graphics', async () => {
+  const { itemIcon } = await import('./itemIcon');
+  const cases: Array<[string, string]> = [
+    ['Loo roll', '🧻'], ['Toilet roll x9', '🧻'], ['Kitchen roll', '🧻'], ['Tissues', '🧻'],
+    ['Toothpaste', '🪥'], ['Mint toothpaste', '🪥'], ['Toothbrushes', '🪥'],
+    ['Washing up liquid', '🫧'], ['Lemon washing-up liquid', '🫧'],
+    ['Dishwasher tablets', '🍽️'], ['Dishwasher salt', '🍽️'], ['Rinse aid', '🍽️'],
+    ['Laundry powder', '🧺'], ['Laundry liquid', '🧺'], ['Laundry capsules', '🧺'], ['Washing powder', '🧺'], ['Fabric conditioner', '🧺'], ['Non-bio capsules', '🧺'],
+    ['Coffee pods', '☕'],
+    ['Paracetamol', '💊'], ['Calpol', '💊'], ['Medicine', '💊'], ['Vitamins', '💊'], ['Plasters', '🩹'],
+    ['Nappies', '👶'], ['Baby wipes', '👶'], ['Tampons', '🩸'], ['Razors', '🪒'],
+    ['Hand soap', '🧼'], ['Shower gel', '🧼'], ['Shampoo', '🧴'], ['Deodorant', '🧴'], ['Sun cream', '🧴'],
+    ['Sponges', '🧽'], ['J-cloths', '🧽'], ['Rubber gloves', '🧤'], ['Bleach', '🧹'], ['Toilet cleaner', '🧹'], ['Multi-surface spray', '🧹'],
+    ['Bin bags', '🗑️'], ['Tin foil', '📜'], ['Cling film', '📜'], ['Baking paper', '📜'],
+    ['Candles', '🕯️'], ['AA batteries', '🔋'], ['Light bulbs', '💡'], ['Cat litter', '🐱'], ['Dog food', '🐶'], ['Fish food', '🐾'],
+  ];
+  for (const [name, icon] of cases) assert.equal(itemIcon(name), icon, name);
+  // Food look-alikes keep their food icons
+  assert.equal(itemIcon('Bread rolls'), '🥖');
+  assert.equal(itemIcon('Sea salt'), '🧂');
+  assert.equal(itemIcon('Hot dog rolls'), '🥖');
+  assert.equal(itemIcon('Baby corn'), '🌽');
+  assert.equal(itemIcon('Garlic bulbs'), '🧄');
+  assert.equal(itemIcon('Fish fingers'), '🐟');
 });
 
 test('Shopping list ops: add dedupes, ticks record who, clear removes ticked', async () => {

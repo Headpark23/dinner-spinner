@@ -5,6 +5,38 @@
  * Falls back to a shopping trolley only for completely unrecognised items.
  */
 const ICONS: Array<[RegExp, string]> = [
+  // ── Household, toiletries & medicine ──
+  // These come first: "kitchen roll" must not become bread, "dishwasher salt" must not be
+  // seasoning, "fish food" must not be fish, and "mint toothpaste" must not be a herb.
+  [/\b(nappies|nappy|diapers?|baby\s*(wipes|food|formula|milk|shampoo|lotion|bath|powder)|formula\s*milk|sudocrem|nappy\s*cream)\b/, '👶'],
+  [/\b(toilet\s*(roll|paper|tissue)s?|loo\s*rolls?|loo\s*paper|bog\s*rolls?|kitchen\s*(roll|towel|paper)s?|paper\s*towels?|blue\s*roll|tissues?|kleenex|napkins?|serviettes?|wet\s*wipes|cleaning\s*wipes|anti-?bac(terial)?\s*wipes|wipes)\b/, '🧻'],
+  [/\b(toothbrush(es)?|toothpaste|tooth\s*paste|dental\s*floss|floss|mouthwash|interdental)\b/, '🪥'],
+  [/\b(washing[\s-]*up\s*liquid|washing[\s-]*up|dish\s*soap|fairy\s*liquid)\b/, '🫧'],
+  [/\b(dishwasher(\s*(tablets?|tabs?|salt|pods?|rinse\s*aid|cleaner))?|rinse\s*aid)\b/, '🍽️'],
+  [/\b(laundry(\s*(powder|liquid|capsules?|pods?|detergent|tablets?))?|washing\s*(powder|liquid|capsules?|pods?|tablets?)|non[\s-]*bio|bio\s*(powder|liquid|capsules?)|fabric\s*(conditioner|softener)|softener|stain\s*remover|vanish|persil|ariel|comfort|lenor|tumble\s*dryer\s*sheets?|dryer\s*sheets?|colour\s*catchers?)\b/, '🧺'],
+  [/\b(coffee|nespresso|tassimo|dolce\s*gusto)\s*(pods?|capsules?)\b/, '☕'],
+  [/\b(plasters?|band-?aids?|bandages?|first\s*aid|antiseptic(\s*cream)?|savlon|germolene)\b/, '🩹'],
+  [/\b(medicine|meds|paracetamol|ibuprofen|aspirin|calpol|nurofen|lemsip|beechams|cold\s*(and|&)\s*flu|cough\s*(syrup|mixture|sweets)|throat\s*lozenges?|lozenges?|antihistamines?|hay\s*fever|piriton|loratadine|cetirizine|gaviscon|rennies?|antacids?|imodium|rehydration|dioralyte|vitamins?|multivitamins?|supplements?|pills?|tablets?|capsules?|prescription|painkillers?|eye\s*drops|nasal\s*spray|inhaler)\b/, '💊'],
+  [/\b(thermometer)\b/, '🌡️'],
+  [/\b(tampons?|sanitary\s*(towels?|pads?)|panty\s*liners?|period\s*(pads?|pants)|menstrual)\b/, '🩸'],
+  [/\b(razors?|razor\s*blades?|shaving\s*(foam|gel|cream)|aftershave)\b/, '🪒'],
+  [/\b(hand\s*(soap|wash)|soap|shower\s*gel|body\s*wash|bubble\s*bath|bath\s*(foam|salts?))\b/, '🧼'],
+  [/\b(shampoo|hair\s*conditioner|conditioner|deodorant|anti-?perspirant|body\s*spray|moisturi[sz]er|body\s*lotion|hand\s*cream|lotion|sun\s*(cream|screen|tan\s*lotion)|suncream|sunscreen|lip\s*balm|vaseline|hand\s*sanitis?[sz]er|sanitis?[sz]er|hair\s*gel|hairspray|hair\s*spray|cotton\s*(buds|wool|pads)|make-?up\s*remover|face\s*wash|cleanser)\b/, '🧴'],
+  [/\b(sponges?|scourers?|scrubbers?|j-?cloths?|dish\s*cloths?|cloths|microfib(re|er)|wire\s*wool|brillo)\b/, '🧽'],
+  [/\b(rubber\s*gloves|marigolds|gloves)\b/, '🧤'],
+  [/\b(bleach|toilet\s*(cleaner|duck|blocks?|tablets?)|toilet\s*duck|domestos|disinfectant|dettol|zoflora|cleaner|cleaning\s*(spray|products?)|multi-?surface|anti-?bac(terial)?\s*spray|kitchen\s*spray|bathroom\s*spray|cif|limescale\s*remover|descaler|oven\s*cleaner|furniture\s*polish|silver\s*polish|shoe\s*polish|glass\s*cleaner|window\s*cleaner|drain\s*unblocker|mop|broom|dustpan|duster)\b/, '🧹'],
+  [/\b(bin\s*(bags?|liners?)|refuse\s*sacks?|rubbish\s*bags?|compost\s*(bags?|liners?)|food\s*waste\s*bags?|caddy\s*liners?)\b/, '🗑️'],
+  [/\b(tin\s*foil|kitchen\s*foil|aluminium\s*foil|foil|cling\s*film|clingfilm|baking\s*paper|greaseproof(\s*paper)?|parchment|freezer\s*bags?|sandwich\s*bags?|food\s*bags?|zip\s*lock\s*bags?|ziploc|cake\s*cases|muffin\s*cases|cupcake\s*cases)\b/, '📜'],
+  [/\b(air\s*freshener|febreze|plug-?in\s*refills?|reed\s*diffuser)\b/, '🌸'],
+  [/\b(tea\s*lights?|candles?)\b/, '🕯️'],
+  [/\b(matches|lighters?|firelighters?|kindling|charcoal)\b/, '🔥'],
+  [/\b(batteries|battery|aa\s*batteries|aaa\s*batteries)\b/, '🔋'],
+  [/\b(light\s*bulbs?|lightbulbs?)\b/, '💡'],
+  [/\b(cat\s*(food|litter|treats|biscuits)|kitty\s*litter|cat\s*pouches|whiskas|felix|dreamies)\b/, '🐱'],
+  [/\b(dog\s*(food|treats|biscuits|chews|poo\s*bags)|poo\s*bags|pedigree|bonios?|dentastix)\b/, '🐶'],
+  [/\b(fish\s*food|bird\s*(seed|food)|pet\s*food|rabbit\s*food|guinea\s*pig\s*food)\b/, '🐾'],
+  [/\b(stamps?|envelopes?|birthday\s*cards?|greetings?\s*cards?|wrapping\s*paper|sellotape|tape|pens?|pencils?)\b/, '✉️'],
+
   // Specific prepared / compound items first so they aren't hijacked by generic words
   [/\b(peanut\s*butter|peanuts?|cashews?|almonds?|walnuts?|hazelnuts?|pistachios?|pecans?|pine\s*nuts?|chestnuts?|macadamia|nuts?)\b/, '🥜'],
   [/\b(ice\s*cream|gelato|sorbet)\b/, '🍨'],
@@ -101,8 +133,8 @@ const ICONS: Array<[RegExp, string]> = [
   [/\b(wine|prosecco|champagne|sherry|port|sake|gin|vodka|rum|whisky|whiskey)\b/, '🍷'],
   [/\b(juice|water|squash|cordial|cola|coke|lemonade|soda|tonic|smoothie|kombucha|fizzy)\b/, '🥤'],
 
-  // Household & toiletries
-  [/\b(soap|washing|detergent|bleach|cleaner|spray|sponge|scourer|bin\s*bags?|toilet|tissue|kitchen\s*roll|foil|cling\s*film|baking\s*paper|parchment|dishwasher|shampoo|toothpaste|deodorant|nappies|wipes)\b/, '🧻'],
+  // Household catch-all for anything the specific rules above didn't recognise
+  [/\b(washing|detergent|toilet|toiletries|cleaning|household|spray)\b/, '🧴'],
 ];
 
 export const itemIcon = (name: string): string => {
