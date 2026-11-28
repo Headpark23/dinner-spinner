@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useDinner } from '../context/DinnerContext';
-import { Volume2, VolumeX, CircleHelp, ArrowRight, Moon, Sun } from 'lucide-react';
+import { Volume2, VolumeX, CircleHelp, ArrowRight, Moon, Sun, Share2, Check } from 'lucide-react';
 import { useTheme } from '../utils/theme';
 
 interface CabinetHeaderProps {
@@ -24,6 +24,27 @@ const Mark: React.FC = () => (
 export const CabinetHeader: React.FC<CabinetHeaderProps> = ({ onOpenRules }) => {
   const { theme, toggleTheme } = useTheme();
   const { takeawayOverrideActive, soundMuted, toggleSound, setActiveView, activeView } = useDinner();
+  const [copied, setCopied] = useState(false);
+
+  const shareApp = async () => {
+    const url = window.location.origin;
+    const data = { title: 'Dinner Spinner', text: 'Can’t decide what’s for dinner? Spin for it.', url };
+    if (navigator.share) {
+      try {
+        await navigator.share(data);
+      } catch {
+        // The person closed the share sheet.
+      }
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard blocked: nothing else to do.
+    }
+  };
 
   return (
     <header className="sticky top-0 z-30 border-b border-line/80 bg-paper/88 backdrop-blur-md">
@@ -57,6 +78,15 @@ export const CabinetHeader: React.FC<CabinetHeaderProps> = ({ onOpenRules }) => 
             className="inline-flex h-9 w-9 items-center justify-center rounded-full text-ink-2 transition-colors hover:bg-sunk hover:text-ink"
           >
             {soundMuted ? <VolumeX className="h-[18px] w-[18px]" strokeWidth={1.8} /> : <Volume2 className="h-[18px] w-[18px]" strokeWidth={1.8} />}
+          </button>
+          <button
+            type="button"
+            aria-label={copied ? 'Link copied' : 'Share Dinner Spinner'}
+            title={copied ? 'Link copied' : 'Share Dinner Spinner'}
+            onClick={shareApp}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-ink-2 transition-colors hover:bg-sunk hover:text-ink"
+          >
+            {copied ? <Check className="h-[18px] w-[18px] text-tomato" strokeWidth={2} /> : <Share2 className="h-[18px] w-[18px]" strokeWidth={1.8} />}
           </button>
           <button
             type="button"
