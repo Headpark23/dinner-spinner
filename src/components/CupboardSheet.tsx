@@ -53,6 +53,7 @@ export const CupboardSheet: React.FC<{
     useFreezerPortion,
     setSurpriseStep,
     sendToVote,
+    voteLabel,
     addMeal,
     addShoppingItems,
     setActiveView,
@@ -862,7 +863,7 @@ export const CupboardSheet: React.FC<{
                               close();
                             }}
                           >
-                            Put it to the household
+                            {voteLabel}
                           </Button>
                         )}
                         {pick.kind === 'idea' && (

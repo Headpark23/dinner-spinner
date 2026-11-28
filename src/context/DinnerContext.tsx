@@ -67,6 +67,7 @@ import { leftoverFridgeItem, MAX_LEFTOVER_PORTIONS, withDueFreshness, toDateOnly
 import { DietMode, isDietMode, effectiveRestrictions, cleanPersonPrefs } from '../utils/memberDiets';
 import { showStepNotification } from '../utils/stepAlerts';
 import { pushIsOn, syncPush } from '../utils/push';
+import { votesNeeded } from '../utils/votes';
 import { useSharedListsSync } from './useMirrorSync';
 import { guessShelf, newCupboardId, stockedCupboardNames } from '../utils/storeCupboard';
 import type { CupboardItem } from '../types';
@@ -191,9 +192,19 @@ interface DinnerContextType {
 
   // Voting Booth & Household Members
   proposedMeal: Meal | null;
+  /**
+   * Puts a dish to the vote. In a family group this sends it to everyone's phones straight away
+   * (see `voteSend` for how that went); without one, the household votes on this phone.
+   */
   sendToVote: (meal: Meal) => void;
-  /** Drops the dish being voted on (and any shared vote for it) and goes back to the home screen. */
-  cancelVote: () => Promise<void>;
+  /** What the "send to vote" buttons say: "Send to family vote" in a family group, else "Vote on this phone". */
+  voteLabel: string;
+  /** How the last "Send to family vote" went, for the dish on the vote screen. */
+  voteSend: { mealId: string; state: 'sending' | 'sent' | 'failed'; message?: string } | null;
+  /** Tries sending the dish on the vote screen to the family again after a failure. */
+  retrySendToVote: () => void;
+  /** Cancels the vote for everyone (the other phones are told) and goes back to the home screen. */
+  cancelVote: () => Promise<{ ok: boolean; message?: string }>;
   householdMembers: HouseholdMember[];
   addHouseholdMember: (name: string, avatar: string) => void;
   removeHouseholdMember: (id: string) => void;
@@ -1288,12 +1299,16 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   // Voting Actions
+  const [voteSend, setVoteSend] = useState<{ mealId: string; state: 'sending' | 'sent' | 'failed'; message?: string } | null>(null);
   const sendToVote = (meal: Meal) => {
     setProposedMeal(meal);
     setAgreedMeal(null);
     setCurrentBallot({});
     setActiveVoterIndex(0);
     setActiveView(3);
+    // In a family group the dish goes to everyone's phones at once. Opening a vote that only this
+    // phone knew about looked like "sent" while nobody else was ever asked.
+    if (householdRef.current) void sendToFamily(meal);
   };
 
   const generateReverseTimers = (targetTime: string, meal: Meal) => {
@@ -1325,7 +1340,7 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     ]);
 
     const yesCount = Object.values(updatedBallot).filter((v) => v === 'yes').length;
-    const majorityThreshold = Math.max(1, Math.ceil(householdMembers.length / 2));
+    const majorityThreshold = votesNeeded(householdMembers.length);
 
     if (instantLock || yesCount >= majorityThreshold) {
       sound.playWin();
@@ -2412,7 +2427,15 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const timer = setInterval(() => {
       if (document.visibilityState === 'visible') refreshTonight();
     }, 3000);
-    return () => clearInterval(timer);
+    // Coming back to the app (from a notification, or just switching apps) shows the vote at once.
+    const onShow = () => {
+      if (document.visibilityState === 'visible') refreshTonight();
+    };
+    document.addEventListener('visibilitychange', onShow);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onShow);
+    };
   }, [refreshTonight, household]);
 
   const sendLive = async (body: Record<string, unknown>): Promise<{ ok: boolean; message?: string }> => {
@@ -2435,13 +2458,8 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const startLiveVote = async (meal: Meal) => {
     const people = householdMembers.map((m) => m.name);
-    const r = await sendLive({
-      op: 'propose',
-      meal,
-      people,
-      needed: Math.max(1, Math.ceil(people.length / 2)),
-      by: myVoteName(),
-    });
+    // The server counts the sender as a yes and needs a strict majority, so someone else always has a say.
+    const r = await sendLive({ op: 'propose', meal, people, by: myVoteName() });
     if (r.ok) {
       setProposedMeal(meal);
       setAgreedMeal(null);
@@ -2450,16 +2468,32 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
     return r;
   };
+  const sendToFamily = async (meal: Meal) => {
+    setVoteSend({ mealId: meal.id, state: 'sending' });
+    const r = await startLiveVote(meal);
+    setVoteSend(r.ok ? { mealId: meal.id, state: 'sent' } : { mealId: meal.id, state: 'failed', message: r.message || 'Couldn’t send the vote.' });
+    return r;
+  };
+  const retrySendToVote = () => {
+    if (proposedMeal) void sendToFamily(proposedMeal);
+  };
   const castLiveVote = (voter: string, vote: 'yes' | 'no') => sendLive({ op: 'vote', voter, vote });
   const decideLive = () => sendLive({ op: 'decide', by: myVoteName() });
   const clearLive = () => sendLive({ op: 'clear' });
-  const cancelVote = async () => {
-    const liveOpen = !!tonight && (tonight.status === 'open' || tonight.status === 'vetoed');
-    if (liveOpen) await clearLive();
+  const cancelVote = async (): Promise<{ ok: boolean; message?: string }> => {
+    if (tonight?.status === 'open' && proposedMeal && tonight.meal?.id === proposedMeal.id) {
+      const r = await sendLive({ op: 'cancel', by: myVoteName() });
+      // Someone else finished it first: the vote card now shows what happened instead.
+      if (!r.ok) return r;
+    } else if (tonight?.status === 'vetoed' || tonight?.status === 'cancelled') {
+      await clearLive();
+    }
+    setVoteSend(null);
     setProposedMeal(null);
     setCurrentBallot({});
     setActiveVoterIndex(0);
     setActiveView(0);
+    return { ok: true };
   };
 
   // ---- Telling this phone what the others did ------------------------------
@@ -2495,12 +2529,14 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     let news: { text: string; tone: 'sage' | 'tomato' | 'neutral'; proposal?: boolean } | null = null;
     if (tonight.round !== prev.round) {
       if (tonight.status === 'open' && !isMe(tonight.proposedBy)) {
-        news = { text: `${tonight.proposedBy || 'Someone'} suggests ${dish}. Yes, or veto?`, tone: 'neutral', proposal: true };
+        news = { text: `${tonight.proposedBy || 'Someone'} wants your vote: ${dish}.`, tone: 'neutral', proposal: true };
       }
     } else {
       const newYes = Object.keys(tonight.ballot).filter((p) => tonight.ballot[p] === 'yes' && prev.ballot[p] !== 'yes' && !isMe(p));
       if (tonight.status === 'agreed' && prev.status !== 'agreed') {
         news = { text: `Dinner’s agreed: ${dish}.${newYes.length ? ` ${newYes.join(' and ')} said yes.` : ''}`, tone: 'sage' };
+      } else if (tonight.status === 'cancelled' && prev.status !== 'cancelled' && !isMe(tonight.cancelledBy || '')) {
+        news = { text: `${tonight.cancelledBy || 'Someone'} cancelled the vote on ${dish}.`, tone: 'neutral' };
       } else if (tonight.status === 'vetoed' && prev.status !== 'vetoed' && !isMe(tonight.vetoedBy)) {
         news = { text: `${tonight.vetoedBy} vetoed ${dish}. Spin again for something else.`, tone: 'tomato' };
       } else if (newYes.length) {
@@ -2553,6 +2589,14 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     );
     setAgreedMeal(null);
     setCurrentBallot({});
+  }, [tonight]);
+
+  // Cancelled on another phone: nothing left to vote on here either.
+  useEffect(() => {
+    if (!tonight || tonight.status !== 'cancelled' || !tonight.meal || agreedMeal) return;
+    const id = tonight.meal.id;
+    setProposedMeal((prev) => (prev && prev.id === id ? null : prev));
+    setVoteSend((prev) => (prev && prev.mealId === id ? null : prev));
   }, [tonight]);
 
   // When the household agrees, every phone lands on the same dinner and timeline.
@@ -2765,6 +2809,9 @@ export const DinnerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         proposedMeal,
         sendToVote,
         cancelVote,
+        voteLabel: household ? 'Send to family vote' : 'Vote on this phone',
+        voteSend,
+        retrySendToVote,
         householdMembers,
         addHouseholdMember,
         removeHouseholdMember,

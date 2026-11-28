@@ -40,6 +40,8 @@ const TonightPanel: React.FC = () => {
     householdMembers,
     clearoutActive,
     setClearoutActive,
+    tonight,
+    householdCode,
   } = useDinner();
 
   const redItems = pantry.filter((p) => p.freshness === 'red');
@@ -98,7 +100,9 @@ const TonightPanel: React.FC = () => {
               </>
             ) : proposedMeal ? (
               <>
-                <p className="eyebrow text-saffron">Vote in progress</p>
+                <p className="eyebrow text-saffron">
+                  {tonight?.status === 'open' && tonight.meal?.id === proposedMeal.id ? 'Family vote open' : householdCode ? 'Not sent to the family yet' : 'Voting on this phone'}
+                </p>
                 <p className="mt-0.5 font-display text-[20px] font-semibold leading-snug">{proposedMeal.title}</p>
                 <button
                   onClick={() => setActiveView(3)}

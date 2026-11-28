@@ -63,9 +63,14 @@ export function cleanSub(raw: any, name: unknown): PushSub | null {
 }
 
 /** Sends to each phone; returns the endpoints that are gone for good (to forget). Never throws. */
-export async function sendToAll(subs: PushSub[], payload: PushPayload, timeoutMs = 6000): Promise<{ sent: number; gone: string[] }> {
+export async function sendToAll(
+  subs: PushSub[],
+  payload: PushPayload,
+  timeoutMs = 6000
+): Promise<{ sent: number; gone: string[]; sentTo: string[] }> {
   pushPublicKey();
   const gone: string[] = [];
+  const sentTo: string[] = [];
   let sent = 0;
   const body = JSON.stringify({ url: '/tonight', ...payload });
   await Promise.all(
@@ -73,13 +78,14 @@ export async function sendToAll(subs: PushSub[], payload: PushPayload, timeoutMs
       try {
         await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, body, { TTL: 6 * 3600, urgency: 'high', timeout: timeoutMs });
         sent += 1;
+        if (!sentTo.includes(s.name)) sentTo.push(s.name);
       } catch (err: any) {
         if (err?.statusCode === 404 || err?.statusCode === 410) gone.push(s.endpoint);
         else console.warn('Push failed:', err?.statusCode || '', String(err?.body || err?.message || '').slice(0, 120));
       }
     })
   );
-  return { sent, gone };
+  return { sent, gone, sentTo };
 }
 
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
@@ -88,13 +94,26 @@ const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLow
 export function voteMessage(
   op: string,
   body: any,
-  t: { status: string; meal: { title: string } | null; ballot: Record<string, string>; needed: number; proposedBy: string; vetoedBy: string }
+  t: {
+    status: string;
+    meal: { title: string } | null;
+    ballot: Record<string, string>;
+    needed: number;
+    proposedBy: string;
+    vetoedBy: string;
+    cancelledBy?: string;
+  }
 ): { actor: string; payload: PushPayload } | null {
   const title = t.meal?.title || 'dinner';
   const tag = 'tonight-vote';
   if (op === 'propose') {
     const by = t.proposedBy || 'Someone';
-    return { actor: t.proposedBy, payload: { title: `${by} suggests ${title}`, body: 'Yes, or veto? Tap to vote.', tag } };
+    if (t.status === 'agreed') return { actor: t.proposedBy, payload: { title: `Dinner’s agreed: ${title}`, body: 'Tap for the timeline.', tag } };
+    return { actor: t.proposedBy, payload: { title: `${by} wants your vote: ${title}`, body: 'Tap to say yes or veto it.', tag } };
+  }
+  if (op === 'cancel' && t.status === 'cancelled') {
+    const by = t.cancelledBy || 'Someone';
+    return { actor: t.cancelledBy || '', payload: { title: `${by} cancelled the vote on ${title}`, body: 'Nothing to vote on for now.', tag } };
   }
   if (op === 'vote') {
     const voter = Object.keys(t.ballot).find((p) => same(p, String(body?.voter || ''))) || String(body?.voter || 'Someone');

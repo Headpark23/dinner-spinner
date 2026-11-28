@@ -24,6 +24,7 @@ export const PlannerSheet: React.FC<{ isOpen: boolean; onClose: () => void }> = 
     inStock,
     shoppingList,
     sendToVote,
+    voteLabel,
   } = useDinner();
   const [note, setNote] = useState<string | null>(null);
 
@@ -112,7 +113,7 @@ export const PlannerSheet: React.FC<{ isOpen: boolean; onClose: () => void }> = 
                           onClose();
                         }}
                       >
-                        Vote
+                        {voteLabel}
                       </Button>
                     )}
                     <IconButton label={`Swap ${entry.title}`} onClick={() => fillDay(day, entry.mealId)}>

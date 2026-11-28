@@ -173,14 +173,22 @@ export type EffortFilter = EffortLevel | 'any';
 export interface LiveVote {
   version: number;
   round: number;
-  status: 'idle' | 'open' | 'agreed' | 'vetoed';
+  status: 'idle' | 'open' | 'agreed' | 'vetoed' | 'cancelled';
   meal: Pick<Meal, 'id' | 'title' | 'description' | 'cuisine' | 'timeStake' | 'effort' | 'ingredients' | 'prepSteps' | 'tags'> | null;
   people: string[];
   needed: number;
   ballot: Record<string, 'yes' | 'no'>;
   proposedBy: string;
   vetoedBy: string;
+  /** Who cancelled the vote (status 'cancelled'). */
+  cancelledBy?: string;
+  /** Who skipped the vote and picked the dish. */
+  decidedBy?: string;
   openedAt: string;
+  /** Names in the family with vote notifications turned on. */
+  phones?: string[];
+  /** Only on the reply to the phone that acted: who a notification was delivered to. */
+  buzzed?: string[];
 }
 
 /** A tin, jar, sauce, spice or dry good in the store cupboard. Shared by the family group. */

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { VoteNotificationsCard } from '../VoteNotifications';
 import { useDinner } from '../../context/DinnerContext';
-import { ArrowLeft, Check, X, Copy, UserPlus, Trash2, CircleAlert, RotateCcw, Dices, Clock, Bell, BellOff } from 'lucide-react';
+import { ArrowLeft, Check, X, Copy, UserPlus, Trash2, CircleAlert, RotateCcw, Dices, Clock, Bell, BellOff, Send } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { AfterDinnerReview } from '../AfterDinnerReview';
 import { LeftoversStep } from '../LeftoversStep';
@@ -12,6 +12,7 @@ import { dishClashes, describeClashes } from '../../utils/memberDiets';
 import { useWakeLock } from '../../utils/useWakeLock';
 import { stepDelays, showStepNotification, notificationsSupported } from '../../utils/stepAlerts';
 import { sound } from '../../utils/audio';
+import { votesNeeded } from '../../utils/votes';
 import { resolveMealPhoto } from '../../data/photos';
 import { HouseholdMember } from '../../types';
 import { Button, Card, Chip, Notice, Segmented, TextInput, cx, timeLabel, effortLabel } from '../ui';
@@ -69,6 +70,8 @@ export const VotingView: React.FC = () => {
     servings,
     setServings,
     cancelVote,
+    voteSend,
+    retrySendToVote,
   } = useDinner();
 
   const [copied, setCopied] = useState(false);
@@ -78,6 +81,9 @@ export const VotingView: React.FC = () => {
   const [recipeOpen, setRecipeOpen] = useState(false);
   const [liveError, setLiveError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [confirmLocalCancel, setConfirmLocalCancel] = useState(false);
+  // In a family group the vote happens on everyone's phone; this is the fallback if sending fails.
+  const [votingHere, setVotingHere] = useState(false);
 
   // Cooking reminders. While a dinner is being cooked the screen is kept awake (so the page and its timers
   // keep running), and each step raises a system notification through the service worker plus an in-app banner.
@@ -128,7 +134,7 @@ export const VotingView: React.FC = () => {
 
   const currentVoter = householdMembers[activeVoterIndex] || householdMembers[0];
   const yesVotesCount = Object.values(currentBallot).filter((v) => v === 'yes').length;
-  const majorityNeeded = Math.max(1, Math.ceil(householdMembers.length / 2));
+  const majorityNeeded = votesNeeded(householdMembers.length);
 
   // A cook is "already logged" if this agreed dish was logged in the last 12 hours.
   const loggedEntry =
@@ -443,24 +449,28 @@ export const VotingView: React.FC = () => {
   const voterOutOfVetoes = currentVoter.vetoTokensRemaining <= 0;
   const clashes = dishClashes(meal, householdMembers);
 
+  const sending = voteSend?.mealId === meal.id ? voteSend : null;
+  const familyVote = !!householdCode && !votingHere;
+
   const cancel = async () => {
     setCancelling(true);
     try {
       await cancelVote();
     } finally {
       setCancelling(false);
+      setConfirmLocalCancel(false);
     }
   };
 
   return (
     <div className="space-y-4">
+      {/* Going back never cancels anything: an open family vote stays open, with a banner on every screen. */}
       <button
         type="button"
-        onClick={cancel}
-        disabled={cancelling}
-        className="inline-flex h-10 items-center gap-1.5 rounded-full px-1 text-[14px] font-semibold text-ink-2 hover:text-ink disabled:opacity-60"
+        onClick={() => setActiveView(0)}
+        className="inline-flex h-10 items-center gap-1.5 rounded-full px-1 text-[14px] font-semibold text-ink-2 hover:text-ink"
       >
-        <ArrowLeft className="h-4 w-4" /> {cancelling ? 'Cancelling…' : 'Cancel vote, back to home'}
+        <ArrowLeft className="h-4 w-4" /> Back to the spinner
       </button>
       <Card className="overflow-hidden">
         {mealPhoto && (
@@ -511,128 +521,184 @@ export const VotingView: React.FC = () => {
 
       <VoteNotificationsCard compact />
 
-      {liveActive ? <LiveVoteCard /> : (<>
-      {householdCode && (
-        <Card className="space-y-2 p-4">
-          <h2 className="text-[15px] font-semibold">Everyone votes on their own phone</h2>
-          <p className="text-[13px] text-ink-2">Sends this dish to the other phones in your household. A veto ends it; enough yeses agree dinner.</p>
-          {liveError && <p role="alert" className="text-[13px] text-tomato">{liveError}</p>}
-          <Button
-            variant="primary"
-            block
-            onClick={async () => {
-              setLiveError(null);
-              const r = await startLiveVote(meal);
-              if (!r.ok) setLiveError(r.message || 'Couldn’t start the vote.');
-            }}
-          >
-            Ask everyone’s phones
-          </Button>
-        </Card>
-      )}
-      <Card className="p-4">
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-[15px] font-semibold">Who’s voting?</h2>
-          <span className="text-[13px] text-ink-2 tabular-nums">
-            {yesVotesCount} of {majorityNeeded} yes needed
-          </span>
-        </div>
-        <div className="mt-3 grid auto-cols-[minmax(72px,1fr)] grid-flow-col gap-2 overflow-x-auto pb-1 scrollbar-none" role="radiogroup" aria-label="Voter">
-          {householdMembers.map((member, idx) => {
-            const selected = activeVoterIndex === idx;
-            const voted = currentBallot[member.id] === 'yes';
-            return (
-              <button
-                key={member.id}
-                role="radio"
-                aria-checked={selected}
-                onClick={() => {
-                  setActiveVoterIndex(idx);
-                  setVetoError(null);
+      {liveActive ? (
+        <LiveVoteCard />
+      ) : familyVote ? (
+        <Card className="space-y-3 p-4" aria-live="polite">
+          {sending?.state === 'sending' ? (
+            <p className="flex items-center gap-2 text-[15px] font-semibold">
+              <Clock className="h-4 w-4 animate-pulse" /> Sending {meal.title} to your family…
+            </p>
+          ) : sending?.state === 'failed' ? (
+            <>
+              <Notice tone="tomato" icon={<CircleAlert className="h-4 w-4" />}>
+                Not sent: {sending.message} Nobody has been asked yet.
+              </Notice>
+              <Button variant="primary" block onClick={retrySendToVote}>
+                <Send className="h-4 w-4" /> Try sending to family vote again
+              </Button>
+              <Button variant="quiet" block onClick={() => setVotingHere(true)}>
+                Everyone’s here? Vote on this phone instead
+              </Button>
+            </>
+          ) : (
+            <>
+              <h2 className="text-[15px] font-semibold">Not sent to the family yet</h2>
+              <p className="text-[13px] text-ink-2">
+                Everyone in your family group gets a notification and votes on their own phone. One veto ends it.
+              </p>
+              {liveError && (
+                <p role="alert" className="text-[13px] text-tomato">
+                  {liveError}
+                </p>
+              )}
+              <Button
+                variant="primary"
+                block
+                onClick={async () => {
+                  setLiveError(null);
+                  const r = await startLiveVote(meal);
+                  if (!r.ok) setLiveError(r.message || 'Couldn’t send the vote.');
                 }}
-                className={cx(
-                  'flex flex-col items-center gap-1 rounded-xl border px-2 py-2.5 transition-colors',
-                  selected ? 'border-ink bg-paper' : 'border-line hover:border-line-strong'
-                )}
               >
-                <span className="relative">
-                  <MemberAvatar member={member} size={34} />
-                  {voted && (
-                    <span className="absolute -right-1 -bottom-1 flex h-4 w-4 items-center justify-center rounded-full bg-sage text-white ring-2 ring-card">
-                      <Check className="h-2.5 w-2.5" strokeWidth={3} />
+                <Send className="h-4 w-4" /> Send to family vote
+              </Button>
+            </>
+          )}
+        </Card>
+      ) : (
+        <>
+          <Card className="p-4">
+            <div className="flex items-baseline justify-between">
+              <h2 className="text-[15px] font-semibold">Voting on this phone</h2>
+              <span className="text-[13px] text-ink-2 tabular-nums">
+                {yesVotesCount} of {majorityNeeded} yes needed
+              </span>
+            </div>
+            <p className="mt-1 text-[13px] text-ink-2">Pass the phone round. Tap who’s voting, then they choose.</p>
+            <div
+              className="mt-3 grid auto-cols-[minmax(72px,1fr)] grid-flow-col gap-2 overflow-x-auto pb-1 scrollbar-none"
+              role="radiogroup"
+              aria-label="Who is voting now"
+            >
+              {householdMembers.map((member, idx) => {
+                const selected = activeVoterIndex === idx;
+                const voted = currentBallot[member.id] === 'yes';
+                return (
+                  <button
+                    key={member.id}
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => {
+                      setActiveVoterIndex(idx);
+                      setVetoError(null);
+                    }}
+                    className={cx(
+                      'flex flex-col items-center gap-1 rounded-xl border px-2 py-2.5 transition-colors',
+                      selected ? 'border-ink bg-paper' : 'border-line hover:border-line-strong'
+                    )}
+                  >
+                    <span className="relative">
+                      <MemberAvatar member={member} size={34} />
+                      {voted && (
+                        <span className="absolute -right-1 -bottom-1 flex h-4 w-4 items-center justify-center rounded-full bg-sage text-white ring-2 ring-card">
+                          <Check className="h-2.5 w-2.5" strokeWidth={3} />
+                        </span>
+                      )}
                     </span>
-                  )}
-                </span>
-                <span className="text-[13px] font-semibold">{member.name}</span>
-                <TokenDots left={member.vetoTokensRemaining} className={cx(member.vetoTokensRemaining === 0 ? 'text-tomato' : 'text-ink-3')} />
-              </button>
-            );
-          })}
-        </div>
-      </Card>
+                    <span className="text-[13px] font-semibold">{member.name}</span>
+                    <span className="text-[11px] text-ink-3">{voted ? 'Said yes' : 'Not voted'}</span>
+                    <TokenDots left={member.vetoTokensRemaining} className={cx(member.vetoTokensRemaining === 0 ? 'text-tomato' : 'text-ink-3')} />
+                  </button>
+                );
+              })}
+            </div>
+          </Card>
 
-      {vetoError && (
-        <Notice tone="tomato" icon={<CircleAlert className="h-4 w-4" />} onDismiss={() => setVetoError(null)}>
-          {vetoError}
-        </Notice>
+          {vetoError && (
+            <Notice tone="tomato" icon={<CircleAlert className="h-4 w-4" />} onDismiss={() => setVetoError(null)}>
+              {vetoError}
+            </Notice>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <Button
+              variant="danger"
+              size="lg"
+              onClick={handleVoteNo}
+              disabled={voterOutOfVetoes}
+              aria-describedby="veto-hint"
+              className="h-auto min-h-14 flex-col !gap-0 py-2"
+            >
+              <span className="flex items-center gap-1.5">
+                <X className="h-5 w-5" /> {currentVoter.name} vetoes
+              </span>
+              <span id="veto-hint" className="text-[11px] font-medium text-ink-3">
+                {voterOutOfVetoes ? 'No vetoes left this week' : `${currentVoter.vetoTokensRemaining} left · spins again`}
+              </span>
+            </Button>
+            <Button
+              variant="success"
+              size="lg"
+              onClick={() => voteYes(currentVoter.id, false)}
+              disabled={currentBallot[currentVoter.id] === 'yes'}
+              className="h-auto min-h-14 flex-col !gap-0 py-2"
+            >
+              <span className="flex items-center gap-1.5">
+                <Check className="h-5 w-5" /> {currentVoter.name} says yes
+              </span>
+              <span className="text-[11px] font-medium opacity-85">
+                {currentBallot[currentVoter.id] === 'yes'
+                  ? 'Already voted'
+                  : yesVotesCount + 1 >= majorityNeeded
+                    ? 'This agrees dinner'
+                    : `${yesVotesCount + 1} of ${majorityNeeded} yes`}
+              </span>
+            </Button>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+            <Button variant="quiet" size="sm" onClick={() => voteYes(currentVoter.id, true)}>
+              Skip the vote and cook this
+            </Button>
+            <Button variant="quiet" size="sm" onClick={handleCopy}>
+              {copied ? <Check className="h-4 w-4 text-sage" /> : <Copy className="h-4 w-4" />}
+              {copied ? 'Copied' : 'Copy for group chat'}
+            </Button>
+          </div>
+
+          {confirmLocalCancel ? (
+            <div role="alertdialog" aria-label="Cancel the vote?" className="space-y-2 rounded-xl border border-tomato/25 bg-tomato-soft/40 p-3">
+              <p className="text-[14px] font-semibold">Cancel the vote on {meal.title}? Votes so far are cleared.</p>
+              <div className="grid grid-cols-2 gap-2">
+                <Button variant="secondary" size="sm" disabled={cancelling} onClick={() => setConfirmLocalCancel(false)}>
+                  Keep voting
+                </Button>
+                <Button variant="danger" size="sm" disabled={cancelling} onClick={cancel}>
+                  {cancelling ? 'Cancelling…' : 'Yes, cancel the vote'}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button variant="quiet" size="sm" onClick={() => setConfirmLocalCancel(true)}>
+              <X className="h-4 w-4" /> Cancel vote
+            </Button>
+          )}
+
+          <div className="flex items-center gap-3 rounded-xl bg-sunk px-4 py-3 text-[13px] text-ink-2">
+            <span className="flex gap-1" aria-hidden="true">
+              {[0, 1, 2].map((i) => (
+                <span key={i} className={cx('h-2.5 w-2.5 rounded-full', i < consecutiveRejections ? 'bg-tomato' : 'border border-line-strong')} />
+              ))}
+            </span>
+            <span>
+              {consecutiveRejections === 0
+                ? 'Three vetoes in a row and the kitchen closes for takeaway.'
+                : `${consecutiveRejections} veto${consecutiveRejections > 1 ? 'es' : ''} in a row. ${3 - consecutiveRejections} more and it’s takeaway.`}
+            </span>
+          </div>
+        </>
       )}
-
-      <div className="grid grid-cols-2 gap-3">
-        <Button
-          variant="danger"
-          size="lg"
-          onClick={handleVoteNo}
-          disabled={voterOutOfVetoes}
-          aria-describedby="veto-hint"
-          className="flex-col !gap-0"
-        >
-          <span className="flex items-center gap-1.5">
-            <X className="h-5 w-5" /> Veto
-          </span>
-          <span id="veto-hint" className="text-[11px] font-medium text-ink-3">
-            {voterOutOfVetoes ? 'None left this week' : `${currentVoter.vetoTokensRemaining} left · respins`}
-          </span>
-        </Button>
-        <Button variant="success" size="lg" onClick={() => voteYes(currentVoter.id, false)} className="flex-col !gap-0">
-          <span className="flex items-center gap-1.5">
-            <Check className="h-5 w-5" /> Yes
-          </span>
-          <span className="text-[11px] font-medium opacity-85">
-            {yesVotesCount + 1 >= majorityNeeded ? 'Agrees dinner' : `as ${currentVoter.name}`}
-          </span>
-        </Button>
-      </div>
-
-      <div className="flex items-center justify-between gap-2 px-1">
-        <button
-          onClick={() => voteYes(currentVoter.id, true)}
-          className="text-[14px] font-semibold text-ink-2 underline-offset-2 hover:text-ink hover:underline"
-        >
-          Just decide. Skip the vote
-        </button>
-        <button
-          onClick={handleCopy}
-          className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-ink-2 hover:text-ink"
-        >
-          {copied ? <Check className="h-4 w-4 text-sage" /> : <Copy className="h-4 w-4" />}
-          {copied ? 'Copied' : 'Copy for group chat'}
-        </button>
-      </div>
-
-      <div className="flex items-center gap-3 rounded-xl bg-sunk px-4 py-3 text-[13px] text-ink-2">
-        <span className="flex gap-1" aria-hidden="true">
-          {[0, 1, 2].map((i) => (
-            <span key={i} className={cx('h-2.5 w-2.5 rounded-full', i < consecutiveRejections ? 'bg-tomato' : 'border border-line-strong')} />
-          ))}
-        </span>
-        <span>
-          {consecutiveRejections === 0
-            ? 'Three vetoes in a row and the kitchen closes for takeaway.'
-            : `${consecutiveRejections} veto${consecutiveRejections > 1 ? 'es' : ''} in a row. ${3 - consecutiveRejections} more and it’s takeaway.`}
-        </span>
-      </div>
-
-      </>)}
 
       <div className="border-t border-line pt-3">
         <button

@@ -28,6 +28,7 @@ export const RecipeSheet: React.FC<{
     rejectMeal,
     addFromLibrary,
     sendToVote,
+    voteLabel,
     setActiveMealResult,
     setActiveView,
     toggleFavoriteMeal,
@@ -387,7 +388,7 @@ export const RecipeSheet: React.FC<{
               onClose();
             }}
           >
-            <Send className="h-4 w-4" /> Propose for tonight
+            <Send className="h-4 w-4" /> {voteLabel}
           </Button>
         ) : current.source === 'world' ? (
           <Button variant="primary" size="lg" block onClick={() => addFromLibrary(current.id)}>
@@ -403,7 +404,7 @@ export const RecipeSheet: React.FC<{
               onClose();
             }}
           >
-            <Send className="h-4 w-4" /> Propose for tonight
+            <Send className="h-4 w-4" /> {voteLabel}
           </Button>
         )}
 
