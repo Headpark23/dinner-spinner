@@ -89,7 +89,7 @@ test('Photo upload guard and backup validation cover cupboard, likes, shelved an
 
 test('Vote notifications: who is told what, and never the person who acted', () => {
   const base = { meal: { title: 'Lasagne' }, needed: 2, proposedBy: 'Dad', vetoedBy: '' };
-  assert.match(voteMessage('propose', {}, { ...base, status: 'open', ballot: {} })!.payload.title, /Dad suggests Lasagne/);
+  assert.match(voteMessage('propose', {}, { ...base, status: 'open', ballot: {} })!.payload.title, /Dad wants your vote: Lasagne/);
   const yes = voteMessage('vote', { voter: 'mum' }, { ...base, status: 'open', ballot: { Mum: 'yes' } })!;
   assert.equal(yes.actor, 'Mum');
   assert.match(yes.payload.body, /1 of 2/);
@@ -232,6 +232,8 @@ test('Server: batched shared lists, separate Redis recipe book, and push subscri
     ).json();
     assert.equal(proposed.status, 'open');
     assert.equal(proposed.notified, 0, 'unsubscribed phone is not notified');
+    assert.deepEqual(proposed.ballot, { Dad: 'yes' }, 'the sender counts as a yes');
+    assert.deepEqual(proposed.phones, [], 'nobody has notifications on, and the sender can see that');
   } finally {
     await new Promise<void>((r) => server.close(() => r()));
   }

@@ -84,12 +84,22 @@ export const DinnerSteps: React.FC = () => {
 
 /** On the Pick screen while a dish is already in play, show its thumbnail and offer one-tap return. */
 export const InProgressBanner: React.FC = () => {
-  const { activeView, setActiveView, proposedMeal, agreedMeal } = useDinner();
+  const { activeView, setActiveView, proposedMeal, agreedMeal, tonight, householdCode } = useDinner();
   const stage = useDinnerStage();
   if (activeView !== 0 || stage === 'pick') return null;
   const meal = agreedMeal ?? proposedMeal;
   if (!meal) return null;
-  const label = stage === 'vote' ? 'Waiting for a vote' : stage === 'cook' ? 'Agreed · Time to cook' : 'Eaten · Rate tonight’s dinner';
+  // An open family vote has its own banner (who it's waiting for), so this one would only repeat it.
+  const familyVoteOpen = tonight?.status === 'open' && tonight.meal?.id === meal.id;
+  if (stage === 'vote' && familyVoteOpen) return null;
+  const label =
+    stage === 'vote'
+      ? householdCode
+        ? 'Not sent to the family yet'
+        : 'Voting on this phone'
+      : stage === 'cook'
+        ? 'Agreed · Time to cook'
+        : 'Eaten · Rate tonight’s dinner';
 
   return (
     <button

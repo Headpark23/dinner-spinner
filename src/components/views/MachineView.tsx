@@ -76,6 +76,7 @@ export const MachineView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFam
     spin,
     activeMealResult,
     sendToVote,
+    voteLabel,
     pantry,
     toggleFavoriteMeal,
     getMealPantryMatch,
@@ -323,7 +324,7 @@ export const MachineView: React.FC<{ onOpenFamily?: () => void }> = ({ onOpenFam
                 </Button>
                 <Button variant="primary" onClick={() => sendToVote(activeMealResult)}>
                   <ThumbsUp className="h-4 w-4" />
-                  Put to the vote
+                  {voteLabel}
                 </Button>
               </div>
               <button

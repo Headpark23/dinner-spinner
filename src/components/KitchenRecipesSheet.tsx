@@ -11,7 +11,7 @@ const PAGE = 4;
 
 /** "Cook from our recipes": 3–4 saved recipes that use the most of what's already in the kitchen. */
 export const KitchenRecipesSheet: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
-  const { meals, pantry, inStock, freezer, restrictions, sendToVote, addShoppingItems, setActiveView } = useDinner();
+  const { meals, pantry, inStock, freezer, restrictions, sendToVote, voteLabel, addShoppingItems, setActiveView } = useDinner();
   const [page, setPage] = useState(0);
   const [recipe, setRecipe] = useState<Meal | null>(null);
   const [listed, setListed] = useState<Record<string, boolean>>({});
@@ -168,7 +168,7 @@ export const KitchenRecipesSheet: React.FC<{ isOpen: boolean; onClose: () => voi
                           onClose();
                         }}
                       >
-                        <Send className="h-4 w-4" /> Put to the vote
+                        <Send className="h-4 w-4" /> {voteLabel}
                       </Button>
                     </div>
                   </div>

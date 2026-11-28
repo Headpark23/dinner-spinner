@@ -33,6 +33,7 @@ import { fetchPublicPage } from './src/server/fetchPage';
 import { extractRecipeFromHtml, htmlToText } from './src/utils/recipeImport';
 import { Household, HttpError, MealsBook, Store, UserLink, createFileStore, createStoreFromEnv, mutate, mutateMealsBook } from './src/server/store';
 import { cleanSub, notActor, pushPublicKey, sendToAll, voteMessage, type PushSub } from './src/server/push';
+import { applyTonightOp, clipText, tonightOf } from './src/server/tonight';
 import { SHARED, SHARED_NAMES, applySharedOp, emptyShared, isLargeShared, isSharedName, type SharedName, type SharedPollEntry, type SharedState } from './src/utils/sharedSync';
 
 dotenv.config();
@@ -694,63 +695,14 @@ app.post('/api/takeaways/discover', smallJson, requireHousehold, rateLimit('take
 });
 
 // ---------------------------------------------------------------------------
-// Tonight's live vote. One proposal at a time per household. Phones poll it, so
-// everyone can vote from their own handset. The server decides the outcome:
-// any veto ends the round; enough yes votes agrees dinner.
+// Tonight's family vote. The rules live in src/server/tonight.ts.
 // ---------------------------------------------------------------------------
-const TIMES = ['20m', '30m', '60m', 'all-day'];
-const EFFORTS = ['one-pot', 'standard', 'chef-mode'];
-const clipText = (v: unknown, n: number) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
-const clipList = (v: unknown, items: number, n: number) =>
-  Array.isArray(v) ? v.filter((x) => typeof x === 'string').slice(0, items).map((x: string) => x.trim().slice(0, n)).filter(Boolean) : [];
-
-function cleanMeal(raw: any) {
-  if (!raw || typeof raw !== 'object') return null;
-  const title = clipText(raw.title, 120);
-  const id = clipText(raw.id, 60);
-  if (!title || !id || !TIMES.includes(raw.timeStake) || !EFFORTS.includes(raw.effort)) return null;
-  const ingredients = clipList(raw.ingredients, 40, 80);
-  const prepSteps = clipList(raw.prepSteps, 30, 200);
-  if (ingredients.length === 0 || prepSteps.length === 0) return null;
-  return {
-    id,
-    title,
-    description: clipText(raw.description, 400),
-    cuisine: clipText(raw.cuisine, 40) || 'Other',
-    timeStake: raw.timeStake,
-    effort: raw.effort,
-    ingredients,
-    prepSteps,
-    tags: clipList(raw.tags, 10, 30),
-  };
-}
-
-type Tonight = {
-  version: number;
-  round: number;
-  status: 'idle' | 'open' | 'agreed' | 'vetoed';
-  meal: ReturnType<typeof cleanMeal>;
-  people: string[];
-  needed: number;
-  ballot: Record<string, 'yes' | 'no'>;
-  proposedBy: string;
-  vetoedBy: string;
-  openedAt: string;
-};
-const STALE_MS = 12 * 3600 * 1000;
-const emptyTonight = (): Tonight => ({
-  version: 0, round: 0, status: 'idle', meal: null, people: [], needed: 1, ballot: {}, proposedBy: '', vetoedBy: '', openedAt: '',
-});
-const tonightOf = (h: Household): Tonight => {
-  const t = ((h as any).tonight ||= emptyTonight()) as Tonight;
-  if (t.status !== 'idle' && t.openedAt && Date.now() - new Date(t.openedAt).getTime() > STALE_MS) {
-    Object.assign(t, emptyTonight(), { version: t.version + 1, round: t.round });
-  }
-  return t;
-};
+// `phones`: who in the family has notifications turned on, so the sender can see who will get a buzz.
+const pushNames = (subs: PushSub[] | undefined) => Array.from(new Set((subs || []).map((s) => s.name)));
 
 app.get('/api/tonight', requireHousehold, (req, res) => {
-  res.json(tonightOf((req as AuthedRequest).household!));
+  const h = (req as AuthedRequest).household!;
+  res.json({ ...tonightOf(h), phones: pushNames(h.push) });
 });
 
 app.post('/api/tonight', smallJson, requireHousehold, async (req, res) => {
@@ -765,15 +717,17 @@ app.post('/api/tonight', smallJson, requireHousehold, async (req, res) => {
     // Tell the other phones. Awaited, because a serverless host may freeze once the reply is sent.
     const msg = voteMessage(String(body.op || ''), body, t as any);
     let notified = 0;
+    let buzzed: string[] = [];
     if (msg) {
       const targets = notActor(subs, msg.actor);
       if (targets.length) {
-        const { sent, gone } = await sendToAll(targets, msg.payload);
+        const { sent, gone, sentTo } = await sendToAll(targets, msg.payload);
         notified = sent;
+        buzzed = sentTo;
         if (gone.length) await forgetPushSubs(id, gone);
       }
     }
-    res.json({ ...t, notified });
+    res.json({ ...t, phones: pushNames(subs), notified, buzzed });
   } catch (err) {
     if (err instanceof HttpError) return res.status(err.status).json(err.body);
     fail(res, err);
@@ -1020,58 +974,6 @@ app.post('/api/push/test', smallJson, requireHousehold, async (req, res) => {
   if (gone.length) await forgetPushSubs((req as AuthedRequest).householdId!, gone);
   res.status(sent ? 200 : 502).json({ ok: sent > 0 });
 });
-
-function applyTonightOp(h: Household, body: any): Tonight {
-  const t = tonightOf(h);
-  switch (body.op) {
-    case 'propose': {
-      const meal = cleanMeal(body.meal);
-      const people = Array.from(new Set(clipList(body.people, 12, 30)));
-      if (!meal || people.length === 0) throw new HttpError(400, { error: 'Invalid proposal' });
-      const needed = Math.min(people.length, Math.max(1, Math.floor(Number(body.needed)) || Math.ceil(people.length / 2)));
-      Object.assign(t, {
-        version: t.version + 1,
-        round: t.round + 1,
-        status: 'open',
-        meal,
-        people,
-        needed,
-        ballot: {},
-        proposedBy: clipText(body.by, 30),
-        vetoedBy: '',
-        openedAt: new Date().toISOString(),
-      });
-      break;
-    }
-    case 'vote': {
-      if (t.status !== 'open') throw new HttpError(409, { error: 'There is no open vote.', tonight: t });
-      const voter = t.people.find((p) => p.toLowerCase() === clipText(body.voter, 30).toLowerCase());
-      if (!voter || !['yes', 'no'].includes(body.vote)) throw new HttpError(400, { error: 'Invalid vote' });
-      t.ballot[voter] = body.vote;
-      if (body.vote === 'no') {
-        t.status = 'vetoed';
-        t.vetoedBy = voter;
-      } else if (Object.values(t.ballot).filter((v) => v === 'yes').length >= t.needed) {
-        t.status = 'agreed';
-      }
-      t.version += 1;
-      break;
-    }
-    case 'decide': {
-      if (t.status !== 'open') throw new HttpError(409, { error: 'There is no open vote.', tonight: t });
-      t.status = 'agreed';
-      t.version += 1;
-      break;
-    }
-    case 'clear': {
-      Object.assign(t, emptyTonight(), { version: t.version + 1, round: t.round });
-      break;
-    }
-    default:
-      throw new HttpError(400, { error: 'Unknown operation' });
-  }
-  return t;
-}
 
 // Live model calls must never leave the UI hanging: give up after GEMINI_TIMEOUT_MS
 // and let the catch block serve the simulated response instead.
